@@ -41,5 +41,3 @@ Run all checks:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo test --workspace --all-features
     cargo run -p xtask -- contracts-check
-
-See docs/PROGRESS.md for exact completed evidence and intentionally unfinished work.

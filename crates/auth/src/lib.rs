@@ -520,6 +520,7 @@ impl CredentialVault {
         keyring::Entry::store_status()
             .as_ref()
             .map_err(|error| CredentialError::Unavailable(error.to_string()))
+            .copied()
     }
 
     pub fn store(
