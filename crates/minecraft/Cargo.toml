@@ -1,0 +1,29 @@
+[package]
+name = "slate-minecraft"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+regex.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+shlex.workspace = true
+slate-contracts = { path = "../contracts" }
+slate-domain = { path = "../domain" }
+slate-platform = { path = "../platform" }
+thiserror.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

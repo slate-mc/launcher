@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RedactedLaunchPlan",
+  "type": "object",
+  "properties": {
+    "arguments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "executable": {
+      "type": "string"
+    },
+    "workingDirectory": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "executable",
+    "arguments",
+    "workingDirectory",
+    "environment"
+  ]
+}

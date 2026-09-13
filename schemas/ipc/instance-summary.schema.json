@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InstanceSummary",
+  "type": "object",
+  "properties": {
+    "createdAt": {
+      "type": "string"
+    },
+    "favorite": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "loaderKind": {
+      "$ref": "#/$defs/LoaderKindDto"
+    },
+    "loaderVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "managementMode": {
+      "$ref": "#/$defs/ManagementModeDto"
+    },
+    "memoryMb": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "minecraftVersion": {
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/InstanceModeDto"
+    },
+    "name": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "setupState": {
+      "$ref": "#/$defs/InstanceSetupStateDto"
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "mode",
+    "managementMode",
+    "favorite",
+    "revision",
+    "minecraftVersion",
+    "loaderKind",
+    "memoryMb",
+    "setupState",
+    "createdAt",
+    "updatedAt"
+  ],
+  "$defs": {
+    "InstanceModeDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "modded",
+        "pvp"
+      ]
+    },
+    "InstanceSetupStateDto": {
+      "type": "string",
+      "enum": [
+        "configured",
+        "preparing",
+        "ready",
+        "blocked"
+      ]
+    },
+    "LoaderKindDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "fabric",
+        "neoForge"
+      ]
+    },
+    "ManagementModeDto": {
+      "type": "string",
+      "enum": [
+        "local",
+        "community"
+      ]
+    }
+  }
+}

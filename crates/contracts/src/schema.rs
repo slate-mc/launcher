@@ -1,0 +1,71 @@
+use crate::{
+    AppError, AppPreferencesDto, BootstrapResponse, CreateInstanceRequest, EventEnvelope,
+    GameSessionSummary, InstallInstanceRequest, InstallJobSummary, InstanceSummary,
+    LaunchDemoRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftVersionCatalog,
+    PreflightSummary, RedactedLaunchPlan, UpdateInstanceConfigurationRequest,
+};
+use schemars::{Schema, schema_for};
+use std::collections::BTreeMap;
+
+#[must_use]
+pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
+    BTreeMap::from([
+        ("app-error", schema_for!(AppError)),
+        ("bootstrap-response", schema_for!(BootstrapResponse)),
+        ("event-envelope", schema_for!(EventEnvelope)),
+        ("instance-summary", schema_for!(InstanceSummary)),
+        (
+            "create-instance-request",
+            schema_for!(CreateInstanceRequest),
+        ),
+        (
+            "update-instance-configuration-request",
+            schema_for!(UpdateInstanceConfigurationRequest),
+        ),
+        ("app-preferences", schema_for!(AppPreferencesDto)),
+        ("preflight-summary", schema_for!(PreflightSummary)),
+        (
+            "minecraft-version-catalog",
+            schema_for!(MinecraftVersionCatalog),
+        ),
+        (
+            "loader-versions-request",
+            schema_for!(LoaderVersionsRequest),
+        ),
+        ("loader-version-catalog", schema_for!(LoaderVersionCatalog)),
+        ("redacted-launch-plan", schema_for!(RedactedLaunchPlan)),
+        ("install-instance-request", schema_for!(InstallInstanceRequest)),
+        ("install-job-summary", schema_for!(InstallJobSummary)),
+        ("launch-demo-request", schema_for!(LaunchDemoRequest)),
+        ("game-session-summary", schema_for!(GameSessionSummary)),
+    ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::schema_documents;
+    use crate::{BootstrapResponse, CapabilitySummary};
+
+    #[test]
+    fn bootstrap_wire_fields_are_camel_case() -> Result<(), serde_json::Error> {
+        let value =
+            serde_json::to_value(BootstrapResponse::new(vec![CapabilitySummary::available(
+                "local.launch",
+            )]))?;
+
+        assert_eq!(value["productName"], "slate");
+        assert!(value.get("ipcSchemaVersion").is_some());
+        assert!(value.get("databaseSchemaVersion").is_some());
+        assert!(value.get("product_name").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn schema_registry_has_stable_names() {
+        let schemas = schema_documents();
+
+        assert_eq!(schemas.len(), 16);
+        assert!(schemas.contains_key("app-error"));
+        assert!(schemas.contains_key("event-envelope"));
+    }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AppPreferencesDto",
+  "type": "object",
+  "properties": {
+    "downloadConcurrency": {
+      "type": "integer",
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0
+    },
+    "reduceMotion": {
+      "$ref": "#/$defs/ReduceMotionPreferenceDto"
+    },
+    "telemetryEnabled": {
+      "type": "boolean"
+    },
+    "theme": {
+      "$ref": "#/$defs/ThemePreferenceDto"
+    }
+  },
+  "required": [
+    "theme",
+    "downloadConcurrency",
+    "telemetryEnabled",
+    "reduceMotion"
+  ],
+  "$defs": {
+    "ReduceMotionPreferenceDto": {
+      "type": "string",
+      "enum": [
+        "system",
+        "on",
+        "off"
+      ]
+    },
+    "ThemePreferenceDto": {
+      "type": "string",
+      "enum": [
+        "dark",
+        "light",
+        "system"
+      ]
+    }
+  }
+}

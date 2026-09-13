@@ -1,0 +1,33 @@
+{
+  "id": "neoforge-21.1.250",
+  "inheritsFrom": "1.21.1",
+  "type": "release",
+  "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+  "arguments": {
+    "game": [
+      "--launchTarget",
+      "neoforgeclient",
+      "--fml.neoForgeVersion",
+      "21.1.250",
+      "--fml.mcVersion",
+      "1.21.1"
+    ],
+    "jvm": [
+      "-Djava.net.preferIPv6Addresses=system",
+      "-DignoreList=bootstraplauncher-2.0.2.jar,securejarhandler-3.0.8.jar"
+    ]
+  },
+  "libraries": [
+    {
+      "name": "cpw.mods:bootstraplauncher:2.0.2",
+      "downloads": {
+        "artifact": {
+          "path": "cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+          "url": "https://maven.neoforged.net/releases/cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+          "sha1": "2f6517f891fcc719d26a32901db77c71d0c3f80c",
+          "size": 11399
+        }
+      }
+    }
+  ]
+}

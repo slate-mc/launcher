@@ -1,0 +1,51 @@
+[
+  {
+    "pair": "Primary on graphite",
+    "foreground": "#F0F4EF",
+    "background": "#101413",
+    "ratio": 16.7,
+    "normal_text_AA": true
+  },
+  {
+    "pair": "Secondary on surface",
+    "foreground": "#AFBDB2",
+    "background": "#1A211D",
+    "ratio": 8.4,
+    "normal_text_AA": true
+  },
+  {
+    "pair": "Muted on graphite",
+    "foreground": "#87988D",
+    "background": "#101413",
+    "ratio": 6.1,
+    "normal_text_AA": true
+  },
+  {
+    "pair": "Button text on jade",
+    "foreground": "#102218",
+    "background": "#8BD5AD",
+    "ratio": 9.67,
+    "normal_text_AA": true
+  },
+  {
+    "pair": "White on jade",
+    "foreground": "#FFFFFF",
+    "background": "#8BD5AD",
+    "ratio": 1.72,
+    "normal_text_AA": false
+  },
+  {
+    "pair": "Light body text",
+    "foreground": "#1B2A21",
+    "background": "#F3F5F1",
+    "ratio": 13.68,
+    "normal_text_AA": true
+  },
+  {
+    "pair": "Light accent on white",
+    "foreground": "#286C49",
+    "background": "#FFFFFF",
+    "ratio": 6.3,
+    "normal_text_AA": true
+  }
+]

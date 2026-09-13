@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CreateInstanceRequest",
+  "type": "object",
+  "properties": {
+    "loaderKind": {
+      "$ref": "#/$defs/LoaderKindDto"
+    },
+    "loaderVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "memoryMb": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "minecraftVersion": {
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/InstanceModeDto"
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "mode",
+    "minecraftVersion",
+    "loaderKind",
+    "memoryMb"
+  ],
+  "$defs": {
+    "InstanceModeDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "modded",
+        "pvp"
+      ]
+    },
+    "LoaderKindDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "fabric",
+        "neoForge"
+      ]
+    }
+  }
+}

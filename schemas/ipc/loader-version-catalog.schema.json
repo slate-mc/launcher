@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LoaderVersionCatalog",
+  "type": "object",
+  "properties": {
+    "loaderKind": {
+      "$ref": "#/$defs/LoaderKindDto"
+    },
+    "minecraftVersion": {
+      "type": "string"
+    },
+    "recommendedVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "unavailableReason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "versions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "loaderKind",
+    "minecraftVersion",
+    "versions"
+  ],
+  "$defs": {
+    "LoaderKindDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "fabric",
+        "neoForge"
+      ]
+    }
+  }
+}

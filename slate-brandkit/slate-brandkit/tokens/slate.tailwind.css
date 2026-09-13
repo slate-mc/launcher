@@ -1,0 +1,39 @@
+/* slate brand tokens v1.0 | Tailwind CSS v4 | exact values are authoritative */
+@import "tailwindcss";
+@font-face { font-family: "Manrope"; src: url("../fonts/Manrope-variable.ttf") format("truetype"); font-weight: 200 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; src: url("../fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; src: url("../fonts/IBMPlexMono-Medium.ttf") format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-slate-graphite: #101413;
+  --color-slate-paper: #F0F4EF;
+  --color-slate-jade: #8BD5AD;
+  --radius-slate-sm: 6px;
+  --radius-slate-control: 10px;
+  --radius-slate-dialog: 14px;
+}
+:root, [data-theme="dark"] {
+  --slate-bg: #101413; --slate-sidebar: #141A17; --slate-surface: #1A211D;
+  --slate-raised: #222C26; --slate-hover: #29372F; --slate-text: #F0F4EF;
+  --slate-secondary: #AFBDB2; --slate-muted: #87988D; --slate-accent: #8BD5AD;
+  --slate-on-accent: #102218; --slate-separator: #35433A;
+  --slate-danger: #F28B82; --slate-warning: #E7C47C; --slate-info: #9DBFDB;
+}
+[data-theme="light"] {
+  --slate-bg: #F3F5F1; --slate-sidebar: #E8EEE7; --slate-surface: #FFFFFF;
+  --slate-raised: #FFFFFF; --slate-hover: #E8EEE7; --slate-text: #1B2A21;
+  --slate-secondary: #506255; --slate-muted: #506255; --slate-accent: #286C49;
+  --slate-on-accent: #FFFFFF; --slate-separator: #CBD7CC;
+  --slate-danger: #A92F2F; --slate-warning: #805C0A; --slate-info: #315F85;
+}
+@theme inline {
+  --color-app-bg: var(--slate-bg); --color-app-surface: var(--slate-surface);
+  --color-app-raised: var(--slate-raised); --color-app-text: var(--slate-text);
+  --color-app-secondary: var(--slate-secondary); --color-app-muted: var(--slate-muted);
+  --color-app-accent: var(--slate-accent); --color-app-on-accent: var(--slate-on-accent);
+}
+:focus-visible { outline: 2px solid var(--slate-accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

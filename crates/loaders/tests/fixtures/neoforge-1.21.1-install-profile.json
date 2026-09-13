@@ -1,0 +1,52 @@
+{
+  "spec": 1,
+  "profile": "NeoForge",
+  "version": "21.1.250",
+  "path": null,
+  "minecraft": "1.21.1",
+  "data": {
+    "SIDE": {
+      "client": "client",
+      "server": "server"
+    },
+    "MINECRAFT_JAR": {
+      "client": "{ROOT}/versions/1.21.1/1.21.1.jar",
+      "server": "{ROOT}/minecraft_server.1.21.1.jar"
+    }
+  },
+  "processors": [
+    {
+      "jar": "net.neoforged.installertools:installertools:2.1.4:fatjar",
+      "classpath": [],
+      "args": ["--task", "MCP_DATA", "--input", "{MINECRAFT_JAR}"],
+      "outputs": {}
+    },
+    {
+      "sides": ["client"],
+      "jar": "net.neoforged.installertools:installertools:2.1.4:fatjar",
+      "classpath": ["net.neoforged:srgutils:1.0.10"],
+      "args": ["--task", "DOWNLOAD_MOJMAPS", "--version", "1.21.1"],
+      "outputs": {}
+    },
+    {
+      "sides": ["server"],
+      "jar": "net.neoforged.installertools:installertools:2.1.4:fatjar",
+      "classpath": [],
+      "args": ["--task", "BUNDLER_EXTRACT"],
+      "outputs": {}
+    }
+  ],
+  "libraries": [
+    {
+      "name": "net.neoforged.installertools:installertools:2.1.4:fatjar",
+      "downloads": {
+        "artifact": {
+          "path": "net/neoforged/installertools/installertools/2.1.4/installertools-2.1.4-fatjar.jar",
+          "url": "https://maven.neoforged.net/releases/net/neoforged/installertools/installertools/2.1.4/installertools-2.1.4-fatjar.jar",
+          "sha1": "8d4902ad462940513d4752ca28432d504f33e277",
+          "size": 3140799
+        }
+      }
+    }
+  ]
+}

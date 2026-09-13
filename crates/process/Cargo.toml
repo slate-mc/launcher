@@ -1,0 +1,15 @@
+[package]
+name = "slate-process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+slate-domain = { path = "../domain" }
+slate-minecraft = { path = "../minecraft" }
+thiserror.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

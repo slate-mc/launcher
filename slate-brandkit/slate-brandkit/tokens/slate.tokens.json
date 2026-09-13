@@ -1,0 +1,136 @@
+{
+  "brand": {
+    "name": "slate",
+    "case": "lowercase",
+    "descriptor": "Minecraft launcher",
+    "tagline": "your game. your setup."
+  },
+  "color": {
+    "graphite": "#101413",
+    "sidebar": "#141A17",
+    "surface": "#1A211D",
+    "raised": "#222C26",
+    "hover": "#29372F",
+    "paper": "#F0F4EF",
+    "secondary": "#AFBDB2",
+    "muted": "#87988D",
+    "jade": "#8BD5AD",
+    "jade-ink": "#102218",
+    "separator": "#35433A",
+    "danger": "#F28B82",
+    "warning": "#E7C47C",
+    "info": "#9DBFDB",
+    "light-bg": "#F3F5F1",
+    "light-surface": "#FFFFFF",
+    "light-text": "#1B2A21",
+    "light-muted": "#506255",
+    "light-accent": "#286C49"
+  },
+  "font": {
+    "sans": "Manrope",
+    "mono": "IBM Plex Mono"
+  },
+  "type": {
+    "display": {
+      "size": 56,
+      "lineHeight": 60,
+      "weight": 700
+    },
+    "h1": {
+      "size": 32,
+      "lineHeight": 38,
+      "weight": 700
+    },
+    "h2": {
+      "size": 24,
+      "lineHeight": 30,
+      "weight": 700
+    },
+    "body": {
+      "size": 14,
+      "lineHeight": 20,
+      "weight": 400
+    },
+    "label": {
+      "size": 13,
+      "lineHeight": 18,
+      "weight": 600
+    },
+    "meta": {
+      "size": 12,
+      "lineHeight": 16,
+      "weight": 500
+    }
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    32,
+    40,
+    48
+  ],
+  "radius": {
+    "small": 6,
+    "control": 10,
+    "dialog": 14
+  },
+  "motion": {
+    "fastMs": 120,
+    "normalMs": 180
+  },
+  "contrastChecks": [
+    {
+      "pair": "Primary on graphite",
+      "foreground": "#F0F4EF",
+      "background": "#101413",
+      "ratio": 16.7,
+      "normal_text_AA": true
+    },
+    {
+      "pair": "Secondary on surface",
+      "foreground": "#AFBDB2",
+      "background": "#1A211D",
+      "ratio": 8.4,
+      "normal_text_AA": true
+    },
+    {
+      "pair": "Muted on graphite",
+      "foreground": "#87988D",
+      "background": "#101413",
+      "ratio": 6.1,
+      "normal_text_AA": true
+    },
+    {
+      "pair": "Button text on jade",
+      "foreground": "#102218",
+      "background": "#8BD5AD",
+      "ratio": 9.67,
+      "normal_text_AA": true
+    },
+    {
+      "pair": "White on jade",
+      "foreground": "#FFFFFF",
+      "background": "#8BD5AD",
+      "ratio": 1.72,
+      "normal_text_AA": false
+    },
+    {
+      "pair": "Light body text",
+      "foreground": "#1B2A21",
+      "background": "#F3F5F1",
+      "ratio": 13.68,
+      "normal_text_AA": true
+    },
+    {
+      "pair": "Light accent on white",
+      "foreground": "#286C49",
+      "background": "#FFFFFF",
+      "ratio": 6.3,
+      "normal_text_AA": true
+    }
+  ]
+}

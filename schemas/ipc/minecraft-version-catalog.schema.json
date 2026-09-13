@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MinecraftVersionCatalog",
+  "type": "object",
+  "properties": {
+    "latestRelease": {
+      "type": "string"
+    },
+    "versions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MinecraftVersionOption"
+      }
+    }
+  },
+  "required": [
+    "latestRelease",
+    "versions"
+  ],
+  "$defs": {
+    "MinecraftReleaseKindDto": {
+      "type": "string",
+      "enum": [
+        "release",
+        "snapshot"
+      ]
+    },
+    "MinecraftVersionOption": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MinecraftReleaseKindDto"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LoaderVersionsRequest",
+  "type": "object",
+  "properties": {
+    "loaderKind": {
+      "$ref": "#/$defs/LoaderKindDto"
+    },
+    "minecraftVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "minecraftVersion",
+    "loaderKind"
+  ],
+  "$defs": {
+    "LoaderKindDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "fabric",
+        "neoForge"
+      ]
+    }
+  }
+}

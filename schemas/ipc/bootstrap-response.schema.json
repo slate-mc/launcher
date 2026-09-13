@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BootstrapResponse",
+  "type": "object",
+  "properties": {
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CapabilitySummary"
+      }
+    },
+    "databaseSchemaVersion": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "ipcSchemaVersion": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "productName": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "productName",
+    "ipcSchemaVersion",
+    "databaseSchemaVersion",
+    "capabilities"
+  ],
+  "$defs": {
+    "CapabilitySummary": {
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "unavailableReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "available"
+      ]
+    }
+  }
+}

@@ -1,0 +1,652 @@
+//! Transactional Minecraft installation and managed Java acquisition for slate.
+
+mod download;
+mod runtime;
+
+pub use download::{DownloadError, DownloadSummary, Downloader};
+pub use runtime::{ManagedJavaRuntime, RuntimeInstallError, ensure_managed_java};
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use slate_domain::{InstanceId, LoaderFamily, RevisionId};
+use slate_loaders::{FabricAdapter, NeoForgeAdapter, NeoForgeInstallerBundle};
+use slate_minecraft::{
+    Architecture, ArtifactRequirement, ExpectedHash, HashAlgorithm, LaunchLayout, LaunchPlanner,
+    MojangMetadataClient, NativeExtraction, OperatingSystem, ResolvedVersion, RuleContext,
+    VersionMetadata,
+};
+use slate_platform::{AppPaths, JavaArchitecture};
+use std::collections::BTreeMap;
+use std::io::{Read, Write};
+use std::path::{Component, Path, PathBuf};
+use std::process::Stdio;
+use uuid::Uuid;
+use zip::ZipArchive;
+
+const MAX_ASSET_INDEX_BYTES: usize = 16 * 1024 * 1024;
+const MAX_ASSET_OBJECTS: usize = 1_000_000;
+const MAX_NATIVE_ENTRIES: usize = 100_000;
+const MAX_NATIVE_BYTES: u64 = 1024 * 1024 * 1024;
+
+#[derive(Clone, Debug)]
+pub struct InstallRequest {
+    pub instance_id: InstanceId,
+    pub revision_id: RevisionId,
+    pub minecraft_version: String,
+    pub loader_kind: LoaderFamily,
+    pub loader_version: Option<String>,
+    pub download_concurrency: u8,
+    pub paths: AppPaths,
+}
+
+#[derive(Clone, Debug)]
+pub struct InstallOutcome {
+    pub manifest_digest: String,
+    pub manifest_path: PathBuf,
+    pub resolved_version_id: String,
+    pub runtime: ManagedJavaRuntime,
+    pub downloaded_artifacts: usize,
+    pub reused_artifacts: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledRevisionManifest {
+    schema_version: u32,
+    instance_id: InstanceId,
+    revision_id: RevisionId,
+    minecraft_version: String,
+    loader_kind: LoaderFamily,
+    loader_version: Option<String>,
+    resolved_version_id: String,
+    metadata_layers: Vec<VersionMetadata>,
+    runtime: ManagedJavaRuntime,
+}
+
+pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallError> {
+    validate_request(&request)?;
+    let minecraft_root = request.paths.artifacts().join("minecraft");
+    let revision_directory = request
+        .paths
+        .instance(request.instance_id)
+        .join("revisions")
+        .join(request.revision_id.to_string());
+    let game_directory = request.paths.instance(request.instance_id).join("game");
+    let metadata_directory = revision_directory.join("metadata");
+    let native_directory = revision_directory.join("natives");
+    for directory in [
+        &minecraft_root,
+        &metadata_directory,
+        &game_directory,
+        &native_directory,
+    ] {
+        tokio::fs::create_dir_all(directory).await?;
+    }
+
+    let layout = LaunchLayout {
+        game_directory,
+        libraries_directory: minecraft_root.join("libraries"),
+        versions_directory: minecraft_root.join("versions"),
+        assets_directory: minecraft_root.join("assets"),
+        natives_directory: native_directory,
+    };
+    let rules = current_rule_context();
+    let metadata = MojangMetadataClient::new()?;
+    let manifest = metadata.fetch_manifest().await?;
+    let base = metadata
+        .fetch_version(&manifest, &request.minecraft_version)
+        .await?;
+    write_version_metadata(&layout.versions_directory, &base).await?;
+
+    let base_resolved = ResolvedVersion::resolve(vec![base.clone()])?;
+    let base_install = LaunchPlanner::prepare_install(&base_resolved, &layout, &rules)?;
+    let downloader = Downloader::new(request.download_concurrency)?;
+    let mut summary = downloader
+        .download_all(base_install.required_artifacts)
+        .await?;
+    let assets = asset_requirements(&layout.assets_directory, &base_resolved)?;
+    merge_summary(&mut summary, downloader.download_all(assets).await?);
+
+    let java_architecture = current_java_architecture()?;
+    let runtime = ensure_managed_java(
+        &request.paths.runtimes(),
+        base_install.required_java_major,
+        java_architecture,
+    )
+    .await?;
+
+    let layers = match request.loader_kind {
+        LoaderFamily::Vanilla => vec![base],
+        LoaderFamily::Fabric => {
+            let loader_version = request
+                .loader_version
+                .as_deref()
+                .ok_or(InstallError::LoaderVersionRequired)?;
+            let overlay = FabricAdapter::new()?
+                .fetch_profile(&request.minecraft_version, loader_version)
+                .await?;
+            write_version_metadata(&layout.versions_directory, &overlay).await?;
+            vec![base, overlay]
+        }
+        LoaderFamily::NeoForge => {
+            let loader_version = request
+                .loader_version
+                .as_deref()
+                .ok_or(InstallError::LoaderVersionRequired)?;
+            let bundle = NeoForgeAdapter::new()?
+                .fetch_installer(&request.minecraft_version, loader_version)
+                .await?;
+            run_neoforge_installer(
+                &bundle,
+                loader_version,
+                &runtime,
+                &minecraft_root,
+                &metadata_directory,
+            )
+            .await?;
+            let installed = read_installed_neoforge_version(
+                &layout.versions_directory,
+                &request.minecraft_version,
+                loader_version,
+            )
+            .await?;
+            vec![base, installed]
+        }
+    };
+
+    let resolved = ResolvedVersion::resolve(layers.clone())?;
+    let full_install = LaunchPlanner::prepare_install(&resolved, &layout, &rules)?;
+    let requirements = if request.loader_kind == LoaderFamily::NeoForge {
+        trust_neoforge_processor_outputs(full_install.required_artifacts, &layout, &request).await?
+    } else {
+        full_install.required_artifacts
+    };
+    merge_summary(&mut summary, downloader.download_all(requirements).await?);
+    extract_natives(full_install.native_extractions).await?;
+
+    let installed_manifest = InstalledRevisionManifest {
+        schema_version: 1,
+        instance_id: request.instance_id,
+        revision_id: request.revision_id,
+        minecraft_version: request.minecraft_version,
+        loader_kind: request.loader_kind,
+        loader_version: request.loader_version,
+        resolved_version_id: resolved.id().to_owned(),
+        metadata_layers: layers,
+        runtime: runtime.clone(),
+    };
+    let manifest_bytes = serde_json::to_vec_pretty(&installed_manifest)?;
+    let manifest_digest = digest_hex(&Sha256::digest(&manifest_bytes));
+    let manifest_path = metadata_directory.join("installed-revision.json");
+    atomic_write(&manifest_path, &manifest_bytes).await?;
+
+    Ok(InstallOutcome {
+        manifest_digest,
+        manifest_path,
+        resolved_version_id: resolved.id().to_owned(),
+        runtime,
+        downloaded_artifacts: summary.downloaded,
+        reused_artifacts: summary.reused,
+    })
+}
+
+pub async fn load_installed_revision(
+    path: &Path,
+) -> Result<(Vec<VersionMetadata>, ManagedJavaRuntime), InstallError> {
+    let bytes = tokio::fs::read(path).await?;
+    let manifest: InstalledRevisionManifestRead = serde_json::from_slice(&bytes)?;
+    if manifest.schema_version != 1 || manifest.metadata_layers.is_empty() {
+        return Err(InstallError::InvalidInstalledManifest);
+    }
+    Ok((manifest.metadata_layers, manifest.runtime))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledRevisionManifestRead {
+    schema_version: u32,
+    metadata_layers: Vec<VersionMetadata>,
+    runtime: ManagedJavaRuntime,
+}
+
+fn validate_request(request: &InstallRequest) -> Result<(), InstallError> {
+    if request.minecraft_version.trim().is_empty() {
+        return Err(InstallError::MinecraftVersionRequired);
+    }
+    if request.loader_kind.requires_version()
+        && request.loader_version.as_deref().is_none_or(str::is_empty)
+    {
+        return Err(InstallError::LoaderVersionRequired);
+    }
+    if !request.loader_kind.requires_version() && request.loader_version.is_some() {
+        return Err(InstallError::UnexpectedLoaderVersion);
+    }
+    Ok(())
+}
+
+fn current_rule_context() -> RuleContext {
+    RuleContext::new(
+        if cfg!(target_os = "windows") {
+            OperatingSystem::Windows
+        } else if cfg!(target_os = "macos") {
+            OperatingSystem::MacOs
+        } else {
+            OperatingSystem::Linux
+        },
+        if cfg!(target_arch = "x86") {
+            Architecture::X86
+        } else if cfg!(target_arch = "aarch64") {
+            Architecture::Arm64
+        } else {
+            Architecture::X86_64
+        },
+        std::env::consts::OS,
+    )
+}
+
+const fn current_java_architecture() -> Result<JavaArchitecture, InstallError> {
+    if cfg!(target_arch = "x86") {
+        Ok(JavaArchitecture::X86)
+    } else if cfg!(target_arch = "x86_64") {
+        Ok(JavaArchitecture::X86_64)
+    } else if cfg!(target_arch = "aarch64") {
+        Ok(JavaArchitecture::Arm64)
+    } else {
+        Err(InstallError::UnsupportedArchitecture)
+    }
+}
+
+async fn write_version_metadata(
+    versions_directory: &Path,
+    metadata: &VersionMetadata,
+) -> Result<(), InstallError> {
+    let directory = versions_directory.join(&metadata.id);
+    tokio::fs::create_dir_all(&directory).await?;
+    atomic_write(
+        &directory.join(format!("{}.json", metadata.id)),
+        &serde_json::to_vec_pretty(metadata)?,
+    )
+    .await
+}
+
+fn asset_requirements(
+    assets_directory: &Path,
+    version: &ResolvedVersion,
+) -> Result<Vec<ArtifactRequirement>, InstallError> {
+    let path = assets_directory
+        .join("indexes")
+        .join(format!("{}.json", version.asset_index().id));
+    let bytes = std::fs::read(path)?;
+    if bytes.len() > MAX_ASSET_INDEX_BYTES {
+        return Err(InstallError::AssetIndexTooLarge(bytes.len()));
+    }
+    let index: AssetIndexDocument = serde_json::from_slice(&bytes)?;
+    if index.objects.len() > MAX_ASSET_OBJECTS {
+        return Err(InstallError::TooManyAssetObjects(index.objects.len()));
+    }
+    index
+        .objects
+        .into_values()
+        .map(|object| {
+            ArtifactRequirement::official_asset_object(
+                assets_directory,
+                &object.hash,
+                object.size,
+            )
+            .map_err(InstallError::from)
+        })
+        .collect()
+}
+
+#[derive(Deserialize)]
+struct AssetIndexDocument {
+    objects: BTreeMap<String, AssetObject>,
+}
+
+#[derive(Deserialize)]
+struct AssetObject {
+    hash: String,
+    size: u64,
+}
+
+async fn run_neoforge_installer(
+    bundle: &NeoForgeInstallerBundle,
+    loader_version: &str,
+    runtime: &ManagedJavaRuntime,
+    minecraft_root: &Path,
+    metadata_directory: &Path,
+) -> Result<(), InstallError> {
+    let installer_directory = minecraft_root
+        .join("installers")
+        .join("neoforge")
+        .join(loader_version);
+    tokio::fs::create_dir_all(&installer_directory).await?;
+    let installer_path =
+        installer_directory.join(format!("neoforge-{loader_version}-installer.jar"));
+    atomic_write(&installer_path, &bundle.installer_bytes).await?;
+    ensure_launcher_profile_file(minecraft_root).await?;
+
+    let log_path = metadata_directory.join("neoforge-installer.log");
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&log_path)?;
+    let stderr = log.try_clone()?;
+    let mut command = tokio::process::Command::new(&runtime.executable);
+    command
+        .args(["-jar"])
+        .arg(&installer_path)
+        .arg("--install-client")
+        .arg(minecraft_root)
+        .current_dir(metadata_directory)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(stderr))
+        .kill_on_drop(true);
+    restrict_installer_environment(&mut command, runtime);
+    let status = command.status().await?;
+    if !status.success() {
+        return Err(InstallError::NeoForgeInstallerFailed {
+            code: status.code(),
+            log_path,
+        });
+    }
+    Ok(())
+}
+
+fn restrict_installer_environment(
+    command: &mut tokio::process::Command,
+    runtime: &ManagedJavaRuntime,
+) {
+    command.env_clear();
+    for name in [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "LANG",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    if let Some(java_home) = runtime.executable.parent().and_then(Path::parent) {
+        command.env("JAVA_HOME", java_home);
+        if let Some(bin) = runtime.executable.parent() {
+            command.env("PATH", bin);
+        }
+    }
+}
+
+async fn ensure_launcher_profile_file(minecraft_root: &Path) -> Result<(), InstallError> {
+    let path = minecraft_root.join("launcher_profiles.json");
+    if !path.exists() {
+        atomic_write(&path, br#"{"profiles":{},"settings":{},"version":3}"#).await?;
+    }
+    Ok(())
+}
+
+async fn read_installed_neoforge_version(
+    versions_directory: &Path,
+    minecraft_version: &str,
+    loader_version: &str,
+) -> Result<VersionMetadata, InstallError> {
+    let id = format!("neoforge-{loader_version}");
+    let bytes =
+        tokio::fs::read(versions_directory.join(&id).join(format!("{id}.json"))).await?;
+    let metadata = VersionMetadata::from_json_slice(&bytes)?;
+    if metadata.id != id || metadata.inherits_from.as_deref() != Some(minecraft_version) {
+        return Err(InstallError::NeoForgeInstalledMetadataMismatch);
+    }
+    Ok(metadata)
+}
+
+async fn trust_neoforge_processor_outputs(
+    requirements: Vec<ArtifactRequirement>,
+    layout: &LaunchLayout,
+    request: &InstallRequest,
+) -> Result<Vec<ArtifactRequirement>, InstallError> {
+    let loader_version = request
+        .loader_version
+        .as_deref()
+        .ok_or(InstallError::LoaderVersionRequired)?;
+    let generated_root = layout
+        .libraries_directory
+        .join("net")
+        .join("neoforged")
+        .join("neoforge")
+        .join(loader_version);
+    let mut trusted = Vec::with_capacity(requirements.len());
+    for requirement in requirements {
+        if requirement.expected_hashes().is_empty()
+            && requirement.target_path().is_file()
+            && requirement.target_path().starts_with(&generated_root)
+        {
+            let path = requirement.target_path().to_path_buf();
+            let hash = tokio::task::spawn_blocking(move || sha256_file(&path)).await??;
+            trusted.push(requirement.with_expected_hash(ExpectedHash::new(
+                HashAlgorithm::Sha256,
+                &hash,
+            )?));
+        } else {
+            trusted.push(requirement);
+        }
+    }
+    Ok(trusted)
+}
+
+async fn extract_natives(extractions: Vec<NativeExtraction>) -> Result<(), InstallError> {
+    if extractions.is_empty() {
+        return Ok(());
+    }
+    let destination = extractions[0].destination.clone();
+    let staging = destination.with_file_name(format!(".natives-{}.staging", Uuid::new_v4()));
+    tokio::fs::create_dir_all(&staging).await?;
+    let staging_for_worker = staging.clone();
+    let extraction = tokio::task::spawn_blocking(move || {
+        extract_native_archives(&extractions, &staging_for_worker)
+    })
+    .await?;
+    if let Err(error) = extraction {
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+        return Err(error);
+    }
+    if destination.exists() {
+        tokio::fs::remove_dir_all(&destination).await?;
+    }
+    tokio::fs::rename(staging, destination).await?;
+    Ok(())
+}
+
+fn extract_native_archives(
+    extractions: &[NativeExtraction],
+    staging: &Path,
+) -> Result<(), InstallError> {
+    let mut total = 0_u64;
+    for extraction in extractions {
+        let file = std::fs::File::open(&extraction.archive_path)?;
+        let mut archive = ZipArchive::new(file)?;
+        if archive.len() > MAX_NATIVE_ENTRIES {
+            return Err(InstallError::TooManyNativeEntries(archive.len()));
+        }
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index)?;
+            let enclosed = entry
+                .enclosed_name()
+                .ok_or(InstallError::UnsafeArchivePath)?;
+            let path = enclosed.to_path_buf();
+            if entry.is_dir()
+                || extraction
+                    .excludes
+                    .iter()
+                    .any(|prefix| path.starts_with(prefix))
+                || path.starts_with("META-INF")
+            {
+                continue;
+            }
+            if entry
+                .unix_mode()
+                .is_some_and(|mode| mode & 0o170000 == 0o120000)
+                || path
+                    .components()
+                    .any(|component| !matches!(component, Component::Normal(_)))
+            {
+                return Err(InstallError::UnsafeArchivePath);
+            }
+            total = total
+                .checked_add(entry.size())
+                .ok_or(InstallError::NativeSetTooLarge)?;
+            if total > MAX_NATIVE_BYTES {
+                return Err(InstallError::NativeSetTooLarge);
+            }
+            let target = staging.join(path);
+            let parent = target.parent().ok_or(InstallError::UnsafeArchivePath)?;
+            std::fs::create_dir_all(parent)?;
+            let mut output = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(target)?;
+            let size = entry.size();
+            std::io::copy(&mut entry.by_ref().take(size), &mut output)?;
+            output.flush()?;
+        }
+    }
+    Ok(())
+}
+
+async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), InstallError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| InstallError::ParentMissing(path.to_path_buf()))?;
+    tokio::fs::create_dir_all(parent).await?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| InstallError::ParentMissing(path.to_path_buf()))?;
+    let partial = path.with_file_name(format!(".{name}.partial-{}", Uuid::new_v4()));
+    tokio::fs::write(&partial, bytes).await?;
+    if path.exists() {
+        tokio::fs::remove_file(path).await?;
+    }
+    tokio::fs::rename(partial, path).await?;
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<String, std::io::Error> {
+    let mut file = std::fs::File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(digest_hex(&digest.finalize()))
+}
+
+fn digest_hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(char::from(DIGITS[usize::from(byte >> 4)]));
+        output.push(char::from(DIGITS[usize::from(byte & 0x0f)]));
+    }
+    output
+}
+
+fn merge_summary(target: &mut DownloadSummary, value: DownloadSummary) {
+    target.downloaded += value.downloaded;
+    target.reused += value.reused;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum InstallError {
+    #[error("Minecraft version is required")]
+    MinecraftVersionRequired,
+    #[error("the selected loader requires a version")]
+    LoaderVersionRequired,
+    #[error("Vanilla cannot have a loader version")]
+    UnexpectedLoaderVersion,
+    #[error("this CPU architecture is not supported")]
+    UnsupportedArchitecture,
+    #[error("asset index is too large: {0} bytes")]
+    AssetIndexTooLarge(usize),
+    #[error("asset index contains too many objects: {0}")]
+    TooManyAssetObjects(usize),
+    #[error("native archive contains too many entries: {0}")]
+    TooManyNativeEntries(usize),
+    #[error("native archive path or link is unsafe")]
+    UnsafeArchivePath,
+    #[error("native extraction exceeds the safety limit")]
+    NativeSetTooLarge,
+    #[error("NeoForge installer failed with {code:?}; see {log_path}")]
+    NeoForgeInstallerFailed {
+        code: Option<i32>,
+        log_path: PathBuf,
+    },
+    #[error("NeoForge installed unexpected version metadata")]
+    NeoForgeInstalledMetadataMismatch,
+    #[error("installed revision manifest is invalid")]
+    InvalidInstalledManifest,
+    #[error("managed path has no parent: {0}")]
+    ParentMissing(PathBuf),
+    #[error(transparent)]
+    Download(#[from] DownloadError),
+    #[error(transparent)]
+    Runtime(#[from] RuntimeInstallError),
+    #[error(transparent)]
+    Mojang(#[from] slate_minecraft::MetadataFetchError),
+    #[error(transparent)]
+    Fabric(#[from] slate_loaders::FabricError),
+    #[error(transparent)]
+    NeoForge(#[from] slate_loaders::NeoForgeError),
+    #[error(transparent)]
+    Resolve(#[from] slate_minecraft::ResolveError),
+    #[error(transparent)]
+    Plan(#[from] slate_minecraft::LaunchBuildError),
+    #[error(transparent)]
+    Artifact(#[from] slate_minecraft::ArtifactError),
+    #[error(transparent)]
+    Metadata(#[from] slate_minecraft::MetadataError),
+    #[error("installation JSON is invalid")]
+    Json(#[from] serde_json::Error),
+    #[error("installation filesystem operation failed")]
+    Io(#[from] std::io::Error),
+    #[error("installation archive is invalid")]
+    Zip(#[from] zip::result::ZipError),
+    #[error("installation worker failed")]
+    Worker(#[from] tokio::task::JoinError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{InstallError, InstallRequest, validate_request};
+    use slate_domain::{InstanceId, LoaderFamily, RevisionId};
+    use slate_platform::AppPaths;
+    use std::path::PathBuf;
+
+    #[test]
+    fn validates_loader_version_shape() {
+        let request = InstallRequest {
+            instance_id: InstanceId::new(),
+            revision_id: RevisionId::new(),
+            minecraft_version: "1.21.1".to_owned(),
+            loader_kind: LoaderFamily::Fabric,
+            loader_version: None,
+            download_concurrency: 4,
+            paths: AppPaths::from_roots(
+                PathBuf::from("C:/slate"),
+                PathBuf::from("C:/slate/storage"),
+            ),
+        };
+        assert!(matches!(
+            validate_request(&request),
+            Err(InstallError::LoaderVersionRequired)
+        ));
+    }
+}

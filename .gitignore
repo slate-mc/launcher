@@ -1,0 +1,17 @@
+/target/
+/node_modules/
+**/node_modules/
+**/dist/
+/.idea/
+/.vscode/
+/.env
+/.env.*
+*.db
+*.db-shm
+*.db-wal
+*.log
+tmp/
+!Cargo.lock
+*.md
+!**/README.md
+docs

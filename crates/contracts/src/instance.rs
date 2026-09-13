@@ -1,0 +1,160 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use slate_domain::{InstanceMode, InstanceSetupState, LoaderFamily, ManagementMode};
+use uuid::Uuid;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstanceModeDto {
+    Vanilla,
+    Modded,
+    Pvp,
+}
+
+impl From<InstanceMode> for InstanceModeDto {
+    fn from(value: InstanceMode) -> Self {
+        match value {
+            InstanceMode::Vanilla => Self::Vanilla,
+            InstanceMode::Modded => Self::Modded,
+            InstanceMode::Pvp => Self::Pvp,
+        }
+    }
+}
+
+impl From<InstanceModeDto> for InstanceMode {
+    fn from(value: InstanceModeDto) -> Self {
+        match value {
+            InstanceModeDto::Vanilla => Self::Vanilla,
+            InstanceModeDto::Modded => Self::Modded,
+            InstanceModeDto::Pvp => Self::Pvp,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ManagementModeDto {
+    Local,
+    Community,
+}
+
+impl From<ManagementMode> for ManagementModeDto {
+    fn from(value: ManagementMode) -> Self {
+        match value {
+            ManagementMode::Local => Self::Local,
+            ManagementMode::Community => Self::Community,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LoaderKindDto {
+    Vanilla,
+    Fabric,
+    NeoForge,
+}
+
+impl From<LoaderFamily> for LoaderKindDto {
+    fn from(value: LoaderFamily) -> Self {
+        match value {
+            LoaderFamily::Vanilla => Self::Vanilla,
+            LoaderFamily::Fabric => Self::Fabric,
+            LoaderFamily::NeoForge => Self::NeoForge,
+        }
+    }
+}
+
+impl From<LoaderKindDto> for LoaderFamily {
+    fn from(value: LoaderKindDto) -> Self {
+        match value {
+            LoaderKindDto::Vanilla => Self::Vanilla,
+            LoaderKindDto::Fabric => Self::Fabric,
+            LoaderKindDto::NeoForge => Self::NeoForge,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstanceSetupStateDto {
+    Configured,
+    Preparing,
+    Ready,
+    Blocked,
+}
+
+impl From<InstanceSetupState> for InstanceSetupStateDto {
+    fn from(value: InstanceSetupState) -> Self {
+        match value {
+            InstanceSetupState::Configured => Self::Configured,
+            InstanceSetupState::Preparing => Self::Preparing,
+            InstanceSetupState::Ready => Self::Ready,
+            InstanceSetupState::Blocked => Self::Blocked,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub mode: InstanceModeDto,
+    pub management_mode: ManagementModeDto,
+    pub favorite: bool,
+    pub revision: u64,
+    pub minecraft_version: String,
+    pub loader_kind: LoaderKindDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loader_version: Option<String>,
+    pub memory_mb: u32,
+    pub setup_state: InstanceSetupStateDto,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateInstanceRequest {
+    pub name: String,
+    pub mode: InstanceModeDto,
+    pub minecraft_version: String,
+    pub loader_kind: LoaderKindDto,
+    pub loader_version: Option<String>,
+    pub memory_mb: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameInstanceRequest {
+    pub id: Uuid,
+    pub name: String,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInstanceConfigurationRequest {
+    pub id: Uuid,
+    pub minecraft_version: String,
+    pub loader_kind: LoaderKindDto,
+    pub loader_version: Option<String>,
+    pub memory_mb: u32,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetFavoriteRequest {
+    pub id: Uuid,
+    pub favorite: bool,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashInstanceRequest {
+    pub id: Uuid,
+    pub expected_revision: u64,
+}

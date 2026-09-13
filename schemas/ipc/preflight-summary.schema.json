@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PreflightSummary",
+  "type": "object",
+  "properties": {
+    "accountConfigured": {
+      "type": "boolean"
+    },
+    "databaseReady": {
+      "type": "boolean"
+    },
+    "java": {
+      "$ref": "#/$defs/JavaRuntimeSummary"
+    },
+    "launchImplemented": {
+      "type": "boolean"
+    },
+    "storageReady": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "databaseReady",
+    "storageReady",
+    "accountConfigured",
+    "java",
+    "launchImplemented"
+  ],
+  "$defs": {
+    "JavaRuntimeSummary": {
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "unavailableReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "available"
+      ]
+    }
+  }
+}

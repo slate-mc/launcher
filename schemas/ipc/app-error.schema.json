@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AppError",
+  "type": "object",
+  "properties": {
+    "actionIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "code": {
+      "type": "string"
+    },
+    "correlationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "fieldErrors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FieldError"
+      }
+    },
+    "redactedDetails": true,
+    "retryable": {
+      "type": "boolean"
+    },
+    "userMessage": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "userMessage",
+    "retryable",
+    "correlationId"
+  ],
+  "$defs": {
+    "FieldError": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "message"
+      ]
+    }
+  }
+}

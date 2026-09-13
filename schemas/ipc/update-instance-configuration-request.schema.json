@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UpdateInstanceConfigurationRequest",
+  "type": "object",
+  "properties": {
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "loaderKind": {
+      "$ref": "#/$defs/LoaderKindDto"
+    },
+    "loaderVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "memoryMb": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "minecraftVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "minecraftVersion",
+    "loaderKind",
+    "memoryMb",
+    "expectedRevision"
+  ],
+  "$defs": {
+    "LoaderKindDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "fabric",
+        "neoForge"
+      ]
+    }
+  }
+}

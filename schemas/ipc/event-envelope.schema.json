@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EventEnvelope",
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "entityRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "entityType": {
+      "type": "string"
+    },
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "occurredAt": {
+      "description": "UTC RFC3339 timestamp.",
+      "type": "string"
+    },
+    "payload": true,
+    "schemaVersion": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "sequence": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "sourceId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "sequence",
+    "sourceId",
+    "entityType",
+    "entityId",
+    "entityRevision",
+    "occurredAt",
+    "kind",
+    "payload"
+  ]
+}
