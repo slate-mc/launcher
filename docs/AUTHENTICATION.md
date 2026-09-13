@@ -24,7 +24,10 @@ registration to match the complete URI.
 2. The callback accepts only a loopback peer, validates the callback shape and state, and exchanges
    the single-use code with its PKCE verifier.
 3. Rust exchanges the Microsoft token for Xbox User and XSTS tokens, requests a Minecraft Services
-   token, verifies Java Edition entitlement, and loads the Minecraft profile.
+   token, verifies Java Edition entitlement, and loads the Minecraft profile. If Minecraft
+   Services omits the selected skin, slate performs a best-effort lookup by the verified profile ID
+   through Mojang's official public session server. Only the matching profile's pinned
+   `textures.minecraft.net` skin URL is accepted and upgraded to HTTPS.
 4. Only the Microsoft refresh token is retained, under an opaque reference in the operating-system
    credential vault. SQLite stores the profile ID, display name, status, and credential reference;
    it never stores OAuth, Xbox, or Minecraft tokens.

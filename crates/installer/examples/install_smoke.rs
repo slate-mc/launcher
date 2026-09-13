@@ -1,5 +1,7 @@
 use slate_domain::{InstanceId, LoaderFamily, RevisionId};
-use slate_installer::{InstallRequest, install, load_installed_revision};
+use slate_installer::{
+    InstallRequest, install, load_installed_revision, verify_installed_launch_artifacts,
+};
 use slate_minecraft::{
     Architecture, JavaRuntime, LaunchIdentity, LaunchLayout, LaunchOptions, LaunchPlanner,
     LaunchRequest, OperatingSystem, ResolvedVersion, RuleContext,
@@ -74,8 +76,15 @@ async fn verify_install(
     })
     .await?;
 
-    let (layers, runtime) = load_installed_revision(&outcome.manifest_path).await?;
-    let resolved = ResolvedVersion::resolve(layers)?;
+    let installed = load_installed_revision(
+        &outcome.manifest_path,
+        instance_id,
+        revision_id,
+        &outcome.manifest_digest,
+    )
+    .await?;
+    let runtime = installed.runtime;
+    let resolved = ResolvedVersion::resolve(installed.metadata_layers)?;
     let architecture = current_architecture()?;
     let layout = launch_layout(&paths, instance_id, revision_id);
     let preparation = LaunchPlanner::prepare(
@@ -108,6 +117,12 @@ async fn verify_install(
             .into());
         }
     }
+    verify_installed_launch_artifacts(
+        paths.storage_root(),
+        &preparation.required_artifacts,
+        &installed.launch_artifacts,
+    )
+    .await?;
     println!(
         "verified {loader_kind:?}: {} downloaded, {} reused, Java {}, {} launch artifacts",
         outcome.downloaded_artifacts,

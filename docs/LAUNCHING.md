@@ -19,15 +19,19 @@ renderer sends stable IDs and never constructs paths, Java arguments, or credent
    verify the official installer JAR, run its client processors with the managed Java runtime, and
    validate the generated version metadata and artifacts.
 7. Extract natives through a traversal- and link-resistant staging directory, then atomically
-   publish the immutable installed-revision manifest.
+   publish the immutable installed-revision manifest. Schema version 2 records a SHA-256 digest for
+   every planned launch artifact; the manifest's own digest is committed with the database
+   revision.
 
 ## Launch pipeline
 
 Launch requires a ready instance and a connected Minecraft account. Rust refreshes the Microsoft,
 Xbox, XSTS, and Minecraft session chain, reloads the immutable installed revision, probes its bound
-Java runtime, creates a shell-free argument vector, verifies launch artifacts, persists the session,
-and starts the supervised Java child process. Access tokens remain secret-marked native values and
-never cross IPC or appear in redacted plans.
+Java runtime, creates a shell-free argument vector, verifies the manifest against its database
+digest, and re-hashes every planned launch artifact before starting Java. It then persists the
+session and starts the supervised Java child process. Access tokens remain secret-marked native
+values and never cross IPC or appear in redacted plans. Revisions installed with an older manifest
+schema must be reinstalled before launch.
 
 ## Reproducible smoke validation
 
@@ -50,4 +54,5 @@ On September 13, 2026, the complete install and launch-plan boundary passed on W
 
 The smoke command performs real downloads and NeoForge processor execution, reloads each installed
 manifest, constructs its complete authenticated launch plan with a nonfunctional test identity, and
-checks that every planned launch artifact exists. It deliberately does not start Minecraft.
+checks every planned launch artifact against the persisted SHA-256 index. It deliberately does not
+start Minecraft.

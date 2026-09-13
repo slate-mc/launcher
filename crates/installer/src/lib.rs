@@ -15,8 +15,8 @@ use slate_minecraft::{
     MojangMetadataClient, NativeExtraction, OperatingSystem, ResolvedVersion, RuleContext,
     VersionMetadata,
 };
-use slate_platform::{AppPaths, JavaArchitecture};
-use std::collections::BTreeMap;
+use slate_platform::{AppPaths, JavaArchitecture, ManagedRelativePath};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
@@ -27,6 +27,8 @@ const MAX_ASSET_INDEX_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ASSET_OBJECTS: usize = 1_000_000;
 const MAX_NATIVE_ENTRIES: usize = 100_000;
 const MAX_NATIVE_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_INSTALLED_MANIFEST_BYTES: usize = 32 * 1024 * 1024;
+const MAX_LAUNCH_ARTIFACTS: usize = 16_384;
 
 #[derive(Clone, Debug)]
 pub struct InstallRequest {
@@ -49,7 +51,21 @@ pub struct InstallOutcome {
     pub reused_artifacts: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+pub struct InstalledRevision {
+    pub metadata_layers: Vec<VersionMetadata>,
+    pub runtime: ManagedJavaRuntime,
+    pub launch_artifacts: Vec<InstalledArtifactDigest>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledArtifactDigest {
+    pub relative_path: String,
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InstalledRevisionManifest {
     schema_version: u32,
@@ -61,6 +77,7 @@ struct InstalledRevisionManifest {
     resolved_version_id: String,
     metadata_layers: Vec<VersionMetadata>,
     runtime: ManagedJavaRuntime,
+    launch_artifacts: Vec<InstalledArtifactDigest>,
 }
 
 pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallError> {
@@ -161,11 +178,15 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
     } else {
         full_install.required_artifacts
     };
-    merge_summary(&mut summary, downloader.download_all(requirements).await?);
+    merge_summary(
+        &mut summary,
+        downloader.download_all(requirements.clone()).await?,
+    );
     extract_natives(full_install.native_extractions).await?;
+    let launch_artifacts = hash_launch_artifacts(&request.paths, requirements).await?;
 
     let installed_manifest = InstalledRevisionManifest {
-        schema_version: 1,
+        schema_version: 2,
         instance_id: request.instance_id,
         revision_id: request.revision_id,
         minecraft_version: request.minecraft_version,
@@ -174,6 +195,7 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
         resolved_version_id: resolved.id().to_owned(),
         metadata_layers: layers,
         runtime: runtime.clone(),
+        launch_artifacts,
     };
     let manifest_bytes = serde_json::to_vec_pretty(&installed_manifest)?;
     let manifest_digest = digest_hex(&Sha256::digest(&manifest_bytes));
@@ -192,21 +214,34 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
 
 pub async fn load_installed_revision(
     path: &Path,
-) -> Result<(Vec<VersionMetadata>, ManagedJavaRuntime), InstallError> {
+    expected_instance_id: InstanceId,
+    expected_revision_id: RevisionId,
+    expected_digest: &str,
+) -> Result<InstalledRevision, InstallError> {
     let bytes = tokio::fs::read(path).await?;
-    let manifest: InstalledRevisionManifestRead = serde_json::from_slice(&bytes)?;
-    if manifest.schema_version != 1 || manifest.metadata_layers.is_empty() {
+    if bytes.len() > MAX_INSTALLED_MANIFEST_BYTES || !valid_sha256(expected_digest) {
         return Err(InstallError::InvalidInstalledManifest);
     }
-    Ok((manifest.metadata_layers, manifest.runtime))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct InstalledRevisionManifestRead {
-    schema_version: u32,
-    metadata_layers: Vec<VersionMetadata>,
-    runtime: ManagedJavaRuntime,
+    let actual_digest = digest_hex(&Sha256::digest(&bytes));
+    if actual_digest != expected_digest.to_ascii_lowercase() {
+        return Err(InstallError::InstalledManifestDigestMismatch);
+    }
+    let manifest: InstalledRevisionManifest = serde_json::from_slice(&bytes)?;
+    if manifest.schema_version != 2
+        || manifest.instance_id != expected_instance_id
+        || manifest.revision_id != expected_revision_id
+        || manifest.metadata_layers.is_empty()
+        || manifest.launch_artifacts.is_empty()
+        || manifest.launch_artifacts.len() > MAX_LAUNCH_ARTIFACTS
+    {
+        return Err(InstallError::InvalidInstalledManifest);
+    }
+    validate_installed_artifact_declarations(&manifest.launch_artifacts)?;
+    Ok(InstalledRevision {
+        metadata_layers: manifest.metadata_layers,
+        runtime: manifest.runtime,
+        launch_artifacts: manifest.launch_artifacts,
+    })
 }
 
 fn validate_request(request: &InstallRequest) -> Result<(), InstallError> {
@@ -424,6 +459,96 @@ async fn trust_neoforge_processor_outputs(
     Ok(trusted)
 }
 
+async fn hash_launch_artifacts(
+    paths: &AppPaths,
+    requirements: Vec<ArtifactRequirement>,
+) -> Result<Vec<InstalledArtifactDigest>, InstallError> {
+    let storage_root = paths.storage_root().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let mut artifacts = Vec::with_capacity(requirements.len());
+        for requirement in requirements {
+            artifacts.push(InstalledArtifactDigest {
+                relative_path: relative_artifact_path(&storage_root, requirement.target_path())?,
+                sha256: sha256_file(requirement.target_path())?,
+            });
+        }
+        artifacts.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        validate_installed_artifact_declarations(&artifacts)?;
+        Ok(artifacts)
+    })
+    .await?
+}
+
+pub async fn verify_installed_launch_artifacts(
+    storage_root: &Path,
+    requirements: &[ArtifactRequirement],
+    installed: &[InstalledArtifactDigest],
+) -> Result<(), InstallError> {
+    let storage_root = storage_root.to_path_buf();
+    let requirements = requirements.to_vec();
+    let installed = installed.to_vec();
+    tokio::task::spawn_blocking(move || {
+        validate_installed_artifact_declarations(&installed)?;
+        let declared = installed
+            .into_iter()
+            .map(|artifact| (artifact.relative_path, artifact.sha256))
+            .collect::<BTreeMap<_, _>>();
+        for requirement in requirements {
+            let relative = relative_artifact_path(&storage_root, requirement.target_path())?;
+            let expected = declared
+                .get(&relative)
+                .ok_or_else(|| InstallError::LaunchArtifactNotDeclared(relative.clone()))?;
+            let actual = sha256_file(requirement.target_path())?;
+            if actual != *expected {
+                return Err(InstallError::InstalledArtifactHashMismatch(relative));
+            }
+        }
+        Ok(())
+    })
+    .await?
+}
+
+fn validate_installed_artifact_declarations(
+    artifacts: &[InstalledArtifactDigest],
+) -> Result<(), InstallError> {
+    if artifacts.is_empty() || artifacts.len() > MAX_LAUNCH_ARTIFACTS {
+        return Err(InstallError::InvalidInstalledManifest);
+    }
+    let mut unique = BTreeSet::new();
+    for artifact in artifacts {
+        let path = ManagedRelativePath::parse(&artifact.relative_path)
+            .map_err(|_| InstallError::InvalidInstalledManifest)?;
+        if path.as_str() != artifact.relative_path
+            || !valid_sha256(&artifact.sha256)
+            || !unique.insert(artifact.relative_path.as_str())
+        {
+            return Err(InstallError::InvalidInstalledManifest);
+        }
+    }
+    Ok(())
+}
+
+fn relative_artifact_path(root: &Path, target: &Path) -> Result<String, InstallError> {
+    let relative = target
+        .strip_prefix(root)
+        .map_err(|_| InstallError::ArtifactOutsideStorageRoot)?;
+    let mut segments = Vec::new();
+    for component in relative.components() {
+        let Component::Normal(segment) = component else {
+            return Err(InstallError::ArtifactOutsideStorageRoot);
+        };
+        segments.push(
+            segment
+                .to_str()
+                .ok_or(InstallError::ArtifactOutsideStorageRoot)?,
+        );
+    }
+    let relative = segments.join("/");
+    let managed = ManagedRelativePath::parse(&relative)
+        .map_err(|_| InstallError::ArtifactOutsideStorageRoot)?;
+    Ok(managed.as_str().to_owned())
+}
+
 async fn extract_natives(extractions: Vec<NativeExtraction>) -> Result<(), InstallError> {
     if extractions.is_empty() {
         return Ok(());
@@ -546,6 +671,10 @@ fn digest_hex(bytes: &[u8]) -> String {
     output
 }
 
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 fn merge_summary(target: &mut DownloadSummary, value: DownloadSummary) {
     target.downloaded += value.downloaded;
     target.reused += value.reused;
@@ -580,6 +709,14 @@ pub enum InstallError {
     NeoForgeInstalledMetadataMismatch,
     #[error("installed revision manifest is invalid")]
     InvalidInstalledManifest,
+    #[error("installed revision manifest digest does not match its database revision")]
+    InstalledManifestDigestMismatch,
+    #[error("an installed artifact is outside the managed storage root")]
+    ArtifactOutsideStorageRoot,
+    #[error("launch artifact was not declared by the installed revision: {0}")]
+    LaunchArtifactNotDeclared(String),
+    #[error("installed launch artifact failed SHA-256 verification: {0}")]
+    InstalledArtifactHashMismatch(String),
     #[error("managed path has no parent: {0}")]
     ParentMissing(PathBuf),
     #[error(transparent)]
@@ -612,7 +749,10 @@ pub enum InstallError {
 
 #[cfg(test)]
 mod tests {
-    use super::{InstallError, InstallRequest, validate_request};
+    use super::{
+        InstallError, InstallRequest, InstalledArtifactDigest, load_installed_revision,
+        relative_artifact_path, validate_installed_artifact_declarations, validate_request,
+    };
     use slate_domain::{InstanceId, LoaderFamily, RevisionId};
     use slate_platform::AppPaths;
     use std::path::PathBuf;
@@ -635,5 +775,41 @@ mod tests {
             validate_request(&request),
             Err(InstallError::LoaderVersionRequired)
         ));
+    }
+
+    #[test]
+    fn installed_artifact_declarations_are_unique_and_managed() {
+        let valid = InstalledArtifactDigest {
+            relative_path: "artifacts/minecraft/libraries/example.jar".to_owned(),
+            sha256: "a".repeat(64),
+        };
+        assert!(validate_installed_artifact_declarations(std::slice::from_ref(&valid)).is_ok());
+        assert!(matches!(
+            validate_installed_artifact_declarations(&[valid.clone(), valid]),
+            Err(InstallError::InvalidInstalledManifest)
+        ));
+        assert!(
+            relative_artifact_path(
+                std::path::Path::new("C:/slate/storage"),
+                std::path::Path::new("C:/slate/outside.jar")
+            )
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn installed_manifest_is_bound_to_its_database_digest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("installed-revision.json");
+        tokio::fs::write(&path, b"{}").await?;
+        let result =
+            load_installed_revision(&path, InstanceId::new(), RevisionId::new(), &"0".repeat(64))
+                .await;
+        assert!(matches!(
+            result,
+            Err(InstallError::InstalledManifestDigestMismatch)
+        ));
+        Ok(())
     }
 }

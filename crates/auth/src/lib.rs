@@ -4,7 +4,10 @@
 //! protocol details and OS credential-vault access while exposing only explicit
 //! secret-bearing Rust types to trusted native callers.
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{
+    Engine as _,
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,10 +25,12 @@ const MINECRAFT_LOGIN_URL: &str =
     "https://api.minecraftservices.com/authentication/login_with_xbox";
 const MINECRAFT_ENTITLEMENTS_URL: &str = "https://api.minecraftservices.com/entitlements/mcstore";
 const MINECRAFT_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
+const MINECRAFT_SESSION_PROFILE_ORIGIN: &str = "https://sessionserver.mojang.com";
 const XBOX_SCOPE: &str = "XboxLive.signin offline_access";
 const CALLBACK_MAX_BYTES: usize = 16 * 1024;
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_SESSION_PROFILE_BYTES: usize = 64 * 1024;
 const CREDENTIAL_SERVICE: &str = "dev.slate.launcher.minecraft";
 const CREDENTIAL_PREFIX: &str = "microsoft-refresh:";
 const CALLBACK_PORT: u16 = 38_643;
@@ -384,14 +389,35 @@ impl MinecraftAuthClient {
         {
             return Err(AuthError::MinecraftProfileInvalid);
         }
+        let skin_url = payload
+            .skins
+            .into_iter()
+            .find_map(|skin| normalize_skin_url(&skin.url));
+        let skin_url = match skin_url {
+            Some(skin_url) => Some(skin_url),
+            None => self.session_profile_skin(id, &payload.name).await,
+        };
         Ok(MinecraftProfile {
             id,
             name: payload.name,
-            skin_url: payload
-                .skins
-                .into_iter()
-                .find_map(|skin| normalize_skin_url(&skin.url)),
+            skin_url,
         })
+    }
+
+    async fn session_profile_skin(&self, profile_id: Uuid, profile_name: &str) -> Option<String> {
+        let endpoint = format!(
+            "{MINECRAFT_SESSION_PROFILE_ORIGIN}/session/minecraft/profile/{}",
+            profile_id.simple()
+        );
+        let response = self.http.get(endpoint).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let bytes = response.bytes().await.ok()?;
+        if bytes.len() > MAX_SESSION_PROFILE_BYTES {
+            return None;
+        }
+        skin_url_from_session_profile(profile_id, profile_name, &bytes)
     }
 }
 
@@ -692,6 +718,39 @@ struct MinecraftSkin {
 }
 
 #[derive(Deserialize)]
+struct MinecraftSessionProfileResponse {
+    id: String,
+    name: String,
+    #[serde(default)]
+    properties: Vec<MinecraftSessionProperty>,
+}
+
+#[derive(Deserialize)]
+struct MinecraftSessionProperty {
+    name: String,
+    value: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MinecraftTexturesPayload {
+    profile_id: String,
+    profile_name: String,
+    textures: MinecraftTextures,
+}
+
+#[derive(Deserialize)]
+struct MinecraftTextures {
+    #[serde(rename = "SKIN")]
+    skin: Option<MinecraftTexture>,
+}
+
+#[derive(Deserialize)]
+struct MinecraftTexture {
+    url: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MinecraftServiceError {
     #[serde(default)]
@@ -793,6 +852,39 @@ fn normalize_skin_url(value: &str) -> Option<String> {
     }
     url.set_scheme("https").ok()?;
     Some(url.into())
+}
+
+fn skin_url_from_session_profile(
+    expected_id: Uuid,
+    expected_name: &str,
+    response: &[u8],
+) -> Option<String> {
+    let profile: MinecraftSessionProfileResponse = serde_json::from_slice(response).ok()?;
+    if Uuid::parse_str(&profile.id).ok()? != expected_id || profile.name != expected_name {
+        return None;
+    }
+    let encoded = profile
+        .properties
+        .into_iter()
+        .find(|property| property.name == "textures")?
+        .value;
+    if encoded.len() > MAX_SESSION_PROFILE_BYTES {
+        return None;
+    }
+    let decoded = STANDARD.decode(encoded).ok()?;
+    if decoded.len() > MAX_SESSION_PROFILE_BYTES {
+        return None;
+    }
+    let textures: MinecraftTexturesPayload = serde_json::from_slice(&decoded).ok()?;
+    if Uuid::parse_str(&textures.profile_id).ok()? != expected_id
+        || textures.profile_name != expected_name
+    {
+        return None;
+    }
+    textures
+        .textures
+        .skin
+        .and_then(|skin| normalize_skin_url(&skin.url))
 }
 
 async fn read_callback(stream: &mut TcpStream, expected_state: &str) -> Result<String, AuthError> {
@@ -938,8 +1030,10 @@ mod tests {
     use super::{
         AuthError, MICROSOFT_CONSUMER_TENANT, MinecraftAuthClient, MinecraftAuthConfig,
         SLATE_MICROSOFT_CLIENT_ID, SLATE_MICROSOFT_REDIRECT_URI, normalize_skin_url,
-        parse_callback_target, random_url_secret,
+        parse_callback_target, random_url_secret, skin_url_from_session_profile,
     };
+    use base64::Engine as _;
+    use uuid::Uuid;
 
     #[test]
     fn callback_requires_matching_state_and_single_code() {
@@ -973,6 +1067,35 @@ mod tests {
             Some(format!("https://textures.minecraft.net/texture/{digest}"))
         );
         assert!(normalize_skin_url(&format!("https://example.com/texture/{digest}")).is_none());
+    }
+
+    #[test]
+    fn official_session_profile_supplies_missing_skin() -> Result<(), Box<dyn std::error::Error>> {
+        let profile_id = Uuid::parse_str("12345678-1234-4234-8234-123456789abc")?;
+        let digest = "c8118a94cc3a7fc3b9ce1d9b2f1b57585f7bd890e7ad30fbe3d4b0788a125f7c";
+        let texture_payload = serde_json::json!({
+            "profileId": profile_id.simple().to_string(),
+            "profileName": "test_player",
+            "textures": {
+                "SKIN": {
+                    "url": format!("http://textures.minecraft.net/texture/{digest}")
+                }
+            }
+        });
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&texture_payload)?);
+        let response = serde_json::to_vec(&serde_json::json!({
+            "id": profile_id.simple().to_string(),
+            "name": "test_player",
+            "properties": [{"name": "textures", "value": encoded}]
+        }))?;
+
+        assert_eq!(
+            skin_url_from_session_profile(profile_id, "test_player", &response),
+            Some(format!("https://textures.minecraft.net/texture/{digest}"))
+        );
+        assert!(skin_url_from_session_profile(profile_id, "another_name", &response).is_none());
+        Ok(())
     }
 
     #[tokio::test]

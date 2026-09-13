@@ -19,12 +19,15 @@ use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, ManagementMode, RequestId, RevisionId,
     SessionId, StorageRootId,
 };
-use slate_installer::{InstallRequest as NativeInstallRequest, install, load_installed_revision};
+use slate_installer::{
+    InstallRequest as NativeInstallRequest, install, load_installed_revision,
+    verify_installed_launch_artifacts,
+};
 use slate_loaders::{FabricAdapter, NeoForgeAdapter};
 use slate_minecraft::{
-    Architecture, ArtifactRequirement, EnvironmentValue, JavaRuntime, LaunchIdentity, LaunchLayout,
-    LaunchOptions, LaunchPlanner, LaunchRequest, MojangMetadataClient, OperatingSystem,
-    ResolvedVersion, RuleContext, verify_artifact,
+    Architecture, EnvironmentValue, JavaRuntime, LaunchIdentity, LaunchLayout, LaunchOptions,
+    LaunchPlanner, LaunchRequest, MojangMetadataClient, OperatingSystem, ResolvedVersion,
+    RuleContext,
 };
 use slate_platform::{AppPaths, detect_java_runtime, probe_java_executable};
 use slate_process::ProcessSupervisor;
@@ -818,12 +821,22 @@ async fn instance_launch(
             map_storage_error(error, "slate could not load the installed revision.")
         })?;
     let manifest_path = installed_manifest_path(&state.paths, instance_id, revision.id);
-    let (layers, runtime) = load_installed_revision(&manifest_path).await.map_err(|_| {
+    let installed = load_installed_revision(
+        &manifest_path,
+        instance_id,
+        revision.id,
+        &revision.manifest_digest,
+    )
+    .await
+    .map_err(|_| {
         AppError::new(
             "local.install_manifest_invalid",
-            "The installed revision manifest is missing or invalid. Reinstall the instance.",
+            "The installed revision manifest is missing, changed, or invalid. Reinstall the instance.",
         )
     })?;
+    let layers = installed.metadata_layers;
+    let runtime = installed.runtime;
+    let installed_artifacts = installed.launch_artifacts;
     if runtime.executable != revision.runtime_executable
         || runtime.major_version != revision.runtime_major
     {
@@ -904,7 +917,18 @@ async fn instance_launch(
             "slate could not construct a valid launch plan for this revision.",
         )
     })?;
-    verify_core_launch_artifacts(&preparation.required_artifacts).await?;
+    verify_installed_launch_artifacts(
+        state.paths.storage_root(),
+        &preparation.required_artifacts,
+        &installed_artifacts,
+    )
+    .await
+    .map_err(|_| {
+        AppError::new(
+            "local.install_corrupt",
+            "A required game file is missing, changed, or corrupt. Reinstall the instance.",
+        )
+    })?;
 
     let session_id = SessionId::new();
     state
@@ -1496,32 +1520,6 @@ fn current_rule_context(architecture: Architecture) -> RuleContext {
         architecture,
         std::env::consts::OS,
     )
-}
-
-async fn verify_core_launch_artifacts(
-    requirements: &[ArtifactRequirement],
-) -> Result<(), AppError> {
-    for requirement in requirements {
-        if !requirement.target_path().is_file() {
-            return Err(AppError::new(
-                "local.install_incomplete",
-                "A required game file is missing. Reinstall the instance.",
-            ));
-        }
-        if requirement.expected_hashes().is_empty() {
-            continue;
-        }
-        let requirement = requirement.clone();
-        let result =
-            tauri::async_runtime::spawn_blocking(move || verify_artifact(&requirement)).await;
-        if !matches!(result, Ok(Ok(()))) {
-            return Err(AppError::new(
-                "local.install_corrupt",
-                "A required game file failed verification. Reinstall the instance.",
-            ));
-        }
-    }
-    Ok(())
 }
 
 async fn refresh_exited_sessions(state: &DesktopState) {
