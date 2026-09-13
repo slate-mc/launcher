@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 const MAX_UNDECLARED_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_HASH_SIDECAR_BYTES: usize = 512;
+const MAX_DOWNLOAD_ATTEMPTS: u8 = 3;
 const ARTIFACT_HOSTS: [&str; 11] = [
     "launcher.mojang.com",
     "launchermeta.mojang.com",
@@ -109,10 +110,19 @@ impl Downloader {
         })?;
         tokio::fs::create_dir_all(parent).await?;
         let partial = partial_path(requirement.target_path())?;
-        let result = self.download_to_partial(&requirement, &partial).await;
-        if let Err(error) = result {
-            let _ = tokio::fs::remove_file(&partial).await;
-            return Err(error);
+        let mut attempt = 1;
+        loop {
+            match self.download_to_partial(&requirement, &partial).await {
+                Ok(()) => break,
+                Err(error) => {
+                    let _ = tokio::fs::remove_file(&partial).await;
+                    if attempt >= MAX_DOWNLOAD_ATTEMPTS || !is_retryable_http_error(&error) {
+                        return Err(error);
+                    }
+                    tokio::time::sleep(retry_delay(attempt)).await;
+                    attempt += 1;
+                }
+            }
         }
         {
             let verification_requirement = requirement_for_path(&requirement, partial.clone());
@@ -158,6 +168,22 @@ impl Downloader {
     }
 
     async fn fetch_sha1_sidecar(&self, url: &Url) -> Result<String, DownloadError> {
+        let mut attempt = 1;
+        loop {
+            match self.fetch_sha1_sidecar_once(url).await {
+                Ok(digest) => return Ok(digest),
+                Err(error) => {
+                    if attempt >= MAX_DOWNLOAD_ATTEMPTS || !is_retryable_http_error(&error) {
+                        return Err(error);
+                    }
+                    tokio::time::sleep(retry_delay(attempt)).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+
+    async fn fetch_sha1_sidecar_once(&self, url: &Url) -> Result<String, DownloadError> {
         validate_artifact_url(url)?;
         let response = self
             .client
@@ -183,6 +209,23 @@ impl Downloader {
         ExpectedHash::new(HashAlgorithm::Sha1, digest)?;
         Ok(digest.to_ascii_lowercase())
     }
+}
+
+fn is_retryable_http_error(error: &DownloadError) -> bool {
+    let DownloadError::Http(error) = error else {
+        return false;
+    };
+    error.is_timeout()
+        || error.is_connect()
+        || error
+            .status()
+            .is_some_and(|status| status.as_u16() == 429 || status.is_server_error())
+}
+
+fn retry_delay(attempt: u8) -> std::time::Duration {
+    let base_millis = 250_u64.saturating_mul(1_u64 << u32::from(attempt.saturating_sub(1)));
+    let jitter_millis = u64::from(Uuid::new_v4().as_bytes()[0]);
+    std::time::Duration::from_millis(base_millis + jitter_millis)
 }
 
 fn requirement_for_path(requirement: &ArtifactRequirement, path: PathBuf) -> ArtifactRequirement {
@@ -253,7 +296,7 @@ pub enum DownloadError {
 
 #[cfg(test)]
 mod tests {
-    use super::{DownloadError, partial_path, validate_artifact_url};
+    use super::{DownloadError, partial_path, retry_delay, validate_artifact_url};
     use std::path::Path;
     use url::Url;
 
@@ -282,5 +325,15 @@ mod tests {
                 .is_some_and(|name| name.to_string_lossy().contains("partial"))
         );
         Ok(())
+    }
+
+    #[test]
+    fn retries_use_bounded_exponential_backoff() {
+        let first = retry_delay(1);
+        let second = retry_delay(2);
+        assert!(first >= std::time::Duration::from_millis(250));
+        assert!(first <= std::time::Duration::from_millis(505));
+        assert!(second >= std::time::Duration::from_millis(500));
+        assert!(second <= std::time::Duration::from_millis(755));
     }
 }
