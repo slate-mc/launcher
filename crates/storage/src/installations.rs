@@ -1,6 +1,6 @@
 use crate::database::now_rfc3339;
 use crate::{Database, StorageError};
-use slate_domain::{InstanceId, JobId, LoaderFamily, RequestId, RevisionId, SessionId};
+use slate_domain::{AccountId, InstanceId, JobId, LoaderFamily, RequestId, RevisionId, SessionId};
 use sqlx::Row;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -112,7 +112,9 @@ impl Database {
         .await?;
         let Some(current) = current else {
             transaction.rollback().await?;
-            return self.revision_error_for_install(instance_id, expected_revision).await;
+            return self
+                .revision_error_for_install(instance_id, expected_revision)
+                .await;
         };
         let game_version: String = current.try_get("minecraft_version")?;
         let loader_kind: String = current.try_get("loader_kind")?;
@@ -149,13 +151,11 @@ impl Database {
         .execute(&mut *transaction)
         .await?;
 
-        sqlx::query(
-            "UPDATE instances SET revision = revision + 1, updated_at = ? WHERE id = ?",
-        )
-        .bind(&now)
-        .bind(instance_id.to_string())
-        .execute(&mut *transaction)
-        .await?;
+        sqlx::query("UPDATE instances SET revision = revision + 1, updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(instance_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
         sqlx::query(
             "UPDATE instance_configuration SET setup_state = 'preparing' WHERE instance_id = ?",
         )
@@ -248,14 +248,12 @@ impl Database {
         .bind(revision_id.to_string())
         .execute(&mut *transaction)
         .await?;
-        sqlx::query(
-            "UPDATE instances SET active_revision_id = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(revision_id.to_string())
-        .bind(&now)
-        .bind(&instance_id)
-        .execute(&mut *transaction)
-        .await?;
+        sqlx::query("UPDATE instances SET active_revision_id = ?, updated_at = ? WHERE id = ?")
+            .bind(revision_id.to_string())
+            .bind(&now)
+            .bind(&instance_id)
+            .execute(&mut *transaction)
+            .await?;
         sqlx::query(
             "UPDATE instance_configuration SET setup_state = 'ready' WHERE instance_id = ?",
         )
@@ -378,15 +376,17 @@ impl Database {
         instance_id: InstanceId,
         revision_id: RevisionId,
         session_id: SessionId,
+        account_id: AccountId,
     ) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO sessions \
-             (id, instance_id, revision_id, started_at, state, readiness) \
-             VALUES (?, ?, ?, ?, 'starting', 'unknown')",
+             (id, instance_id, revision_id, account_id, started_at, state, readiness) \
+             VALUES (?, ?, ?, ?, ?, 'starting', 'unknown')",
         )
         .bind(session_id.to_string())
         .bind(instance_id.to_string())
         .bind(revision_id.to_string())
+        .bind(account_id.to_string())
         .bind(now_rfc3339()?)
         .execute(&self.pool)
         .await?;
@@ -414,16 +414,18 @@ impl Database {
         session_id: SessionId,
         exit_code: Option<i32>,
     ) -> Result<(), StorageError> {
-        let state = if exit_code == Some(0) { "exited" } else { "crashed" };
-        sqlx::query(
-            "UPDATE sessions SET ended_at = ?, state = ?, exit_code = ? WHERE id = ?",
-        )
-        .bind(now_rfc3339()?)
-        .bind(state)
-        .bind(exit_code)
-        .bind(session_id.to_string())
-        .execute(&self.pool)
-        .await?;
+        let state = if exit_code == Some(0) {
+            "exited"
+        } else {
+            "crashed"
+        };
+        sqlx::query("UPDATE sessions SET ended_at = ?, state = ?, exit_code = ? WHERE id = ?")
+            .bind(now_rfc3339()?)
+            .bind(state)
+            .bind(exit_code)
+            .bind(session_id.to_string())
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -523,6 +525,9 @@ mod tests {
     #[test]
     fn job_states_match_database_values() {
         assert_eq!(JobState::Running.as_storage_value(), "running");
-        assert_eq!(JobState::try_from("succeeded").ok(), Some(JobState::Succeeded));
+        assert_eq!(
+            JobState::try_from("succeeded").ok(),
+            Some(JobState::Succeeded)
+        );
     }
 }

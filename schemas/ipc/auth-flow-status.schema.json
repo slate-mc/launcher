@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuthFlowStatus",
+  "type": "object",
+  "properties": {
+    "account": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MinecraftAccountSummary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "flowId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "state": {
+      "$ref": "#/$defs/AuthFlowStateDto"
+    },
+    "userMessage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "flowId",
+    "state"
+  ],
+  "$defs": {
+    "AuthFlowStateDto": {
+      "type": "string",
+      "enum": [
+        "waitingForBrowser",
+        "verifying",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "MinecraftAccountStatusDto": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "reauthenticationRequired"
+      ]
+    },
+    "MinecraftAccountSummary": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "isDefault": {
+          "type": "boolean"
+        },
+        "lastValidatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profileId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "skinUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/MinecraftAccountStatusDto"
+        }
+      },
+      "required": [
+        "id",
+        "profileId",
+        "displayName",
+        "status",
+        "isDefault"
+      ]
+    }
+  }
+}

@@ -35,7 +35,10 @@ impl ProcessSupervisor {
         plan: &LaunchPlan,
         log_path: PathBuf,
     ) -> Result<StartedProcess, ProcessError> {
-        let mut children = self.children.lock().map_err(|_| ProcessError::LockPoisoned)?;
+        let mut children = self
+            .children
+            .lock()
+            .map_err(|_| ProcessError::LockPoisoned)?;
         if children.contains_key(&instance_id) {
             return Err(ProcessError::InstanceAlreadyRunning);
         }
@@ -48,7 +51,9 @@ impl ProcessSupervisor {
         let stderr = log.try_clone()?;
         let mut command = plan.command();
         command.stdout(Stdio::from(log)).stderr(Stdio::from(stderr));
-        let child = tokio::process::Command::from(command).kill_on_drop(false).spawn()?;
+        let child = tokio::process::Command::from(command)
+            .kill_on_drop(false)
+            .spawn()?;
         let pid = child.id().ok_or(ProcessError::PidUnavailable)?;
         children.insert(
             instance_id,
@@ -69,7 +74,10 @@ impl ProcessSupervisor {
         &self,
         instance_id: InstanceId,
     ) -> Result<(), ProcessError> {
-        let mut children = self.children.lock().map_err(|_| ProcessError::LockPoisoned)?;
+        let mut children = self
+            .children
+            .lock()
+            .map_err(|_| ProcessError::LockPoisoned)?;
         if let Some(mut process) = children.remove(&instance_id) {
             process.child.start_kill()?;
         }
@@ -77,7 +85,10 @@ impl ProcessSupervisor {
     }
 
     pub fn refresh(&self) -> Result<Vec<ExitedProcess>, ProcessError> {
-        let mut children = self.children.lock().map_err(|_| ProcessError::LockPoisoned)?;
+        let mut children = self
+            .children
+            .lock()
+            .map_err(|_| ProcessError::LockPoisoned)?;
         let ids = children.keys().copied().collect::<Vec<_>>();
         let mut exited = Vec::new();
         for instance_id in ids {

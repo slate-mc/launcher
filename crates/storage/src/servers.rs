@@ -44,7 +44,10 @@ impl Database {
         self.get_saved_server(id).await
     }
 
-    pub async fn list_saved_servers(&self, limit: u32) -> Result<Vec<SavedServerRecord>, StorageError> {
+    pub async fn list_saved_servers(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<SavedServerRecord>, StorageError> {
         if !(1..=1_000).contains(&limit) {
             return Err(StorageError::InvalidPageLimit);
         }
@@ -119,7 +122,10 @@ mod tests {
             })
             .await?;
 
-        assert_eq!(database.list_saved_servers(20).await?, vec![created.clone()]);
+        assert_eq!(
+            database.list_saved_servers(20).await?,
+            vec![created.clone()]
+        );
         database.remove_saved_server(created.id).await?;
         assert!(database.list_saved_servers(20).await?.is_empty());
         assert!(matches!(

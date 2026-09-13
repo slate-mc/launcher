@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InstallJobSummary",
+  "type": "object",
+  "properties": {
+    "createdAt": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "message": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "revisionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "state": {
+      "$ref": "#/$defs/InstallJobStateDto"
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "instanceId",
+    "revisionId",
+    "state",
+    "phase",
+    "message",
+    "createdAt",
+    "updatedAt"
+  ],
+  "$defs": {
+    "InstallJobStateDto": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    }
+  }
+}

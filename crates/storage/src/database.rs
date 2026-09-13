@@ -101,6 +101,8 @@ pub enum StorageError {
     InstanceNotFound,
     #[error("saved server was not found")]
     ServerNotFound,
+    #[error("Minecraft account was not found")]
+    AccountNotFound,
     #[error("instance revision was not found")]
     RevisionNotFound,
     #[error("instance does not have an installed revision")]

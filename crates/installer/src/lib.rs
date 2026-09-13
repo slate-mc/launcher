@@ -288,12 +288,8 @@ fn asset_requirements(
         .objects
         .into_values()
         .map(|object| {
-            ArtifactRequirement::official_asset_object(
-                assets_directory,
-                &object.hash,
-                object.size,
-            )
-            .map_err(InstallError::from)
+            ArtifactRequirement::official_asset_object(assets_directory, &object.hash, object.size)
+                .map_err(InstallError::from)
         })
         .collect()
 }
@@ -360,14 +356,7 @@ fn restrict_installer_environment(
     runtime: &ManagedJavaRuntime,
 ) {
     command.env_clear();
-    for name in [
-        "SystemRoot",
-        "WINDIR",
-        "TEMP",
-        "TMP",
-        "USERPROFILE",
-        "LANG",
-    ] {
+    for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "USERPROFILE", "LANG"] {
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);
         }
@@ -394,8 +383,7 @@ async fn read_installed_neoforge_version(
     loader_version: &str,
 ) -> Result<VersionMetadata, InstallError> {
     let id = format!("neoforge-{loader_version}");
-    let bytes =
-        tokio::fs::read(versions_directory.join(&id).join(format!("{id}.json"))).await?;
+    let bytes = tokio::fs::read(versions_directory.join(&id).join(format!("{id}.json"))).await?;
     let metadata = VersionMetadata::from_json_slice(&bytes)?;
     if metadata.id != id || metadata.inherits_from.as_deref() != Some(minecraft_version) {
         return Err(InstallError::NeoForgeInstalledMetadataMismatch);
@@ -426,10 +414,9 @@ async fn trust_neoforge_processor_outputs(
         {
             let path = requirement.target_path().to_path_buf();
             let hash = tokio::task::spawn_blocking(move || sha256_file(&path)).await??;
-            trusted.push(requirement.with_expected_hash(ExpectedHash::new(
-                HashAlgorithm::Sha256,
-                &hash,
-            )?));
+            trusted.push(
+                requirement.with_expected_hash(ExpectedHash::new(HashAlgorithm::Sha256, &hash)?),
+            );
         } else {
             trusted.push(requirement);
         }

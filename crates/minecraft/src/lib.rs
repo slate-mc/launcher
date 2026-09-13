@@ -14,8 +14,8 @@ mod resolver;
 mod rules;
 
 pub use artifact::{
-    ArtifactError, ArtifactKind, ArtifactRequirement, ExpectedHash, HashAlgorithm, NativeExtraction,
-    VerificationError, verify_artifact,
+    ArtifactError, ArtifactKind, ArtifactRequirement, ExpectedHash, HashAlgorithm,
+    NativeExtraction, VerificationError, verify_artifact,
 };
 pub use launch_plan::{
     EnvironmentValue, LaunchArgument, LaunchPlan, LaunchPlanError, REDACTED_VALUE,

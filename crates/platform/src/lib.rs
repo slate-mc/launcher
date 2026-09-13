@@ -6,6 +6,4 @@ mod runtime;
 
 pub use paths::{AppPaths, AppPathsError};
 pub use policy::{ManagedRelativePath, PathPolicyError};
-pub use runtime::{
-    JavaArchitecture, JavaRuntimeProbe, detect_java_runtime, probe_java_executable,
-};
+pub use runtime::{JavaArchitecture, JavaRuntimeProbe, detect_java_runtime, probe_java_executable};

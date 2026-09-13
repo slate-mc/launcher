@@ -1,21 +1,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use slate_auth::{
+    AuthError, CredentialVault, MICROSOFT_CONSUMER_TENANT, MinecraftAuthClient,
+    MinecraftAuthConfig, MinecraftSession, SLATE_MICROSOFT_CLIENT_ID,
+};
 use slate_contracts::{
-    AppError, AppPreferencesDto, BootstrapResponse, CapabilitySummary, CreateInstanceRequest,
+    AccountIdRequest, AppError, AppPreferencesDto, AuthCancelRequest, AuthFlowStateDto,
+    AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary, CreateInstanceRequest,
     GameSessionSummary, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
-    InstanceModeDto, InstanceSummary, JavaRuntimeSummary, LaunchDemoRequest, LoaderKindDto,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftReleaseKindDto, MinecraftVersionCatalog,
+    InstanceModeDto, InstanceSummary, JavaRuntimeSummary, LaunchInstanceRequest, LoaderKindDto,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
+    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
     MinecraftVersionOption, PreflightSummary, ReduceMotionPreferenceDto, RenameInstanceRequest,
-    SetFavoriteRequest, ThemePreferenceDto, TrashInstanceRequest, UpdateAppPreferencesRequest,
-    UpdateInstanceConfigurationRequest,
+    SetDefaultAccountRequest, SetFavoriteRequest, ThemePreferenceDto, TrashInstanceRequest,
+    UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
 };
 use slate_domain::{
-    InstanceId, InstanceName, InstanceNameError, ManagementMode, RequestId, RevisionId, SessionId,
-    StorageRootId,
+    AccountId, InstanceId, InstanceName, InstanceNameError, ManagementMode, RequestId, RevisionId,
+    SessionId, StorageRootId,
 };
-use slate_installer::{
-    InstallRequest as NativeInstallRequest, install, load_installed_revision,
-};
+use slate_installer::{InstallRequest as NativeInstallRequest, install, load_installed_revision};
 use slate_loaders::{FabricAdapter, NeoForgeAdapter};
 use slate_minecraft::{
     Architecture, ArtifactRequirement, EnvironmentValue, JavaRuntime, LaunchIdentity, LaunchLayout,
@@ -25,12 +29,15 @@ use slate_minecraft::{
 use slate_platform::{AppPaths, detect_java_runtime, probe_java_executable};
 use slate_process::ProcessSupervisor;
 use slate_storage::{
-    AppPreferences, Database, InstallJobRecord, InstalledRuntime, JobState, NewInstance,
-    ReduceMotionPreference, StorageError, ThemePreference,
+    AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, Database, InstallJobRecord,
+    InstalledRuntime, JobState, NewInstance, ReduceMotionPreference, StorageError, ThemePreference,
 };
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -39,10 +46,154 @@ struct DesktopState {
     paths: AppPaths,
     storage_root_id: StorageRootId,
     processes: ProcessSupervisor,
+    auth_client: MinecraftAuthClient,
+    credential_vault: CredentialVault,
+    auth_flows: AuthCoordinator,
+}
+
+#[derive(Clone, Debug, Default)]
+struct AuthCoordinator {
+    inner: Arc<Mutex<HashMap<Uuid, AuthFlowEntry>>>,
+}
+
+#[derive(Debug)]
+struct AuthFlowEntry {
+    status: AuthFlowStatus,
+    expires_at: String,
+    authorization_url: Option<String>,
+    cancel_signal: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+impl AuthCoordinator {
+    fn active_start(&self) -> Result<Option<(AuthStartResponse, String)>, AppError> {
+        let flows = self.inner.lock().map_err(|_| auth_state_error())?;
+        Ok(flows.values().find_map(|entry| {
+            matches!(
+                entry.status.state,
+                AuthFlowStateDto::WaitingForBrowser | AuthFlowStateDto::Verifying
+            )
+            .then(|| {
+                entry.authorization_url.as_ref().map(|authorization_url| {
+                    (
+                        AuthStartResponse {
+                            flow_id: entry.status.flow_id,
+                            expires_at: entry.expires_at.clone(),
+                        },
+                        authorization_url.clone(),
+                    )
+                })
+            })
+            .flatten()
+        }))
+    }
+
+    fn insert_waiting(
+        &self,
+        flow_id: Uuid,
+        expires_at: String,
+        authorization_url: String,
+    ) -> Result<(), AppError> {
+        let mut flows = self.inner.lock().map_err(|_| auth_state_error())?;
+        flows.retain(|_, entry| {
+            !matches!(
+                entry.status.state,
+                AuthFlowStateDto::Succeeded
+                    | AuthFlowStateDto::Failed
+                    | AuthFlowStateDto::Cancelled
+            )
+        });
+        flows.insert(
+            flow_id,
+            AuthFlowEntry {
+                status: AuthFlowStatus {
+                    flow_id,
+                    state: AuthFlowStateDto::WaitingForBrowser,
+                    account: None,
+                    user_message: None,
+                },
+                expires_at,
+                authorization_url: Some(authorization_url),
+                cancel_signal: None,
+            },
+        );
+        Ok(())
+    }
+
+    fn attach(
+        &self,
+        flow_id: Uuid,
+        cancel_signal: tokio::sync::oneshot::Sender<()>,
+    ) -> Result<(), AppError> {
+        let mut flows = self.inner.lock().map_err(|_| auth_state_error())?;
+        let entry = flows.get_mut(&flow_id).ok_or_else(auth_flow_not_found)?;
+        entry.cancel_signal = Some(cancel_signal);
+        Ok(())
+    }
+
+    fn status(&self, flow_id: Uuid) -> Result<AuthFlowStatus, AppError> {
+        self.inner
+            .lock()
+            .map_err(|_| auth_state_error())?
+            .get(&flow_id)
+            .map(|entry| entry.status.clone())
+            .ok_or_else(auth_flow_not_found)
+    }
+
+    fn set_verifying(&self, flow_id: Uuid) {
+        if let Ok(mut flows) = self.inner.lock()
+            && let Some(entry) = flows.get_mut(&flow_id)
+            && entry.status.state == AuthFlowStateDto::WaitingForBrowser
+        {
+            entry.status.state = AuthFlowStateDto::Verifying;
+        }
+    }
+
+    fn succeed(&self, flow_id: Uuid, account: MinecraftAccountSummary) {
+        if let Ok(mut flows) = self.inner.lock()
+            && let Some(entry) = flows.get_mut(&flow_id)
+            && entry.status.state != AuthFlowStateDto::Cancelled
+        {
+            entry.status.state = AuthFlowStateDto::Succeeded;
+            entry.status.account = Some(account);
+            entry.status.user_message = None;
+            entry.authorization_url = None;
+            entry.cancel_signal = None;
+        }
+    }
+
+    fn fail(&self, flow_id: Uuid, message: String) {
+        if let Ok(mut flows) = self.inner.lock()
+            && let Some(entry) = flows.get_mut(&flow_id)
+            && entry.status.state != AuthFlowStateDto::Cancelled
+        {
+            entry.status.state = AuthFlowStateDto::Failed;
+            entry.status.user_message = Some(message);
+            entry.authorization_url = None;
+            entry.cancel_signal = None;
+        }
+    }
+
+    fn cancel(&self, flow_id: Uuid) -> Result<AuthFlowStatus, AppError> {
+        let mut flows = self.inner.lock().map_err(|_| auth_state_error())?;
+        let entry = flows.get_mut(&flow_id).ok_or_else(auth_flow_not_found)?;
+        if matches!(
+            entry.status.state,
+            AuthFlowStateDto::WaitingForBrowser | AuthFlowStateDto::Verifying
+        ) {
+            if let Some(cancel_signal) = entry.cancel_signal.take() {
+                let _ = cancel_signal.send(());
+            }
+            entry.status.state = AuthFlowStateDto::Cancelled;
+            entry.status.user_message = Some("Microsoft sign-in was cancelled.".to_owned());
+            entry.authorization_url = None;
+        }
+        Ok(entry.status.clone())
+    }
 }
 
 #[tauri::command]
-fn app_bootstrap() -> BootstrapResponse {
+fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
+    let credential_vault_ready = state.credential_vault.check_available().is_ok();
     BootstrapResponse::new(vec![
         CapabilitySummary::available("instance.library"),
         CapabilitySummary::available("instance.create"),
@@ -52,16 +203,204 @@ fn app_bootstrap() -> BootstrapResponse {
         CapabilitySummary::available("metadata.fabric"),
         CapabilitySummary::available("metadata.neoforge"),
         CapabilitySummary::available("minecraft.install"),
-        CapabilitySummary::available("minecraft.launch.demo"),
-        CapabilitySummary::unavailable(
-            "minecraft.launch.authenticated",
-            "Microsoft account sign-in requires the product app registration.",
-        ),
-        CapabilitySummary::unavailable(
-            "minecraft.account",
-            "Microsoft account sign-in requires the product app registration.",
-        ),
+        CapabilitySummary::available("minecraft.launch"),
+        if credential_vault_ready {
+            CapabilitySummary::available("minecraft.account")
+        } else {
+            CapabilitySummary::unavailable(
+                "minecraft.account",
+                "The operating-system credential vault is unavailable.",
+            )
+        },
     ])
+}
+
+#[tauri::command]
+async fn accounts_list(
+    state: tauri::State<'_, DesktopState>,
+) -> Result<Vec<MinecraftAccountSummary>, AppError> {
+    state
+        .database
+        .list_accounts()
+        .await
+        .map(|accounts| accounts.into_iter().map(account_summary).collect())
+        .map_err(|error| map_storage_error(error, "slate could not load Minecraft accounts."))
+}
+
+#[tauri::command]
+async fn auth_start(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<AuthStartResponse, AppError> {
+    if let Some((start, authorization_url)) = state.auth_flows.active_start()? {
+        app.opener()
+            .open_url(authorization_url, None::<&str>)
+            .map_err(|_| {
+                AppError::new(
+                    "auth.browser_unavailable",
+                    "slate could not reopen the system browser. Check your default browser and try again.",
+                )
+            })?;
+        return Ok(start);
+    }
+    state.credential_vault.check_available().map_err(|_| {
+        AppError::new(
+            "auth.credential_vault_unavailable",
+            "The operating-system credential vault is unavailable. Unlock or configure it before signing in.",
+        )
+    })?;
+    let (start, pending) = state
+        .auth_client
+        .begin_login()
+        .await
+        .map_err(map_auth_error)?;
+    let flow_id = start.flow_id;
+    let expires_at = (OffsetDateTime::now_utc()
+        + time::Duration::seconds(i64::try_from(start.expires_in.as_secs()).unwrap_or(5 * 60)))
+    .format(&Rfc3339)
+    .map_err(|_| auth_state_error())?;
+    state.auth_flows.insert_waiting(
+        flow_id,
+        expires_at.clone(),
+        start.authorization_url.to_string(),
+    )?;
+    if app
+        .opener()
+        .open_url(start.authorization_url.as_str(), None::<&str>)
+        .is_err()
+    {
+        state.auth_flows.fail(
+            flow_id,
+            "slate could not open the system browser. Check your default browser and try again."
+                .to_owned(),
+        );
+        return Err(AppError::new(
+            "auth.browser_unavailable",
+            "slate could not open the system browser. Check your default browser and try again.",
+        ));
+    }
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+    state.auth_flows.attach(flow_id, cancel_tx)?;
+    let task_state = state.inner().clone();
+    let verifying = task_state.auth_flows.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = tokio::select! {
+            result = pending.complete_with_callback(move || verifying.set_verifying(flow_id)) => result,
+            _ = cancel_rx => return,
+        };
+        let completed = match result {
+            Ok(completed) => completed,
+            Err(error) => {
+                eprintln!("[slate-auth] flow {flow_id} failed: {error}");
+                task_state
+                    .auth_flows
+                    .fail(flow_id, auth_error_message(&error));
+                return;
+            }
+        };
+        let credential_ref = CredentialVault::credential_ref(completed.profile.id);
+        let vault = task_state.credential_vault.clone();
+        let stored_ref = credential_ref.clone();
+        let refresh_token = completed.refresh_token;
+        let stored =
+            tauri::async_runtime::spawn_blocking(move || vault.store(&stored_ref, &refresh_token))
+                .await;
+        if !matches!(stored, Ok(Ok(()))) {
+            task_state.auth_flows.fail(
+                flow_id,
+                "Minecraft was verified, but the refresh credential could not be saved in the operating-system vault."
+                    .to_owned(),
+            );
+            return;
+        }
+        let account = task_state
+            .database
+            .upsert_authenticated_account(AuthenticatedAccount {
+                profile_id: completed.profile.id,
+                display_name: completed.profile.name,
+                credential_ref: credential_ref.clone(),
+                skin_url: completed.profile.skin_url,
+            })
+            .await;
+        match account {
+            Ok(account) => task_state
+                .auth_flows
+                .succeed(flow_id, account_summary(account)),
+            Err(_) => {
+                let vault = task_state.credential_vault.clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || vault.remove(&credential_ref))
+                    .await;
+                task_state.auth_flows.fail(
+                    flow_id,
+                    "Minecraft was verified, but slate could not save the local account record."
+                        .to_owned(),
+                );
+            }
+        }
+    });
+    Ok(AuthStartResponse {
+        flow_id,
+        expires_at,
+    })
+}
+
+#[tauri::command]
+fn auth_get_status(
+    state: tauri::State<'_, DesktopState>,
+    flow_id: Uuid,
+) -> Result<AuthFlowStatus, AppError> {
+    state.auth_flows.status(flow_id)
+}
+
+#[tauri::command]
+fn auth_cancel(
+    state: tauri::State<'_, DesktopState>,
+    request: AuthCancelRequest,
+) -> Result<AuthFlowStatus, AppError> {
+    state.auth_flows.cancel(request.flow_id)
+}
+
+#[tauri::command]
+async fn account_refresh(
+    state: tauri::State<'_, DesktopState>,
+    request: AccountIdRequest,
+) -> Result<MinecraftAccountSummary, AppError> {
+    refresh_account(state.inner(), AccountId::from_uuid(request.id)).await
+}
+
+#[tauri::command]
+async fn account_set_default(
+    state: tauri::State<'_, DesktopState>,
+    request: SetDefaultAccountRequest,
+) -> Result<MinecraftAccountSummary, AppError> {
+    state
+        .database
+        .set_default_account(AccountId::from_uuid(request.id))
+        .await
+        .map(account_summary)
+        .map_err(|error| map_storage_error(error, "slate could not change the default account."))
+}
+
+#[tauri::command]
+async fn account_remove(
+    state: tauri::State<'_, DesktopState>,
+    request: AccountIdRequest,
+) -> Result<(), AppError> {
+    let credential_ref = state
+        .database
+        .remove_account(AccountId::from_uuid(request.id))
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not remove that account."))?;
+    let vault = state.credential_vault.clone();
+    tauri::async_runtime::spawn_blocking(move || vault.remove(&credential_ref))
+        .await
+        .map_err(|_| auth_state_error())?
+        .map_err(|_| {
+            AppError::new(
+                "auth.credential_cleanup_failed",
+                "The account was removed from slate, but its operating-system credential could not be deleted.",
+            )
+        })
 }
 
 #[tauri::command]
@@ -434,9 +773,9 @@ async fn install_jobs_list(
 }
 
 #[tauri::command]
-async fn instance_launch_demo(
+async fn instance_launch(
     state: tauri::State<'_, DesktopState>,
-    request: LaunchDemoRequest,
+    request: LaunchInstanceRequest,
 ) -> Result<GameSessionSummary, AppError> {
     refresh_exited_sessions(state.inner()).await;
     let instance_id = InstanceId::from_uuid(request.id);
@@ -451,18 +790,40 @@ async fn instance_launch_demo(
             "Install and verify this instance before launching it.",
         ));
     }
+    let launch_account = state
+        .database
+        .account_for_launch(instance_id, request.account_id.map(AccountId::from_uuid))
+        .await
+        .map_err(|error| {
+            map_storage_error(error, "Sign in to a Minecraft account before playing.")
+        })?;
+    if launch_account.status != AccountStatus::Ready {
+        return Err(AppError::new(
+            "auth.reauthentication_required",
+            "This Minecraft account needs to sign in again before playing.",
+        ));
+    }
+    let minecraft_session = refresh_minecraft_session(
+        state.inner(),
+        launch_account.id,
+        launch_account.profile_id,
+        &launch_account.credential_ref,
+    )
+    .await?;
     let revision = state
         .database
         .get_installed_revision(instance_id)
         .await
-        .map_err(|error| map_storage_error(error, "slate could not load the installed revision."))?;
+        .map_err(|error| {
+            map_storage_error(error, "slate could not load the installed revision.")
+        })?;
     let manifest_path = installed_manifest_path(&state.paths, instance_id, revision.id);
-    let (layers, runtime) = load_installed_revision(&manifest_path)
-        .await
-        .map_err(|_| AppError::new(
+    let (layers, runtime) = load_installed_revision(&manifest_path).await.map_err(|_| {
+        AppError::new(
             "local.install_manifest_invalid",
             "The installed revision manifest is missing or invalid. Reinstall the instance.",
-        ))?;
+        )
+    })?;
     if runtime.executable != revision.runtime_executable
         || runtime.major_version != revision.runtime_major
     {
@@ -474,10 +835,12 @@ async fn instance_launch_demo(
     let probe_path = runtime.executable.clone();
     let probe = tauri::async_runtime::spawn_blocking(move || probe_java_executable(&probe_path))
         .await
-        .map_err(|_| AppError::new(
-            "local.runtime_probe_unavailable",
-            "slate could not validate the managed Java runtime.",
-        ))?;
+        .map_err(|_| {
+            AppError::new(
+                "local.runtime_probe_unavailable",
+                "slate could not validate the managed Java runtime.",
+            )
+        })?;
     if !probe.available || probe.major_version != Some(runtime.major_version) {
         return Err(AppError::new(
             "local.runtime_invalid",
@@ -485,10 +848,12 @@ async fn instance_launch_demo(
         ));
     }
 
-    let resolved = ResolvedVersion::resolve(layers).map_err(|_| AppError::new(
-        "local.install_manifest_invalid",
-        "The installed metadata chain is invalid. Reinstall the instance.",
-    ))?;
+    let resolved = ResolvedVersion::resolve(layers).map_err(|_| {
+        AppError::new(
+            "local.install_manifest_invalid",
+            "The installed metadata chain is invalid. Reinstall the instance.",
+        )
+    })?;
     let architecture = minecraft_architecture(&runtime.architecture)?;
     let layout = launch_layout(&state.paths, instance_id, revision.id);
     let runtime_for_plan = JavaRuntime::new(
@@ -511,27 +876,40 @@ async fn instance_launch_demo(
         LaunchRequest {
             runtime: runtime_for_plan,
             layout,
-            identity: LaunchIdentity::new("Player", Uuid::nil(), "0", "0", "0")
-                .map_err(|_| AppError::new("local.demo_identity_invalid", "Demo launch could not be prepared."))?,
+            identity: LaunchIdentity::new(
+                minecraft_session.profile.name.clone(),
+                minecraft_session.profile.id,
+                minecraft_session.access_token(),
+                minecraft_session.client_id(),
+                minecraft_session.xuid(),
+            )
+            .map_err(|_| {
+                AppError::new(
+                    "auth.minecraft_identity_invalid",
+                    "Minecraft returned an identity that slate could not launch safely.",
+                )
+            })?,
             rules: current_rule_context(architecture),
             options: LaunchOptions {
                 maximum_memory_mib: instance.memory_mb,
-                demo_user: true,
+                demo_user: false,
                 ..LaunchOptions::default()
             },
             environment,
         },
     )
-    .map_err(|_| AppError::new(
-        "local.launch_plan_invalid",
-        "slate could not construct a valid launch plan for this revision.",
-    ))?;
+    .map_err(|_| {
+        AppError::new(
+            "local.launch_plan_invalid",
+            "slate could not construct a valid launch plan for this revision.",
+        )
+    })?;
     verify_core_launch_artifacts(&preparation.required_artifacts).await?;
 
     let session_id = SessionId::new();
     state
         .database
-        .create_session_starting(instance_id, revision.id, session_id)
+        .create_session_starting(instance_id, revision.id, session_id, launch_account.id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not create the game session."))?;
     let log_path = state
@@ -543,8 +921,14 @@ async fn instance_launch_demo(
         .processes
         .start(instance_id, session_id, &preparation.plan, log_path)
         .map_err(|error| AppError::new("local.launch_failed", error.to_string()))?;
-    if let Err(error) = state.database.mark_session_running(session_id, started.pid).await {
-        let _ = state.processes.terminate_after_tracking_failure(instance_id);
+    if let Err(error) = state
+        .database
+        .mark_session_running(session_id, started.pid)
+        .await
+    {
+        let _ = state
+            .processes
+            .terminate_after_tracking_failure(instance_id);
         return Err(map_storage_error(
             error,
             "The game was stopped because slate could not track its session.",
@@ -554,12 +938,12 @@ async fn instance_launch_demo(
         id: session_id.as_uuid(),
         instance_id: instance_id.as_uuid(),
         state: "running".to_owned(),
-        mode: "demo".to_owned(),
+        mode: "authenticated".to_owned(),
         pid: started.pid,
-        log_name: started
-            .log_path
-            .file_name()
-            .map_or_else(|| "session.log".to_owned(), |name| name.to_string_lossy().into_owned()),
+        log_name: started.log_path.file_name().map_or_else(
+            || "session.log".to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        ),
     })
 }
 
@@ -678,6 +1062,223 @@ fn preferences_dto(value: AppPreferences) -> AppPreferencesDto {
     }
 }
 
+async fn refresh_account(
+    state: &DesktopState,
+    account_id: AccountId,
+) -> Result<MinecraftAccountSummary, AppError> {
+    let account = state
+        .database
+        .get_account(account_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that account."))?;
+    refresh_minecraft_session(
+        state,
+        account.id,
+        account.profile_id,
+        &account.credential_ref,
+    )
+    .await?;
+    state
+        .database
+        .get_account(account_id)
+        .await
+        .map(account_summary)
+        .map_err(|error| map_storage_error(error, "slate could not reload that account."))
+}
+
+async fn refresh_minecraft_session(
+    state: &DesktopState,
+    account_id: AccountId,
+    expected_profile_id: Uuid,
+    credential_ref: &str,
+) -> Result<MinecraftSession, AppError> {
+    let vault = state.credential_vault.clone();
+    let credential_ref_owned = credential_ref.to_owned();
+    let refresh_token =
+        tauri::async_runtime::spawn_blocking(move || vault.load(&credential_ref_owned))
+            .await
+            .map_err(|_| auth_state_error())?
+            .map_err(|_| {
+                AppError::new(
+                    "auth.credential_unavailable",
+                    "The saved Microsoft credential is unavailable. Sign in again to continue.",
+                )
+            })?;
+    let refreshed = match state.auth_client.refresh_session(&refresh_token).await {
+        Ok(refreshed) => refreshed,
+        Err(error) => {
+            if auth_requires_reauthentication(&error) {
+                let _ = state
+                    .database
+                    .mark_account_reauthentication_required(account_id)
+                    .await;
+            }
+            return Err(map_auth_error(error));
+        }
+    };
+    if refreshed.session.profile.id != expected_profile_id {
+        let _ = state
+            .database
+            .mark_account_reauthentication_required(account_id)
+            .await;
+        return Err(AppError::new(
+            "auth.profile_changed",
+            "Microsoft returned a different Minecraft profile. Sign in again instead of launching.",
+        ));
+    }
+    if let Some(replacement) = refreshed.replacement_refresh_token {
+        let vault = state.credential_vault.clone();
+        let credential_ref = credential_ref.to_owned();
+        tauri::async_runtime::spawn_blocking(move || vault.store(&credential_ref, &replacement))
+            .await
+            .map_err(|_| auth_state_error())?
+            .map_err(|_| {
+                AppError::new(
+                    "auth.credential_update_failed",
+                    "Microsoft refreshed the account, but slate could not safely update its saved credential.",
+                )
+            })?;
+    }
+    state
+        .database
+        .update_account_validation(
+            account_id,
+            &refreshed.session.profile.name,
+            refreshed.session.profile.skin_url.as_deref(),
+        )
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not update the account record."))?;
+    Ok(refreshed.session)
+}
+
+fn account_summary(record: AccountRecord) -> MinecraftAccountSummary {
+    MinecraftAccountSummary {
+        id: record.id.as_uuid(),
+        profile_id: record.profile_id,
+        display_name: record.display_name,
+        skin_url: record.skin_url,
+        status: match record.status {
+            AccountStatus::Ready => MinecraftAccountStatusDto::Ready,
+            AccountStatus::ReauthenticationRequired => {
+                MinecraftAccountStatusDto::ReauthenticationRequired
+            }
+        },
+        is_default: record.is_default,
+        last_validated_at: record.last_validated_at,
+    }
+}
+
+fn auth_state_error() -> AppError {
+    AppError::new(
+        "auth.local_state_unavailable",
+        "slate could not access the local sign-in state. Restart slate and try again.",
+    )
+}
+
+fn auth_flow_not_found() -> AppError {
+    AppError::new(
+        "auth.flow_not_found",
+        "That sign-in attempt is no longer available. Start a new sign-in.",
+    )
+}
+
+fn auth_requires_reauthentication(error: &AuthError) -> bool {
+    matches!(
+        error,
+        AuthError::MicrosoftRejected(_)
+            | AuthError::StageRejected {
+                stage: slate_auth::AuthStage::MicrosoftToken,
+                status: 400 | 401,
+            }
+    )
+}
+
+fn map_auth_error(error: AuthError) -> AppError {
+    let retryable = matches!(
+        error,
+        AuthError::Http(_)
+            | AuthError::StageRejected {
+                status: 429 | 500..=599,
+                ..
+            }
+    );
+    let code = match error {
+        AuthError::AuthorizationDenied => "auth.authorization_denied",
+        AuthError::CallbackPortUnavailable { .. } => "auth.callback_port_unavailable",
+        AuthError::CallbackExpired => "auth.flow_expired",
+        AuthError::MinecraftApplicationNotAuthorized => "auth.application_not_authorized",
+        AuthError::MinecraftNotOwned => "auth.minecraft_not_owned",
+        AuthError::MinecraftProfileMissing => "auth.minecraft_profile_missing",
+        AuthError::XboxPolicy(_) => "auth.xbox_policy",
+        AuthError::MicrosoftRejected(_) => "auth.microsoft_rejected",
+        AuthError::Http(_) => "auth.network_unavailable",
+        _ => "auth.provider_failure",
+    };
+    AppError::new(code, auth_error_message(&error)).retryable(retryable)
+}
+
+fn auth_error_message(error: &AuthError) -> String {
+    match error {
+        AuthError::AuthorizationDenied => "Microsoft sign-in was cancelled.".to_owned(),
+        AuthError::CallbackPortUnavailable { port, .. } => format!(
+            "slate could not open its Microsoft sign-in callback on port {port}. Close the app using that port and try again."
+        ),
+        AuthError::CallbackExpired => {
+            "The sign-in window expired. Start a new Microsoft sign-in.".to_owned()
+        }
+        AuthError::MicrosoftRejected(code) if code == "invalid_grant" => {
+            "The saved Microsoft session expired. Sign in again to continue.".to_owned()
+        }
+        AuthError::MicrosoftRejected(code) if code == "invalid_client" => {
+            "Microsoft rejected slate as a public client. Configure the callback under Mobile and desktop applications; slate does not use a client secret."
+                .to_owned()
+        }
+        AuthError::MicrosoftRejected(code) => {
+            format!("Microsoft rejected the authentication request ({code}).")
+        }
+        AuthError::RefreshTokenMissing => {
+            "Microsoft completed sign-in but did not issue an offline refresh credential. Remove slate from your Microsoft app permissions, then sign in again."
+                .to_owned()
+        }
+        AuthError::XboxIdentityMissing => {
+            "Xbox sign-in completed without the identity claim required by Minecraft. Confirm this Microsoft account has an Xbox profile."
+                .to_owned()
+        }
+        AuthError::XboxPolicy(2_148_916_233) => {
+            "This Microsoft account does not have an Xbox profile. Create one, then try again."
+                .to_owned()
+        }
+        AuthError::XboxPolicy(2_148_916_238) => {
+            "This child account must be added to a Microsoft family before it can sign in."
+                .to_owned()
+        }
+        AuthError::XboxPolicy(_) => {
+            "Xbox account policy prevented sign-in. Review the account's Xbox privacy and family settings."
+                .to_owned()
+        }
+        AuthError::MinecraftApplicationNotAuthorized => {
+            "Minecraft Services rejected slate's application registration.".to_owned()
+        }
+        AuthError::MinecraftNotOwned => {
+            "This Microsoft account does not own Minecraft: Java Edition.".to_owned()
+        }
+        AuthError::MinecraftProfileMissing => {
+            "This account owns Minecraft but does not have a Java profile yet.".to_owned()
+        }
+        AuthError::MinecraftProfileInvalid => {
+            "Minecraft returned an invalid Java profile. Try signing in again shortly.".to_owned()
+        }
+        AuthError::Http(_) | AuthError::StageRejected { status: 429 | 500..=599, .. } => {
+            "Microsoft or Minecraft authentication is temporarily unavailable. Try again shortly."
+                .to_owned()
+        }
+        AuthError::StageRejected { stage, status } => {
+            format!("The {stage:?} authentication step was rejected (HTTP {status}).")
+        }
+        _ => "Minecraft account verification did not complete. Try signing in again.".to_owned(),
+    }
+}
+
 fn parse_instance_name(value: &str) -> Result<InstanceName, InstanceNameError> {
     InstanceName::parse(value)
 }
@@ -778,6 +1379,10 @@ fn configuration_app_error(error: ConfigurationValidationError) -> AppError {
 
 fn map_storage_error(error: StorageError, fallback: &'static str) -> AppError {
     match error {
+        StorageError::AccountNotFound => AppError::new(
+            "auth.account_not_found",
+            "Sign in to a Minecraft account before playing.",
+        ),
         StorageError::InstanceNotFound => AppError::new(
             "local.instance_not_found",
             "That instance no longer exists.",
@@ -801,7 +1406,12 @@ fn metadata_error() -> AppError {
 fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
     let message = serde_json::from_str::<serde_json::Value>(&record.progress_json)
         .ok()
-        .and_then(|value| value.get("message").and_then(|message| message.as_str()).map(str::to_owned))
+        .and_then(|value| {
+            value
+                .get("message")
+                .and_then(|message| message.as_str())
+                .map(str::to_owned)
+        })
         .unwrap_or_else(|| record.phase.clone());
     InstallJobSummary {
         id: record.id.as_uuid(),
@@ -928,6 +1538,7 @@ async fn refresh_exited_sessions(state: &DesktopState) {
 
 fn main() {
     let application = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let paths = AppPaths::discover()?;
             paths.ensure_base_directories()?;
@@ -938,16 +1549,30 @@ fn main() {
             let storage_root_id = tauri::async_runtime::block_on(
                 database.get_or_create_storage_root(&canonical_storage),
             )?;
+            let auth_client = MinecraftAuthClient::new(MinecraftAuthConfig::new(
+                SLATE_MICROSOFT_CLIENT_ID,
+                MICROSOFT_CONSUMER_TENANT,
+            )?)?;
             app.manage(DesktopState {
                 database,
                 paths,
                 storage_root_id,
                 processes: ProcessSupervisor::default(),
+                auth_client,
+                credential_vault: CredentialVault,
+                auth_flows: AuthCoordinator::default(),
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             app_bootstrap,
+            accounts_list,
+            auth_start,
+            auth_get_status,
+            auth_cancel,
+            account_refresh,
+            account_set_default,
+            account_remove,
             minecraft_versions_list,
             loader_versions_list,
             instances_list,
@@ -959,7 +1584,7 @@ fn main() {
             instance_trash,
             instance_install,
             install_jobs_list,
-            instance_launch_demo,
+            instance_launch,
             preferences_get,
             preferences_update,
             preflight_get,

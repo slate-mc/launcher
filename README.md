@@ -20,6 +20,9 @@ Tailwind CSS v4. Local instance data crosses a small typed Tauri command facade 
 - schemas/ipc — generated JSON Schemas checked into source control
 - docs — architecture, design, security, data, testing, decisions, and progress
 
+Minecraft authentication registration and credential-handling details are documented in
+[`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
+
 ## Development
 
 Rust 1.95.0 and Yarn 4.18.0 are pinned. Corepack selects the repository's Yarn version.

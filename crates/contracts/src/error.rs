@@ -14,7 +14,7 @@ pub struct FieldError {
 #[serde(rename_all = "camelCase")]
 pub struct AppError {
     pub code: String,
-    pub user_message: String,
+    pub user_message: Box<String>,
     pub retryable: bool,
     pub correlation_id: Uuid,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -22,7 +22,7 @@ pub struct AppError {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub action_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub redacted_details: Option<Value>,
+    pub redacted_details: Option<Box<Value>>,
 }
 
 impl AppError {
@@ -30,7 +30,7 @@ impl AppError {
     pub fn new(code: impl Into<String>, user_message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
-            user_message: user_message.into(),
+            user_message: Box::new(user_message.into()),
             retryable: false,
             correlation_id: Uuid::new_v4(),
             field_errors: Vec::new(),

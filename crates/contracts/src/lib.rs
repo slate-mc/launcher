@@ -3,6 +3,7 @@
 //! Types in this crate are safe to expose over IPC. Secrets and arbitrary local
 //! filesystem paths do not belong here.
 
+mod auth;
 mod bootstrap;
 mod catalog;
 mod error;
@@ -27,7 +28,7 @@ pub use instance::{
     ManagementModeDto, RenameInstanceRequest, SetFavoriteRequest, TrashInstanceRequest,
     UpdateInstanceConfigurationRequest,
 };
-pub use launch::{GameSessionSummary, LaunchDemoRequest, RedactedLaunchPlan};
+pub use launch::{GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan};
 pub use schema::schema_documents;
 pub use settings::{
     AppPreferencesDto, ReduceMotionPreferenceDto, ThemePreferenceDto, UpdateAppPreferencesRequest,
@@ -36,3 +37,7 @@ pub use system::{JavaRuntimeSummary, PreflightSummary};
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
 pub const DATABASE_SCHEMA_VERSION: u32 = 3;
+pub use auth::{
+    AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
+    MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,
+};

@@ -12,7 +12,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, type ComponentType } from "react";
-import { bridgeMode, getPreferences, getPreflight } from "../lib/bridge";
+import { bridgeMode, getPreferences, getPreflight, listAccounts } from "../lib/bridge";
+import { MinecraftHead } from "./MinecraftHead";
 
 type NavigationItem = {
   label: string;
@@ -40,6 +41,12 @@ export function AppShell() {
     queryFn: getPreflight,
     staleTime: 60_000,
   });
+  const accountsQuery = useQuery({
+    queryKey: ["minecraft-accounts"],
+    queryFn: listAccounts,
+  });
+  const activeAccount =
+    accountsQuery.data?.find((account) => account.isDefault) ?? accountsQuery.data?.[0];
 
   useEffect(() => {
     const theme = preferencesQuery.data?.theme ?? "dark";
@@ -103,11 +110,19 @@ export function AppShell() {
             aria-label="Account"
             title="Minecraft accounts"
           >
-            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-compact bg-app-accent text-[13px] font-extrabold text-app-on-accent">
-              <UserRound size={17} aria-hidden="true" />
-            </span>
+            {activeAccount ? (
+              <MinecraftHead
+                skinUrl={activeAccount.skinUrl}
+                playerName={activeAccount.displayName}
+                className="size-8 text-[13px]"
+              />
+            ) : (
+              <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-compact bg-app-accent text-app-on-accent">
+                <UserRound size={17} aria-hidden="true" />
+              </span>
+            )}
             <span className="max-w-[110px] overflow-hidden text-[13px] font-semibold text-ellipsis whitespace-nowrap max-[1180px]:hidden">
-              Local player
+              {activeAccount?.displayName ?? "Connect account"}
             </span>
           </Link>
         </div>

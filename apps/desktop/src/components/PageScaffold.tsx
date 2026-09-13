@@ -100,7 +100,7 @@ export function InlineNotice({
   title,
   children,
 }: {
-  tone?: "neutral" | "warning" | "danger";
+  tone?: "neutral" | "positive" | "success" | "warning" | "danger";
   title: string;
   children: ReactNode;
 }) {
@@ -110,6 +110,8 @@ export function InlineNotice({
         "rounded-control border border-app-separator bg-app-surface px-4 py-3",
         tone === "warning" && "border-app-warning/40 bg-app-warning/5",
         tone === "danger" && "border-app-danger/40 bg-app-danger/5",
+        (tone === "positive" || tone === "success") &&
+          "border-app-accent/40 bg-app-accent/5",
       )}
     >
       <strong className="block text-xs font-bold text-app-text">{title}</strong>

@@ -11,13 +11,15 @@ use uuid::Uuid;
 
 const MAX_UNDECLARED_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_HASH_SIDECAR_BYTES: usize = 512;
-const ARTIFACT_HOSTS: [&str; 9] = [
+const ARTIFACT_HOSTS: [&str; 11] = [
     "launcher.mojang.com",
+    "launchermeta.mojang.com",
     "libraries.minecraft.net",
     "maven.fabricmc.net",
     "maven.neoforged.net",
     "maven.minecraftforge.net",
     "piston-data.mojang.com",
+    "piston-meta.mojang.com",
     "repo.maven.apache.org",
     "repo1.maven.org",
     "resources.download.minecraft.net",
@@ -41,7 +43,10 @@ impl Downloader {
             return Err(DownloadError::InvalidConcurrency(concurrency));
         }
         let client = Client::builder()
-            .user_agent(format!("slate/{} (artifact installer)", env!("CARGO_PKG_VERSION")))
+            .user_agent(format!(
+                "slate/{} (artifact installer)",
+                env!("CARGO_PKG_VERSION")
+            ))
             .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(300))
             .redirect(Policy::none())
@@ -84,10 +89,8 @@ impl Downloader {
                 .hash_sidecar()
                 .ok_or(DownloadError::IntegrityMetadataMissing)?;
             let digest = self.fetch_sha1_sidecar(sidecar).await?;
-            requirement = requirement.with_expected_hash(ExpectedHash::new(
-                HashAlgorithm::Sha1,
-                &digest,
-            )?);
+            requirement =
+                requirement.with_expected_hash(ExpectedHash::new(HashAlgorithm::Sha1, &digest)?);
         }
 
         if requirement.target_path().is_file() {
@@ -101,10 +104,9 @@ impl Downloader {
             quarantine(requirement.target_path()).await?;
         }
 
-        let parent = requirement
-            .target_path()
-            .parent()
-            .ok_or_else(|| DownloadError::TargetParentMissing(requirement.target_path().to_path_buf()))?;
+        let parent = requirement.target_path().parent().ok_or_else(|| {
+            DownloadError::TargetParentMissing(requirement.target_path().to_path_buf())
+        })?;
         tokio::fs::create_dir_all(parent).await?;
         let partial = partial_path(requirement.target_path())?;
         let result = self.download_to_partial(&requirement, &partial).await;
@@ -112,11 +114,11 @@ impl Downloader {
             let _ = tokio::fs::remove_file(&partial).await;
             return Err(error);
         }
-        let verification = {
+        {
             let verification_requirement = requirement_for_path(&requirement, partial.clone());
-            tokio::task::spawn_blocking(move || verify_artifact(&verification_requirement)).await??
-        };
-        let _ = verification;
+            tokio::task::spawn_blocking(move || verify_artifact(&verification_requirement))
+                .await??
+        }
         tokio::fs::rename(&partial, requirement.target_path()).await?;
         Ok(DownloadDisposition::Downloaded)
     }
@@ -157,7 +159,12 @@ impl Downloader {
 
     async fn fetch_sha1_sidecar(&self, url: &Url) -> Result<String, DownloadError> {
         validate_artifact_url(url)?;
-        let response = self.client.get(url.clone()).send().await?.error_for_status()?;
+        let response = self
+            .client
+            .get(url.clone())
+            .send()
+            .await?
+            .error_for_status()?;
         if response
             .content_length()
             .is_some_and(|length| length > MAX_HASH_SIDECAR_BYTES as u64)
@@ -178,10 +185,7 @@ impl Downloader {
     }
 }
 
-fn requirement_for_path(
-    requirement: &ArtifactRequirement,
-    path: PathBuf,
-) -> ArtifactRequirement {
+fn requirement_for_path(requirement: &ArtifactRequirement, path: PathBuf) -> ArtifactRequirement {
     requirement.clone().with_target_path(path)
 }
 
@@ -189,10 +193,7 @@ fn validate_artifact_url(url: &Url) -> Result<(), DownloadError> {
     let trusted = url
         .host_str()
         .is_some_and(|host| ARTIFACT_HOSTS.contains(&host));
-    if url.scheme() != "https"
-        || !trusted
-        || !url.username().is_empty()
-        || url.password().is_some()
+    if url.scheme() != "https" || !trusted || !url.username().is_empty() || url.password().is_some()
     {
         return Err(DownloadError::UntrustedArtifactOrigin(url.clone()));
     }
@@ -259,8 +260,10 @@ mod tests {
     #[test]
     fn limits_artifacts_to_known_origins() -> Result<(), url::ParseError> {
         let allowed = Url::parse("https://libraries.minecraft.net/a/b.jar")?;
+        let metadata = Url::parse("https://piston-meta.mojang.com/v1/packages/hash/version.json")?;
         let local = Url::parse("https://127.0.0.1/a.jar")?;
         assert!(validate_artifact_url(&allowed).is_ok());
+        assert!(validate_artifact_url(&metadata).is_ok());
         assert!(matches!(
             validate_artifact_url(&local),
             Err(DownloadError::UntrustedArtifactOrigin(_))
@@ -273,7 +276,11 @@ mod tests {
         let target = Path::new("C:/slate/library.jar");
         let partial = partial_path(target)?;
         assert_eq!(partial.parent(), target.parent());
-        assert!(partial.file_name().is_some_and(|name| name.to_string_lossy().contains("partial")));
+        assert!(
+            partial
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().contains("partial"))
+        );
         Ok(())
     }
 }

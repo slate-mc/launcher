@@ -1,8 +1,9 @@
 use crate::{
-    AppError, AppPreferencesDto, BootstrapResponse, CreateInstanceRequest, EventEnvelope,
-    GameSessionSummary, InstallInstanceRequest, InstallJobSummary, InstanceSummary,
-    LaunchDemoRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftVersionCatalog,
-    PreflightSummary, RedactedLaunchPlan, UpdateInstanceConfigurationRequest,
+    AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
+    CreateInstanceRequest, EventEnvelope, GameSessionSummary, InstallInstanceRequest,
+    InstallJobSummary, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
+    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, PreflightSummary,
+    RedactedLaunchPlan, UpdateInstanceConfigurationRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -34,10 +35,22 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         ),
         ("loader-version-catalog", schema_for!(LoaderVersionCatalog)),
         ("redacted-launch-plan", schema_for!(RedactedLaunchPlan)),
-        ("install-instance-request", schema_for!(InstallInstanceRequest)),
+        (
+            "install-instance-request",
+            schema_for!(InstallInstanceRequest),
+        ),
         ("install-job-summary", schema_for!(InstallJobSummary)),
-        ("launch-demo-request", schema_for!(LaunchDemoRequest)),
+        (
+            "launch-instance-request",
+            schema_for!(LaunchInstanceRequest),
+        ),
         ("game-session-summary", schema_for!(GameSessionSummary)),
+        (
+            "minecraft-account-summary",
+            schema_for!(MinecraftAccountSummary),
+        ),
+        ("auth-start-response", schema_for!(AuthStartResponse)),
+        ("auth-flow-status", schema_for!(AuthFlowStatus)),
     ])
 }
 
@@ -64,7 +77,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 16);
+        assert_eq!(schemas.len(), 19);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

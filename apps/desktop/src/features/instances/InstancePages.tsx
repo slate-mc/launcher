@@ -13,6 +13,7 @@ import {
   Save,
   Settings2,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { ComboBox } from "../../components/ComboBox";
@@ -22,7 +23,8 @@ import {
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
   installInstance,
-  launchDemo,
+  launchInstance,
+  listAccounts,
   listInstallJobs,
   renameInstance,
   setInstanceFavorite,
@@ -171,6 +173,11 @@ function Overview({ instance }: { instance: LauncherInstance }) {
   const navigate = useNavigate();
   const [name, setName] = useState(instance.name);
   const [confirmTrash, setConfirmTrash] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const accountsQuery = useQuery({
+    queryKey: ["minecraft-accounts"],
+    queryFn: listAccounts,
+  });
   const jobsQuery = useQuery({
     queryKey: ["install-jobs"],
     queryFn: listInstallJobs,
@@ -213,8 +220,18 @@ function Overview({ instance }: { instance: LauncherInstance }) {
     },
   });
   const launchMutation = useMutation({
-    mutationFn: launchDemo,
+    mutationFn: ({ accountId }: { accountId: string }) =>
+      launchInstance(instance.id, accountId),
   });
+
+  const readyAccounts = (accountsQuery.data ?? []).filter(
+    (account) => account.status === "ready",
+  );
+  const effectiveAccountId =
+    selectedAccountId ||
+    readyAccounts.find((account) => account.isDefault)?.id ||
+    readyAccounts[0]?.id ||
+    "";
 
   useEffect(() => {
     if (installJob?.state === "succeeded" || installJob?.state === "failed") {
@@ -262,16 +279,21 @@ function Overview({ instance }: { instance: LauncherInstance }) {
               type="button"
               className="inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent hover:brightness-105 disabled:bg-app-raised disabled:text-app-muted disabled:opacity-70"
               disabled={
-                installing || installMutation.isPending || launchMutation.isPending
+                installing ||
+                installMutation.isPending ||
+                launchMutation.isPending ||
+                (ready && !effectiveAccountId)
               }
               title={
                 ready
-                  ? "Starts Minecraft in its explicit demo mode. Microsoft sign-in is still required for full play."
+                  ? effectiveAccountId
+                    ? "Start Minecraft with the selected account."
+                    : "Connect a Minecraft account before launching."
                   : "Install this exact instance revision."
               }
               onClick={() => {
                 if (ready) {
-                  launchMutation.mutate(instance.id);
+                  launchMutation.mutate({ accountId: effectiveAccountId });
                 } else {
                   installMutation.mutate({
                     id: instance.id,
@@ -288,7 +310,7 @@ function Overview({ instance }: { instance: LauncherInstance }) {
               {launchMutation.isPending
                 ? "Starting…"
                 : ready
-                  ? "Launch demo"
+                  ? "Play"
                   : installing || installMutation.isPending
                     ? "Installing…"
                     : instance.setupState === "blocked"
@@ -297,10 +319,37 @@ function Overview({ instance }: { instance: LauncherInstance }) {
             </button>
           </div>
           {ready ? (
-            <p className="mt-4 mb-0 border-t border-app-separator/55 pt-3 text-[11px]/[17px] text-app-muted">
-              Demo launch validates the complete native process path. Full play and
-              multiplayer stay locked until Microsoft account authorization is configured.
-            </p>
+            <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 border-t border-app-separator/55 pt-4">
+              {readyAccounts.length > 0 ? (
+                <ComboBox
+                  label="Minecraft account"
+                  value={effectiveAccountId}
+                  options={readyAccounts.map((account) => ({
+                    value: account.id,
+                    label: account.displayName,
+                    description: account.isDefault ? "Default account" : "Minecraft Java Edition",
+                    recommended: account.isDefault,
+                  }))}
+                  onValueChange={setSelectedAccountId}
+                />
+              ) : (
+                <div>
+                  <strong className="block text-xs font-bold text-app-text">
+                    Minecraft account required
+                  </strong>
+                  <p className="mt-1 mb-0 text-[11px]/[17px] text-app-muted">
+                    Connect and verify a Microsoft account before starting this instance.
+                  </p>
+                </div>
+              )}
+              <Link
+                to="/accounts"
+                className="inline-flex h-10 items-center gap-2 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary no-underline hover:text-app-text"
+              >
+                <UserRound size={15} aria-hidden="true" />
+                Manage accounts
+              </Link>
+            </div>
           ) : null}
           {installMutation.isError || installJob?.state === "failed" ? (
             <InlineNotice tone="danger" title="Installation did not complete">
@@ -309,14 +358,14 @@ function Overview({ instance }: { instance: LauncherInstance }) {
             </InlineNotice>
           ) : null}
           {launchMutation.isSuccess ? (
-            <InlineNotice tone="success" title="Minecraft demo started">
+            <InlineNotice tone="success" title="Minecraft started">
               Session {launchMutation.data.id.slice(0, 8)} is running as process{" "}
               {launchMutation.data.pid}. Logs are stored as{" "}
               {launchMutation.data.logName}.
             </InlineNotice>
           ) : null}
           {launchMutation.isError ? (
-            <InlineNotice tone="danger" title="Demo launch failed">
+            <InlineNotice tone="danger" title="Minecraft did not start">
               The installed files were left intact. Reinstall if verification reports a
               missing or corrupt artifact.
             </InlineNotice>

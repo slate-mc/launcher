@@ -14,8 +14,10 @@ pub struct RedactedLaunchPlan {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LaunchDemoRequest {
+pub struct LaunchInstanceRequest {
     pub id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

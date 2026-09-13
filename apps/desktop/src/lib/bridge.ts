@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  authFlowStatusSchema,
+  authStartSchema,
   bootstrapSchema,
   createInstanceSchema,
   gameSessionSchema,
@@ -8,10 +10,14 @@ import {
   instanceSummaryListSchema,
   instanceSummarySchema,
   loaderVersionCatalogSchema,
+  minecraftAccountListSchema,
+  minecraftAccountSchema,
   minecraftVersionCatalogSchema,
   preferencesSchema,
   preflightSchema,
   type AppPreferences,
+  type AuthFlowStatus,
+  type AuthStart,
   type Bootstrap,
   type CreateInstanceInput,
   type LauncherInstance,
@@ -19,6 +25,7 @@ import {
   type LoaderKind,
   type LoaderVersionCatalog,
   type MinecraftVersionCatalog,
+  type MinecraftAccount,
   type GameSession,
   type InstallJob,
   type Preflight,
@@ -126,7 +133,7 @@ const initialPreviewInstances: LauncherInstance[] = [
 
 let previewInstances = loadPreviewInstances();
 let previewPreferences = loadPreviewPreferences();
-let previewInstallJobs: InstallJob[] = [];
+const previewInstallJobs: InstallJob[] = [];
 
 export const previewServers: ServerPreview[] = [
   {
@@ -194,6 +201,71 @@ export async function listInstances(): Promise<LauncherInstance[]> {
     return instanceSummaryListSchema.parse(await invoke("instances_list"));
   }
   return bridgeMode === "preview" ? structuredClone(previewInstances) : [];
+}
+
+export async function listAccounts(): Promise<MinecraftAccount[]> {
+  if (bridgeMode === "native") {
+    return minecraftAccountListSchema.parse(await invoke("accounts_list"));
+  }
+  return [];
+}
+
+export async function startMinecraftAuth(): Promise<AuthStart> {
+  if (bridgeMode !== "native") {
+    throw new Error("Microsoft sign-in is available only in the slate desktop app.");
+  }
+  return authStartSchema.parse(await invoke("auth_start"));
+}
+
+export async function getMinecraftAuthStatus(
+  flowId: string,
+): Promise<AuthFlowStatus> {
+  if (bridgeMode !== "native") {
+    throw new Error("Microsoft sign-in is available only in the slate desktop app.");
+  }
+  return authFlowStatusSchema.parse(
+    await invoke("auth_get_status", { flowId }),
+  );
+}
+
+export async function cancelMinecraftAuth(
+  flowId: string,
+): Promise<AuthFlowStatus> {
+  if (bridgeMode !== "native") {
+    throw new Error("Microsoft sign-in is available only in the slate desktop app.");
+  }
+  return authFlowStatusSchema.parse(
+    await invoke("auth_cancel", { request: { flowId } }),
+  );
+}
+
+export async function refreshMinecraftAccount(
+  id: string,
+): Promise<MinecraftAccount> {
+  if (bridgeMode !== "native") {
+    throw new Error("Account refresh is available only in the slate desktop app.");
+  }
+  return minecraftAccountSchema.parse(
+    await invoke("account_refresh", { request: { id } }),
+  );
+}
+
+export async function setDefaultMinecraftAccount(
+  id: string,
+): Promise<MinecraftAccount> {
+  if (bridgeMode !== "native") {
+    throw new Error("Account selection is available only in the slate desktop app.");
+  }
+  return minecraftAccountSchema.parse(
+    await invoke("account_set_default", { request: { id } }),
+  );
+}
+
+export async function removeMinecraftAccount(id: string): Promise<void> {
+  if (bridgeMode !== "native") {
+    throw new Error("Account removal is available only in the slate desktop app.");
+  }
+  await invoke("account_remove", { request: { id } });
 }
 
 export async function getMinecraftVersionCatalog(): Promise<MinecraftVersionCatalog> {
@@ -394,25 +466,7 @@ export async function installInstance(input: {
       await invoke("instance_install", { request: input }),
     );
   }
-  requirePreview();
-  const updated = updatePreviewInstance(input.id, input.expectedRevision, (instance) => ({
-    ...instance,
-    setupState: "ready",
-  }));
-  const timestamp = new Date().toISOString();
-  const job = installJobSchema.parse({
-    id: crypto.randomUUID(),
-    instanceId: input.id,
-    revisionId: crypto.randomUUID(),
-    state: "succeeded",
-    phase: "complete",
-    message: "Preview installation completed",
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  });
-  previewInstallJobs = [job, ...previewInstallJobs];
-  await updated;
-  return structuredClone(job);
+  throw new Error("Installation is available only in the slate desktop app.");
 }
 
 export async function listInstallJobs(): Promise<InstallJob[]> {
@@ -422,21 +476,16 @@ export async function listInstallJobs(): Promise<InstallJob[]> {
   return structuredClone(previewInstallJobs);
 }
 
-export async function launchDemo(id: string): Promise<GameSession> {
+export async function launchInstance(
+  id: string,
+  accountId?: string,
+): Promise<GameSession> {
   if (bridgeMode === "native") {
     return gameSessionSchema.parse(
-      await invoke("instance_launch_demo", { request: { id } }),
+      await invoke("instance_launch", { request: { id, accountId } }),
     );
   }
-  requirePreview();
-  return gameSessionSchema.parse({
-    id: crypto.randomUUID(),
-    instanceId: id,
-    state: "running",
-    mode: "demo",
-    pid: 1,
-    logName: "preview-session.log",
-  });
+  throw new Error("Minecraft launch is available only in the slate desktop app.");
 }
 
 export async function getPreferences(): Promise<AppPreferences> {

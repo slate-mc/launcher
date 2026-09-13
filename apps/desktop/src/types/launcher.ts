@@ -151,9 +151,41 @@ export const gameSessionSchema = z.object({
   id: z.string().uuid(),
   instanceId: z.string().uuid(),
   state: z.string(),
-  mode: z.literal("demo"),
+  mode: z.literal("authenticated"),
   pid: z.number().int().nonnegative(),
   logName: z.string(),
+});
+
+export const minecraftAccountSchema = z.object({
+  id: z.string().uuid(),
+  profileId: z.string().uuid(),
+  displayName: z.string().min(1).max(16),
+  skinUrl: z.string().url().optional(),
+  status: z.enum(["ready", "reauthenticationRequired"]),
+  isDefault: z.boolean(),
+  lastValidatedAt: z.string().optional(),
+});
+
+export const minecraftAccountListSchema = z.array(minecraftAccountSchema);
+
+export const authFlowStateSchema = z.enum([
+  "waitingForBrowser",
+  "verifying",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+
+export const authStartSchema = z.object({
+  flowId: z.string().uuid(),
+  expiresAt: z.string(),
+});
+
+export const authFlowStatusSchema = z.object({
+  flowId: z.string().uuid(),
+  state: authFlowStateSchema,
+  account: minecraftAccountSchema.optional(),
+  userMessage: z.string().optional(),
 });
 
 export type Bootstrap = z.infer<typeof bootstrapSchema>;
@@ -168,6 +200,9 @@ export type MinecraftVersionCatalog = z.infer<
 export type LoaderVersionCatalog = z.infer<typeof loaderVersionCatalogSchema>;
 export type InstallJob = z.infer<typeof installJobSchema>;
 export type GameSession = z.infer<typeof gameSessionSchema>;
+export type MinecraftAccount = z.infer<typeof minecraftAccountSchema>;
+export type AuthStart = z.infer<typeof authStartSchema>;
+export type AuthFlowStatus = z.infer<typeof authFlowStatusSchema>;
 
 export type ServerPreview = {
   id: string;

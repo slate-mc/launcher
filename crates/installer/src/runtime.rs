@@ -105,7 +105,10 @@ async fn load_current_runtime(
     {
         return Ok(None);
     }
-    if validate_runtime_probe(&runtime, architecture).await.is_err() {
+    if validate_runtime_probe(&runtime, architecture)
+        .await
+        .is_err()
+    {
         return Ok(None);
     }
     Ok(Some(runtime))
@@ -170,7 +173,9 @@ async fn download_runtime_archive(
     while let Some(chunk) = response.chunk().await? {
         size = size
             .checked_add(chunk.len() as u64)
-            .ok_or(RuntimeInstallError::ArchiveTooLarge(MAX_RUNTIME_ARCHIVE_BYTES))?;
+            .ok_or(RuntimeInstallError::ArchiveTooLarge(
+                MAX_RUNTIME_ARCHIVE_BYTES,
+            ))?;
         if size > package.size || size > MAX_RUNTIME_ARCHIVE_BYTES {
             return Err(RuntimeInstallError::PackageSizeMismatch);
         }
@@ -197,21 +202,27 @@ fn extract_runtime_zip(archive: &Path, destination: &Path) -> Result<(), Runtime
     let mut extracted = 0_u64;
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index)?;
-        if entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+        if entry
+            .unix_mode()
+            .is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
             return Err(RuntimeInstallError::ArchiveLinkRejected);
         }
         let enclosed = entry
             .enclosed_name()
             .ok_or(RuntimeInstallError::UnsafeArchivePath)?;
         let mut components = enclosed.components();
-        let _root = components.next().ok_or(RuntimeInstallError::UnsafeArchivePath)?;
+        let _root = components
+            .next()
+            .ok_or(RuntimeInstallError::UnsafeArchivePath)?;
         let relative = components.collect::<PathBuf>();
         if relative.as_os_str().is_empty() {
             continue;
         }
-        if relative.components().any(|component| {
-            !matches!(component, Component::Normal(_))
-        }) {
+        if relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+        {
             return Err(RuntimeInstallError::UnsafeArchivePath);
         }
         let target = destination.join(relative);
@@ -225,7 +236,9 @@ fn extract_runtime_zip(archive: &Path, destination: &Path) -> Result<(), Runtime
         if extracted > MAX_RUNTIME_EXTRACTED_BYTES {
             return Err(RuntimeInstallError::ExtractedRuntimeTooLarge);
         }
-        let parent = target.parent().ok_or(RuntimeInstallError::UnsafeArchivePath)?;
+        let parent = target
+            .parent()
+            .ok_or(RuntimeInstallError::UnsafeArchivePath)?;
         std::fs::create_dir_all(parent)?;
         let mut output = std::fs::OpenOptions::new()
             .create_new(true)
@@ -281,7 +294,10 @@ fn runtime_from_release(release: &AdoptiumRelease, executable: PathBuf) -> Manag
 
 fn runtime_http_client() -> Result<Client, reqwest::Error> {
     Client::builder()
-        .user_agent(format!("slate/{} (managed runtime)", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!(
+            "slate/{} (managed runtime)",
+            env!("CARGO_PKG_VERSION")
+        ))
         .connect_timeout(std::time::Duration::from_secs(15))
         .timeout(std::time::Duration::from_secs(600))
         .redirect(Policy::custom(validate_redirect))
@@ -303,10 +319,7 @@ fn validate_runtime_url(url: &Url) -> Result<(), RuntimeInstallError> {
     let allowed = url
         .host_str()
         .is_some_and(|host| RUNTIME_REDIRECT_HOSTS.contains(&host));
-    if url.scheme() != "https"
-        || !allowed
-        || !url.username().is_empty()
-        || url.password().is_some()
+    if url.scheme() != "https" || !allowed || !url.username().is_empty() || url.password().is_some()
     {
         return Err(RuntimeInstallError::UntrustedRuntimeOrigin(url.clone()));
     }
@@ -340,9 +353,9 @@ fn validate_sha256(value: &str) -> Result<(), RuntimeInstallError> {
 fn safe_release_segment(value: &str) -> Result<&str, RuntimeInstallError> {
     if value.is_empty()
         || value.len() > 128
-        || !value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-')
-        })
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-'))
     {
         return Err(RuntimeInstallError::InvalidReleaseName);
     }
@@ -454,7 +467,10 @@ mod tests {
 
     #[test]
     fn release_names_are_safe_directory_segments() {
-        assert_eq!(safe_release_segment("jdk-21.0.12+8").ok(), Some("jdk-21.0.12+8"));
+        assert_eq!(
+            safe_release_segment("jdk-21.0.12+8").ok(),
+            Some("jdk-21.0.12+8")
+        );
         assert!(matches!(
             safe_release_segment("../java"),
             Err(RuntimeInstallError::InvalidReleaseName)

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -18,11 +18,14 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   bridgeMode,
   getBootstrap,
+  launchInstance,
+  listAccounts,
   listInstances,
   previewServers,
   previewUpdates,
 } from "../../lib/bridge";
 import { cn } from "../../lib/cn";
+import { MinecraftHead } from "../../components/MinecraftHead";
 import type {
   LauncherInstance,
   LauncherUpdate,
@@ -50,6 +53,14 @@ export function HomePage() {
     queryKey: ["instances"],
     queryFn: listInstances,
   });
+  const accountsQuery = useQuery({
+    queryKey: ["minecraft-accounts"],
+    queryFn: listAccounts,
+  });
+  const launchMutation = useMutation({
+    mutationFn: ({ instanceId, accountId }: { instanceId: string; accountId: string }) =>
+      launchInstance(instanceId, accountId),
+  });
 
   const instances = instancesQuery.data ?? emptyInstances;
   const selected =
@@ -67,9 +78,22 @@ export function HomePage() {
   const launchCapability = bootstrapQuery.data?.capabilities.find(
     (capability) => capability.id === "minecraft.launch",
   );
-  const playReason =
-    launchCapability?.unavailableReason ??
-    "Launch supervision is being connected.";
+  const defaultAccount =
+    accountsQuery.data?.find(
+      (account) => account.isDefault && account.status === "ready",
+    ) ?? accountsQuery.data?.find((account) => account.status === "ready");
+  const playReason = !launchCapability?.available
+    ? (launchCapability?.unavailableReason ?? "Launch supervision is unavailable.")
+    : selected?.setupState !== "ready"
+      ? "Install this instance before launching."
+      : !defaultAccount
+        ? "Connect a Minecraft account before launching."
+        : "Start Minecraft with the default account.";
+  const canPlay =
+    launchCapability?.available === true &&
+    selected?.setupState === "ready" &&
+    Boolean(defaultAccount) &&
+    !launchMutation.isPending;
 
   if (instancesQuery.isPending) {
     return <HomeSkeleton />;
@@ -143,37 +167,56 @@ export function HomePage() {
         </div>
 
         <div className="absolute top-14 right-8 grid w-60 gap-2">
-          <button
+          <Link
             className="grid min-h-14 grid-cols-[38px_minmax(0,1fr)_18px] items-center gap-2.5 rounded-control border border-app-separator/70 bg-app-sidebar/95 p-2 text-left text-app-text disabled:opacity-90"
-            type="button"
-            disabled
-            title="Account switching is not connected yet."
+            to="/accounts"
+            title="Manage Minecraft accounts"
           >
-            <span className="inline-flex size-[38px] items-center justify-center rounded-compact bg-app-accent text-[13px] font-extrabold text-app-on-accent">
-              S
-            </span>
+            <MinecraftHead
+              skinUrl={defaultAccount?.skinUrl}
+              playerName={defaultAccount?.displayName ?? "slate player"}
+              className="size-[38px] text-[13px]"
+            />
             <span className="min-w-0">
               <strong className="block overflow-hidden text-[13px] font-bold text-ellipsis whitespace-nowrap">
-                Local player
+                {defaultAccount?.displayName ?? "Connect account"}
               </strong>
               <small className="mt-px block overflow-hidden text-[11px] text-app-muted text-ellipsis whitespace-nowrap">
-                Account selection pending
+                {defaultAccount ? "Minecraft account" : "Microsoft sign-in required"}
               </small>
             </span>
             <ChevronDown size={17} aria-hidden="true" />
-          </button>
+          </Link>
           <button
             className={cn(
               controlButtonClass,
               "h-11 w-full bg-app-accent text-[17px] text-app-on-accent hover:bg-[#9be0bc] active:translate-y-px disabled:bg-app-raised disabled:text-app-muted disabled:opacity-80",
             )}
             type="button"
-            disabled
+            disabled={!canPlay}
             title={playReason}
+            onClick={() => {
+              if (selected && defaultAccount) {
+                launchMutation.mutate({
+                  instanceId: selected.id,
+                  accountId: defaultAccount.id,
+                });
+              }
+            }}
           >
             <Play size={21} fill="currentColor" aria-hidden="true" />
-            Play
+            {launchMutation.isPending ? "Starting…" : "Play"}
           </button>
+          {launchMutation.isSuccess ? (
+            <p className="m-0 rounded-compact bg-app-sidebar/95 px-3 py-2 text-[10px] text-app-accent">
+              Minecraft started · PID {launchMutation.data.pid}
+            </p>
+          ) : null}
+          {launchMutation.isError ? (
+            <p className="m-0 rounded-compact bg-app-danger/10 px-3 py-2 text-[10px] text-app-danger">
+              Minecraft did not start. Open the instance for details.
+            </p>
+          ) : null}
         </div>
 
         <div

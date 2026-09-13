@@ -52,14 +52,17 @@ fn parse_probe_output(executable: &Path, output: &std::process::Output) -> JavaR
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined = format!("{stderr}\n{stdout}");
-    let version = first_nonempty_line(&output.stderr).or_else(|| first_nonempty_line(&output.stdout));
+    let version =
+        first_nonempty_line(&output.stderr).or_else(|| first_nonempty_line(&output.stdout));
     let specification = property(&combined, "java.specification.version");
     let architecture = property(&combined, "os.arch").and_then(parse_architecture);
     let major_version = specification.as_deref().and_then(parse_major);
     let os_version = property(&combined, "os.version");
     let canonical = std::fs::canonicalize(executable).unwrap_or_else(|_| executable.to_path_buf());
     if major_version.is_none() || architecture.is_none() || !canonical.is_absolute() {
-        return unavailable("The selected Java runtime did not report a valid version and architecture.");
+        return unavailable(
+            "The selected Java runtime did not report a valid version and architecture.",
+        );
     }
     JavaRuntimeProbe {
         available: true,
@@ -142,9 +145,15 @@ mod tests {
     #[test]
     fn parses_java_properties_without_localized_version_text() {
         let output = "  java.specification.version = 21\n  os.arch = amd64\n";
-        assert_eq!(property(output, "java.specification.version").as_deref(), Some("21"));
+        assert_eq!(
+            property(output, "java.specification.version").as_deref(),
+            Some("21")
+        );
         assert_eq!(parse_major("1.8"), Some(8));
         assert_eq!(parse_major("21"), Some(21));
-        assert_eq!(parse_architecture("amd64".to_owned()), Some(JavaArchitecture::X86_64));
+        assert_eq!(
+            parse_architecture("amd64".to_owned()),
+            Some(JavaArchitecture::X86_64)
+        );
     }
 }
