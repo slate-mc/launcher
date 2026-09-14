@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModpackInstallStarted",
+  "type": "object",
+  "properties": {
+    "instance": {
+      "$ref": "#/$defs/InstanceSummary"
+    },
+    "job": {
+      "$ref": "#/$defs/InstallJobSummary"
+    }
+  },
+  "required": [
+    "instance",
+    "job"
+  ],
+  "$defs": {
+    "InstallJobStateDto": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "InstallJobSummary": {
+      "type": "object",
+      "properties": {
+        "completedItems": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "instanceId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "revisionId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "state": {
+          "$ref": "#/$defs/InstallJobStateDto"
+        },
+        "totalItems": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "instanceId",
+        "revisionId",
+        "state",
+        "phase",
+        "message",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "InstanceModeDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "modded",
+        "pvp"
+      ]
+    },
+    "InstanceSetupStateDto": {
+      "type": "string",
+      "enum": [
+        "configured",
+        "preparing",
+        "ready",
+        "blocked"
+      ]
+    },
+    "InstanceSummary": {
+      "type": "object",
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "favorite": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "loaderKind": {
+          "$ref": "#/$defs/LoaderKindDto"
+        },
+        "loaderVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "managementMode": {
+          "$ref": "#/$defs/ManagementModeDto"
+        },
+        "memoryMb": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "minecraftVersion": {
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/InstanceModeDto"
+        },
+        "modpackSource": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModpackSourceSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "setupState": {
+          "$ref": "#/$defs/InstanceSetupStateDto"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mode",
+        "managementMode",
+        "favorite",
+        "revision",
+        "minecraftVersion",
+        "loaderKind",
+        "memoryMb",
+        "setupState",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LoaderKindDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "fabric",
+        "neoForge"
+      ]
+    },
+    "ManagementModeDto": {
+      "type": "string",
+      "enum": [
+        "local",
+        "community"
+      ]
+    },
+    "ModpackSourceSummary": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "iconUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "projectId",
+        "versionId",
+        "displayName"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}

@@ -5,7 +5,6 @@ import {
   Boxes,
   Check,
   CircleHelp,
-  Compass,
   ExternalLink,
   LoaderCircle,
   Plus,
@@ -37,17 +36,6 @@ import {
   setDefaultMinecraftAccount,
   startMinecraftAuth,
 } from "../../lib/bridge";
-
-export function DiscoverPage() {
-  return (
-    <UnavailablePage
-      eyebrow="Discover"
-      title="Provider search is not connected"
-      description="Modrinth and other provider adapters need real API policy, compatibility normalization, and verified download jobs before search results can be installed."
-      icon={Compass}
-    />
-  );
-}
 
 export function ActivityPage() {
   const jobsQuery = useQuery({
@@ -562,7 +550,7 @@ export function HelpPage() {
         <InfoBlock
           icon={ShieldX}
           title="Next integrations"
-          description="Provider discovery, mod management, saved-server joining, cloud sync, and the in-game companion remain outside this build."
+          description="Individual mod management, saved-server joining, cloud sync, and the in-game companion remain outside this build. Modpack discovery and verified installation are connected."
         />
         <InfoBlock
           icon={Activity}
@@ -579,37 +567,6 @@ export function HelpPage() {
           description="Instance removal is soft-trash only. Managed files are preserved by this implementation."
         />
       </div>
-    </div>
-  );
-}
-
-function UnavailablePage({
-  eyebrow,
-  title,
-  description,
-  icon: Icon,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  icon: typeof Compass;
-}) {
-  return (
-    <div className="min-h-full bg-app-bg">
-      <PageHeader eyebrow={eyebrow} title={title} description={description} />
-      <EmptyState
-        title="Capability unavailable"
-        description="The production route stays honest until a validated native adapter is connected."
-        action={
-          <Link
-            to="/library"
-            className="inline-flex h-9 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text no-underline"
-          >
-            <Icon size={16} aria-hidden="true" />
-            Return to library
-          </Link>
-        }
-      />
     </div>
   );
 }

@@ -14,6 +14,12 @@ import {
   minecraftAccountListSchema,
   minecraftAccountSchema,
   minecraftVersionCatalogSchema,
+  modpackInstallStartedSchema,
+  modpackProjectSchema,
+  modpackProvidersSchema,
+  modpackSearchResultSchema,
+  modpackVersionPageSchema,
+  modpackVersionSchema,
   preferencesSchema,
   preflightSchema,
   sessionLogEventSchema,
@@ -29,6 +35,13 @@ import {
   type LoaderVersionCatalog,
   type MinecraftVersionCatalog,
   type MinecraftAccount,
+  type ContentLoader,
+  type ModpackInstallStarted,
+  type ModpackProject,
+  type ModpackProviders,
+  type ModpackSearchResult,
+  type ModpackVersion,
+  type Provider,
   type GameSession,
   type SessionLogEvent,
   type InstallJob,
@@ -173,11 +186,12 @@ export async function getBootstrap(): Promise<Bootstrap> {
   return bootstrapSchema.parse({
     productName: "slate",
     ipcSchemaVersion: 1,
-    databaseSchemaVersion: 2,
+    databaseSchemaVersion: 4,
     capabilities: [
       { id: "instance.library", available: true },
       { id: "instance.create", available: true },
       { id: "instance.configure", available: true },
+      { id: "content.modpacks", available: false },
       { id: "settings.local", available: true },
       {
         id: "minecraft.install",
@@ -351,6 +365,90 @@ export async function getInstance(id: string): Promise<LauncherInstance> {
   const instance = previewInstances.find((candidate) => candidate.id === id);
   if (!instance) throw new Error("That instance no longer exists.");
   return structuredClone(instance);
+}
+
+export async function getModpackProviders(): Promise<ModpackProviders> {
+  if (bridgeMode === "native") {
+    return modpackProvidersSchema.parse(await invoke("modpack_providers"));
+  }
+  return {
+    providers: [
+      { id: "curseforge", name: "CurseForge", available: false },
+      { id: "modrinth", name: "Modrinth", available: false },
+      { id: "ftb", name: "FTB", available: false },
+    ],
+  };
+}
+
+export type ModpackSearchInput = {
+  query?: string;
+  provider?: Provider;
+  minecraftVersion?: string;
+  loader?: ContentLoader;
+  category?: string;
+  sort: "relevance" | "downloads" | "updated" | "newest";
+  page?: number;
+  limit?: number;
+};
+
+export async function searchModpacks(
+  input: ModpackSearchInput,
+): Promise<ModpackSearchResult> {
+  if (bridgeMode !== "native") {
+    return { items: [], has_more: false, provider_status: {} };
+  }
+  return modpackSearchResultSchema.parse(
+    await invoke("modpacks_search", { request: input }),
+  );
+}
+
+export async function getModpack(
+  provider: Provider,
+  projectId: string,
+): Promise<ModpackProject> {
+  requireNativeContent();
+  return modpackProjectSchema.parse(
+    await invoke("modpack_get", { request: { provider, projectId } }),
+  );
+}
+
+export async function listModpackVersions(input: {
+  provider: Provider;
+  projectId: string;
+  minecraftVersion?: string;
+  loader?: ContentLoader;
+  releaseType?: "release" | "beta" | "alpha" | "unknown";
+  page?: number;
+  limit?: number;
+}) {
+  requireNativeContent();
+  return modpackVersionPageSchema.parse(
+    await invoke("modpack_versions_list", { request: input }),
+  );
+}
+
+export async function getModpackVersion(input: {
+  provider: Provider;
+  projectId: string;
+  versionId: string;
+}): Promise<ModpackVersion> {
+  requireNativeContent();
+  return modpackVersionSchema.parse(
+    await invoke("modpack_version_get", { request: input }),
+  );
+}
+
+export async function installModpack(input: {
+  provider: Provider;
+  projectId: string;
+  versionId: string;
+  instanceName: string;
+  includeOptional: string[];
+}): Promise<ModpackInstallStarted> {
+  requireNativeContent();
+  return modpackInstallStartedSchema.parse(
+    await invoke("modpack_install", { request: input }),
+  );
 }
 
 export async function createInstance(
@@ -668,6 +766,12 @@ function defaultPreferences(): AppPreferences {
 function requirePreview() {
   if (bridgeMode !== "preview") {
     throw new Error("The local bridge is unavailable.");
+  }
+}
+
+function requireNativeContent() {
+  if (bridgeMode !== "native") {
+    throw new Error("Modpack content is available only in the slate desktop app.");
   }
 }
 

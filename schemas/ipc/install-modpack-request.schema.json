@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InstallModpackRequest",
+  "type": "object",
+  "properties": {
+    "includeOptional": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "instanceName": {
+      "type": "string"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "versionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "provider",
+    "projectId",
+    "versionId",
+    "instanceName"
+  ],
+  "$defs": {
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}

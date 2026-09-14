@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/
 import { AppShell } from "../components/AppShell";
 import { RoutePlaceholder } from "../components/RoutePlaceholder";
 import { HomePage } from "../features/home/HomePage";
+import { DiscoverPage, ModpackDetailPage } from "../features/discover/DiscoverPages";
 import {
   InstanceContentPage,
   InstanceOverviewPage,
@@ -13,7 +14,6 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import {
   AccountsPage,
   ActivityPage,
-  DiscoverPage,
   HelpPage,
   ServersPage,
 } from "../features/system/SystemPages";
@@ -72,6 +72,11 @@ const discoverRoute = createRoute({
   path: "/discover",
   component: DiscoverPage,
 });
+const modpackDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/discover/$provider/$projectId",
+  component: ModpackDetailPage,
+});
 const serversRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/servers",
@@ -107,6 +112,7 @@ const routeTree = rootRoute.addChildren([
   instanceContentRoute,
   instanceSettingsRoute,
   discoverRoute,
+  modpackDetailRoute,
   serversRoute,
   activityRoute,
   accountsRoute,

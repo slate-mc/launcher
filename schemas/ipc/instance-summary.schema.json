@@ -36,6 +36,16 @@
     "mode": {
       "$ref": "#/$defs/InstanceModeDto"
     },
+    "modpackSource": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModpackSourceSummary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "name": {
       "type": "string"
     },
@@ -96,6 +106,43 @@
       "enum": [
         "local",
         "community"
+      ]
+    },
+    "ModpackSourceSummary": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "iconUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "projectId",
+        "versionId",
+        "displayName"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
       ]
     }
   }
