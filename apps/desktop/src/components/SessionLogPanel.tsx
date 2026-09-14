@@ -1,6 +1,7 @@
 import { ArrowDownToLine, Eraser, Terminal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { subscribeSessionLog } from "../lib/bridge";
+import { formatMinecraftSessionLog } from "../lib/sessionLog";
 import type { GameSession, SessionLogEvent } from "../types/launcher";
 
 const MAX_RENDERED_LOG_CHARACTERS = 250_000;
@@ -30,6 +31,10 @@ export function SessionLogPanel({
   const [follow, setFollow] = useState(true);
   const outputElement = useRef<HTMLPreElement>(null);
   const { id, instanceId, logName, mode, pid } = session;
+  const displayOutput = useMemo(
+    () => formatMinecraftSessionLog(output),
+    [output],
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -189,10 +194,12 @@ export function SessionLogPanel({
           setFollow((current) => (current === atBottom ? current : atBottom));
         }}
       >
-        {output ||
-          (status === "connecting"
-            ? "Waiting for Minecraft output…"
-            : "No output was written for this session.")}
+        {displayOutput ||
+          (output
+            ? "Waiting for the current structured log event to finish…"
+            : status === "connecting"
+              ? "Waiting for Minecraft output…"
+              : "No output was written for this session.")}
       </pre>
     </section>
   );
