@@ -59,6 +59,7 @@ function phaseLabel(phase: string) {
     loader: "Mod loader",
     "launch-files": "Launch files",
     natives: "Native libraries",
+    content: "Instance content",
     verification: "Verification",
     commit: "Finalizing",
   };

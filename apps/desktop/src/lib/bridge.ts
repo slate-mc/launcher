@@ -8,6 +8,7 @@ import {
   gameSessionSchema,
   installJobListSchema,
   installJobSchema,
+  instanceModListSchema,
   instanceSummaryListSchema,
   instanceSummarySchema,
   loaderVersionCatalogSchema,
@@ -45,6 +46,7 @@ import {
   type GameSession,
   type SessionLogEvent,
   type InstallJob,
+  type InstanceMod,
   type Preflight,
   type ServerPreview,
 } from "../types/launcher";
@@ -448,6 +450,42 @@ export async function installModpack(input: {
   requireNativeContent();
   return modpackInstallStartedSchema.parse(
     await invoke("modpack_install", { request: input }),
+  );
+}
+
+export async function searchMods(input: {
+  instanceId: string;
+  query?: string;
+  provider?: Exclude<Provider, "ftb">;
+  sort: "relevance" | "downloads" | "updated" | "newest";
+  page?: number;
+  limit?: number;
+}): Promise<ModpackSearchResult> {
+  if (bridgeMode !== "native") {
+    return { items: [], has_more: false, provider_status: {} };
+  }
+  return modpackSearchResultSchema.parse(
+    await invoke("mods_search", { request: input }),
+  );
+}
+
+export async function listInstanceMods(instanceId: string): Promise<InstanceMod[]> {
+  if (bridgeMode !== "native") return [];
+  return instanceModListSchema.parse(
+    await invoke("instance_mods_list", { request: { instanceId } }),
+  );
+}
+
+export async function installMod(input: {
+  instanceId: string;
+  expectedRevision: number;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+  displayName: string;
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("instance_mod_install", { request: input }),
   );
 }
 

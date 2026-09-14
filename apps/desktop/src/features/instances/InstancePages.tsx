@@ -2,17 +2,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  ArrowRight,
   Box,
   Check,
+  ChevronLeft,
   Download,
   FolderArchive,
   Heart,
   Layers3,
   LoaderCircle,
+  Plus,
   Play,
   RotateCcw,
   Save,
+  Search,
   Settings2,
+  ShieldCheck,
   Square,
   Trash2,
   UserRound,
@@ -32,12 +37,15 @@ import {
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
   installInstance,
+  installMod,
   launchInstance,
   listAccounts,
   listGameSessions,
   listInstallJobs,
+  listInstanceMods,
   renameInstance,
   setInstanceFavorite,
+  searchMods,
   trashInstance,
   updateInstanceConfiguration,
 } from "../../lib/bridge";
@@ -50,8 +58,11 @@ import {
 } from "../../lib/format";
 import type {
   GameSession,
+  InstanceMod,
   LauncherInstance,
   LoaderKind,
+  ModpackSummary,
+  Provider,
 } from "../../types/launcher";
 
 type InstanceSection = "overview" | "content" | "settings";
@@ -660,6 +671,124 @@ function Overview({ instance }: { instance: LauncherInstance }) {
 }
 
 function Content({ instance }: { instance: LauncherInstance }) {
+  const queryClient = useQueryClient();
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [draftQuery, setDraftQuery] = useState("");
+  const [query, setQuery] = useState("");
+  const [provider, setProvider] = useState<"all" | "curseforge" | "modrinth">(
+    "all",
+  );
+  const [sort, setSort] = useState<
+    "relevance" | "downloads" | "updated" | "newest"
+  >("relevance");
+  const [page, setPage] = useState(1);
+  const [installJobId, setInstallJobId] = useState<string>();
+  const [notice, setNotice] = useState<{
+    tone: "positive" | "danger";
+    title: string;
+    message: string;
+  }>();
+  const isVanilla = instance.loaderKind === "vanilla";
+  const installedQuery = useQuery({
+    queryKey: ["instance-mods", instance.id],
+    queryFn: () => listInstanceMods(instance.id),
+  });
+  const searchQuery = useQuery({
+    queryKey: ["mod-search", instance.id, query, provider, sort, page],
+    queryFn: () =>
+      searchMods({
+        instanceId: instance.id,
+        query: query || undefined,
+        provider: provider === "all" ? undefined : provider,
+        sort,
+        page,
+        limit: 20,
+      }),
+    enabled: browserOpen && !isVanilla,
+    placeholderData: (previous) => previous,
+  });
+  const jobsQuery = useQuery({
+    queryKey: ["install-jobs"],
+    queryFn: listInstallJobs,
+    enabled: Boolean(installJobId),
+    refetchInterval: (jobs) => {
+      const tracked = jobs.state.data?.find((job) => job.id === installJobId);
+      return tracked && ["succeeded", "failed", "cancelled"].includes(tracked.state)
+        ? false
+        : 750;
+    },
+  });
+  const installJob = jobsQuery.data?.find((job) => job.id === installJobId);
+  const installMutation = useMutation({
+    mutationFn: (item: ModpackSummary) => {
+      if (item.provider === "ftb") {
+        throw new Error("FTB does not provide individual mod downloads.");
+      }
+      return installMod({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+        provider: item.provider,
+        projectId: item.id,
+        displayName: item.name,
+      });
+    },
+    onMutate: () => setNotice(undefined),
+    onSuccess: async (job) => {
+      setInstallJobId(job.id);
+      queryClient.setQueryData(["install-jobs"], (current: unknown) =>
+        Array.isArray(current) ? [job, ...current] : [job],
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      ]);
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Mod was not queued",
+        message: contentErrorMessage(error),
+      }),
+  });
+
+  useEffect(() => {
+    if (!installJob || !["succeeded", "failed", "cancelled"].includes(installJob.state)) {
+      return;
+    }
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["instance-mods", instance.id] }),
+      queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
+      queryClient.invalidateQueries({ queryKey: ["instances"] }),
+    ]);
+  }, [installJob, instance.id, queryClient]);
+
+  const completionNotice =
+    installJob && ["succeeded", "failed", "cancelled"].includes(installJob.state)
+      ? {
+          tone: installJob.state === "succeeded" ? ("positive" as const) : ("danger" as const),
+          title:
+            installJob.state === "succeeded"
+              ? "Mod installed"
+              : "Mod installation stopped",
+          message: installJob.message,
+        }
+      : undefined;
+  const visibleNotice = completionNotice ?? notice;
+
+  const installed = installedQuery.data ?? [];
+  const installedIds = new Set(
+    installed.map((item) => `${item.provider}:${item.projectId}`),
+  );
+  const unavailableProviders = Object.entries(
+    searchQuery.data?.provider_status ?? {},
+  )
+    .filter(([, status]) => status === "unavailable")
+    .map(([id]) => modProviderName(id as Provider));
+  const installing =
+    installMutation.isPending ||
+    installJob?.state === "queued" ||
+    installJob?.state === "running";
+
   return (
     <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6">
       <nav
@@ -667,7 +796,7 @@ function Content({ instance }: { instance: LauncherInstance }) {
         aria-label="Content types"
       >
         {[
-          ["Mods", instance.modCount ?? 0],
+          ["Mods", installed.length],
           ["Resource packs", 0],
           ["Shaders", 0],
           ["Data packs", 0],
@@ -692,30 +821,384 @@ function Content({ instance }: { instance: LauncherInstance }) {
           </button>
         ))}
       </nav>
-      <section className="rounded-control border border-app-separator/70 bg-app-surface">
+      <section className="min-w-0 rounded-control border border-app-separator/70 bg-app-surface">
         <div className="flex items-center justify-between border-b border-app-separator/55 px-5 py-4">
           <div>
             <h2 className="m-0 text-[15px] font-bold">Installed mods</h2>
             <p className="mt-1 mb-0 text-[11px] text-app-secondary">
-              Content records will be tied to immutable instance revisions.
+              {isVanilla
+                ? "A mod loader is required before mods can be added."
+                : `${instance.minecraftVersion} · ${loaderLabel(instance.loaderKind)} ${instance.loaderVersion ?? ""}`}
             </p>
           </div>
           <button
             type="button"
-            className="h-9 rounded-control bg-app-raised px-4 text-xs font-bold text-app-muted opacity-60"
-            disabled
-            title="Provider downloads and local artifact import are not implemented yet."
+            className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={isVanilla || installing}
+            onClick={() => {
+              setBrowserOpen((open) => !open);
+              setNotice(undefined);
+            }}
           >
-            Add content
+            <Plus size={15} aria-hidden="true" />
+            {browserOpen ? "Close browser" : "Add mods"}
           </button>
         </div>
-        <EmptyState
-          title="No indexed content"
-          description="slate has not scanned or installed artifacts for this configured profile. Existing preview counts are illustrative only."
-        />
+
+        {isVanilla ? (
+          <div className="p-5">
+            <InlineNotice tone="neutral" title="This is a Vanilla instance">
+              Change the instance to Fabric or NeoForge in Settings before adding loader mods.
+            </InlineNotice>
+          </div>
+        ) : null}
+
+        {visibleNotice ? (
+          <div className="px-5 pt-5">
+            <InlineNotice tone={visibleNotice.tone} title={visibleNotice.title}>
+              {visibleNotice.message}
+            </InlineNotice>
+          </div>
+        ) : null}
+
+        {installJob && ["queued", "running"].includes(installJob.state) ? (
+          <div className="border-b border-app-separator/55 px-5 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="m-0 text-xs font-bold text-app-text">Installing content</p>
+                <p className="mt-1 mb-0 text-[11px] text-app-secondary">
+                  {installJob.message}
+                </p>
+              </div>
+              <LoaderCircle
+                size={18}
+                className="animate-spin text-app-accent motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            </div>
+            <InstallProgressIndicator job={installJob} />
+          </div>
+        ) : null}
+
+        {browserOpen && !isVanilla ? (
+          <div className="border-b border-app-separator/55">
+            <div className="border-b border-app-separator/45 bg-app-bg/35 px-5 py-4">
+              <div className="mb-4 flex items-start gap-3">
+                <ShieldCheck size={18} className="mt-0.5 text-app-accent" aria-hidden="true" />
+                <div>
+                  <p className="m-0 text-xs font-bold text-app-text">
+                    Compatibility locked to this instance
+                  </p>
+                  <p className="mt-1 mb-0 font-mono text-[10px] text-app-secondary">
+                    Minecraft {instance.minecraftVersion} · {loaderLabel(instance.loaderKind)} {instance.loaderVersion}
+                  </p>
+                </div>
+              </div>
+              <form
+                className="grid grid-cols-[minmax(220px,1fr)_150px_150px_auto] gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setQuery(draftQuery.trim());
+                  setPage(1);
+                }}
+              >
+                <label className="relative block">
+                  <span className="sr-only">Search compatible mods</span>
+                  <Search
+                    size={15}
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-app-muted"
+                    aria-hidden="true"
+                  />
+                  <input
+                    value={draftQuery}
+                    onChange={(event) => setDraftQuery(event.target.value)}
+                    placeholder="Search compatible mods"
+                    className="h-9 w-full rounded-control border border-app-separator bg-app-bg pr-3 pl-9 text-xs text-app-text outline-none placeholder:text-app-muted focus:border-app-accent"
+                  />
+                </label>
+                <ContentSelect
+                  label="Provider"
+                  value={provider}
+                  options={[
+                    ["all", "All providers"],
+                    ["modrinth", "Modrinth"],
+                    ["curseforge", "CurseForge"],
+                  ]}
+                  onChange={(value) => {
+                    setProvider(value as typeof provider);
+                    setPage(1);
+                  }}
+                />
+                <ContentSelect
+                  label="Sort"
+                  value={sort}
+                  options={[
+                    ["relevance", "Relevance"],
+                    ["downloads", "Downloads"],
+                    ["updated", "Recently updated"],
+                    ["newest", "Newest"],
+                  ]}
+                  onChange={(value) => {
+                    setSort(value as typeof sort);
+                    setPage(1);
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent"
+                >
+                  <Search size={14} aria-hidden="true" /> Search
+                </button>
+              </form>
+            </div>
+
+            {unavailableProviders.length > 0 ? (
+              <div className="px-5 pt-4">
+                <InlineNotice tone="warning" title="Some providers did not respond">
+                  Results from {unavailableProviders.join(", ")} are temporarily unavailable.
+                </InlineNotice>
+              </div>
+            ) : null}
+
+            {searchQuery.isPending ? (
+              <ModResultSkeletons />
+            ) : searchQuery.isError ? (
+              <div className="p-5">
+                <InlineNotice tone="danger" title="Compatible mods could not be loaded">
+                  {contentErrorMessage(searchQuery.error)}
+                </InlineNotice>
+              </div>
+            ) : searchQuery.data?.items.length ? (
+              <div className="divide-y divide-app-separator/45 px-5" aria-busy={searchQuery.isFetching}>
+                {searchQuery.data.items.map((item) => {
+                  const installedAlready = installedIds.has(`${item.provider}:${item.id}`);
+                  return (
+                    <ModSearchResult
+                      key={`${item.provider}:${item.id}`}
+                      item={item}
+                      installed={installedAlready}
+                      disabled={installing}
+                      onInstall={() => installMutation.mutate(item)}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState
+                title="No compatible mods found"
+                description="Try a different search. slate only returns files matching this instance’s exact Minecraft version and loader."
+              />
+            )}
+
+            {searchQuery.data?.items.length ? (
+              <nav
+                className="flex items-center justify-between border-t border-app-separator/45 px-5 py-3"
+                aria-label="Mod result pages"
+              >
+                <button
+                  type="button"
+                  disabled={page === 1 || searchQuery.isFetching}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary disabled:opacity-40"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  <ChevronLeft size={14} aria-hidden="true" /> Previous
+                </button>
+                <span className="font-mono text-[10px] text-app-muted">Page {page}</span>
+                <button
+                  type="button"
+                  disabled={!searchQuery.data.has_more || searchQuery.isFetching}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary disabled:opacity-40"
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Next <ArrowRight size={14} aria-hidden="true" />
+                </button>
+              </nav>
+            ) : null}
+          </div>
+        ) : null}
+
+        {installedQuery.isPending ? (
+          <InstalledModSkeletons />
+        ) : installedQuery.isError ? (
+          <div className="p-5">
+            <InlineNotice tone="danger" title="Installed mods could not be loaded">
+              Reload this page to try again.
+            </InlineNotice>
+          </div>
+        ) : installed.length ? (
+          <div className="divide-y divide-app-separator/45 px-5">
+            {installed.map((item) => (
+              <InstalledModRow key={`${item.provider}:${item.projectId}`} item={item} />
+            ))}
+          </div>
+        ) : !browserOpen && !isVanilla ? (
+          <EmptyState
+            title="No installed mods"
+            description="Browse CurseForge and Modrinth. Every installation is checked against this instance before slate changes its files."
+          />
+        ) : null}
       </section>
     </div>
   );
+}
+
+function ModSearchResult({
+  item,
+  installed,
+  disabled,
+  onInstall,
+}: {
+  item: ModpackSummary;
+  installed: boolean;
+  disabled: boolean;
+  onInstall: () => void;
+}) {
+  return (
+    <article className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 py-3.5">
+      <ContentImage src={item.icon_url} name={item.name} />
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="m-0 truncate text-[13px] font-bold text-app-text">{item.name}</h3>
+          <span className="rounded-full border border-app-separator px-2 py-0.5 font-mono text-[9px] text-app-muted">
+            {modProviderName(item.provider)}
+          </span>
+        </div>
+        <p className="mt-1 mb-0 line-clamp-1 text-[11px] text-app-secondary">
+          {item.summary || "No description supplied by the provider."}
+        </p>
+        <p className="mt-1.5 mb-0 font-mono text-[9px] text-app-muted">
+          {formatCompactNumber(item.downloads)} downloads
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={disabled || item.provider === "ftb"}
+        onClick={onInstall}
+        className="h-8 rounded-control border border-app-accent/55 bg-app-accent/10 px-3 text-[11px] font-bold text-app-accent hover:bg-app-accent/15 disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {installed ? "Update" : "Add"}
+      </button>
+    </article>
+  );
+}
+
+function InstalledModRow({ item }: { item: InstanceMod }) {
+  return (
+    <article className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3.5">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="size-1.5 rounded-full bg-app-accent" aria-hidden="true" />
+          <h3 className="m-0 truncate text-[13px] font-bold text-app-text">
+            {item.displayName}
+          </h3>
+          <span className="rounded-full border border-app-separator px-2 py-0.5 font-mono text-[9px] text-app-muted">
+            {modProviderName(item.provider)}
+          </span>
+        </div>
+        <p className="mt-1.5 mb-0 truncate pl-3.5 font-mono text-[9px] text-app-muted">
+          {item.filePath}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="m-0 font-mono text-[9px] text-app-secondary">{item.versionId}</p>
+        <p className="mt-1 mb-0 text-[10px] text-app-muted">
+          Installed {formatDate(item.installedAt)}
+        </p>
+      </div>
+    </article>
+  );
+}
+
+function ContentSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: ReadonlyArray<readonly [string, string]>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="relative block">
+      <span className="sr-only">{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full appearance-none rounded-control border border-app-separator bg-app-bg px-3 pr-8 text-xs text-app-text outline-none focus:border-app-accent"
+      >
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+      <ChevronLeft
+        size={13}
+        className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 -rotate-90 text-app-muted"
+        aria-hidden="true"
+      />
+    </label>
+  );
+}
+
+function ContentImage({ src, name }: { src?: string | null; name: string }) {
+  return src ? (
+    <img
+      src={src}
+      alt=""
+      className="size-11 rounded-control border border-app-separator object-cover"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+    />
+  ) : (
+    <span className="inline-flex size-11 items-center justify-center rounded-control border border-app-separator bg-app-raised font-mono text-xs font-bold text-app-accent">
+      {name.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+function ModResultSkeletons() {
+  return (
+    <div className="divide-y divide-app-separator/45 px-5" aria-label="Loading compatible mods">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="grid grid-cols-[44px_1fr] gap-3 py-3.5">
+          <span className="size-11 animate-pulse rounded-control bg-app-raised" />
+          <span className="grid content-center gap-2">
+            <span className="h-3 w-44 animate-pulse rounded bg-app-raised" />
+            <span className="h-2.5 w-3/4 animate-pulse rounded bg-app-raised" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InstalledModSkeletons() {
+  return (
+    <div className="space-y-3 p-5" aria-label="Loading installed mods">
+      {Array.from({ length: 3 }, (_, index) => (
+        <span key={index} className="block h-11 animate-pulse rounded-control bg-app-raised" />
+      ))}
+    </div>
+  );
+}
+
+function modProviderName(provider: Provider) {
+  if (provider === "curseforge") return "CurseForge";
+  if (provider === "modrinth") return "Modrinth";
+  return "FTB";
+}
+
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat(undefined, { notation: "compact" }).format(value);
+}
+
+function contentErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return "slate could not complete that content request. Try again.";
 }
 
 function InstanceSettings({ instance }: { instance: LauncherInstance }) {

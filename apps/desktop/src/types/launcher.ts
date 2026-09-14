@@ -345,6 +345,19 @@ export const modpackInstallStartedSchema = z.object({
   job: installJobSchema,
 });
 
+export const instanceModSchema = z.object({
+  provider: z.enum(["curseforge", "modrinth"]),
+  projectId: z.string().min(1),
+  versionId: z.string().min(1),
+  displayName: z.string().min(1),
+  filePath: z.string().min(1),
+  enabled: z.boolean(),
+  pinned: z.boolean(),
+  installedAt: z.string(),
+});
+
+export const instanceModListSchema = z.array(instanceModSchema);
+
 export type Bootstrap = z.infer<typeof bootstrapSchema>;
 export type LauncherInstance = z.infer<typeof instanceSummarySchema>;
 export type CreateInstanceInput = z.infer<typeof createInstanceSchema>;
@@ -373,6 +386,7 @@ export type ModpackVersionSummary = z.infer<typeof modpackVersionSummarySchema>;
 export type ModpackVersion = z.infer<typeof modpackVersionSchema>;
 export type ModpackProviders = z.infer<typeof modpackProvidersSchema>;
 export type ModpackInstallStarted = z.infer<typeof modpackInstallStartedSchema>;
+export type InstanceMod = z.infer<typeof instanceModSchema>;
 
 export type ServerPreview = {
   id: string;
