@@ -4355,6 +4355,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "slate-minecraft",
  "slate-modpack-api-contracts",
  "tempfile",

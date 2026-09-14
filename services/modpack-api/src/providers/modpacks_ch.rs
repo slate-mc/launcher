@@ -217,7 +217,7 @@ impl ModpacksChProvider {
             .await
             .map_err(|error| map_upstream_error(error, MissingResource::Version))?;
         ensure_success(response.status.as_deref())?;
-        map_version(response, self.provider, project_id)
+        map_version(response, self.provider, project_id, &self.upstream).await
     }
 
     pub async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError> {
@@ -352,10 +352,11 @@ fn map_project(project: UpstreamProject, provider: Provider) -> Result<Modpack, 
     })
 }
 
-fn map_version(
+async fn map_version(
     version: UpstreamVersion,
     provider: Provider,
     project_id: &str,
+    upstream: &UpstreamClient,
 ) -> Result<ModpackVersion, ProviderError> {
     let minecraft_version = version
         .targets
@@ -368,7 +369,19 @@ fn map_version(
     let mut total_download_size = 0_u64;
     let mut files = Vec::with_capacity(version.files.len());
     for file in version.files {
-        let mapped = map_file(file, provider, project_id)?;
+        let mut mapped = map_file(file, provider, project_id)?;
+        if !mapped.hashes.has_cryptographic_hash() {
+            let DownloadSource::Direct { url } = &mapped.download else {
+                return Err(ProviderError::DownloadUnavailable);
+            };
+            let metadata = upstream
+                .artifact_metadata(url)
+                .await
+                .map_err(|_| ProviderError::DownloadUnavailable)?;
+            mapped.size = metadata.size;
+            mapped.hashes.sha256 = Some(metadata.sha256.clone());
+            mapped.hashes.sha512 = Some(metadata.sha512.clone());
+        }
         total_download_size = total_download_size
             .checked_add(mapped.size)
             .ok_or(ProviderError::InvalidResponse)?;
@@ -722,7 +735,7 @@ fn file_type(value: &str) -> PackFileType {
         "datapack" | "data_pack" => PackFileType::DataPack,
         "library" => PackFileType::Library,
         "override" => PackFileType::Override,
-        "archive" | "mr_extract" => PackFileType::Archive,
+        "archive" | "cf_extract" | "mr_extract" => PackFileType::Archive,
         _ => PackFileType::Other,
     }
 }
