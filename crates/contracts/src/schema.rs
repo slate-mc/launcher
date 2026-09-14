@@ -1,8 +1,9 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
     CreateInstanceRequest, EventEnvelope, GameSessionSummary, InstallInstanceRequest,
-    InstallJobSummary, InstallModpackRequest, InstanceSummary, LaunchInstanceRequest,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
+    InstallJobSummary, InstallModRequest, InstallModpackRequest, InstanceModSummary,
+    InstanceModsRequest, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
+    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModSearchRequest,
     ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackVersionRequest,
     ModpackVersionsRequest, PreflightSummary, RedactedLaunchPlan, SessionLogEvent,
     SessionLogSubscription, StopGameSessionRequest, SubscribeSessionLogRequest,
@@ -103,6 +104,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             "modpack-install-started",
             schema_for!(ModpackInstallStarted),
         ),
+        ("mod-search-request", schema_for!(ModSearchRequest)),
+        ("install-mod-request", schema_for!(InstallModRequest)),
+        ("instance-mods-request", schema_for!(InstanceModsRequest)),
+        ("instance-mod-list", schema_for!(Vec<InstanceModSummary>)),
         (
             "minecraft-account-summary",
             schema_for!(MinecraftAccountSummary),
@@ -135,7 +140,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 35);
+        assert_eq!(schemas.len(), 39);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

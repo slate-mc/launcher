@@ -64,3 +64,44 @@ pub struct InstallModpackRequest {
     #[serde(default)]
     pub include_optional: Vec<String>,
 }
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModSearchRequest {
+    pub instance_id: uuid::Uuid,
+    pub query: Option<String>,
+    pub provider: Option<Provider>,
+    pub sort: ModpackSortDto,
+    pub cursor: Option<String>,
+    pub page: Option<u32>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallModRequest {
+    pub instance_id: uuid::Uuid,
+    pub expected_revision: u64,
+    pub provider: Provider,
+    pub project_id: String,
+    pub display_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceModsRequest {
+    pub instance_id: uuid::Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceModSummary {
+    pub provider: Provider,
+    pub project_id: String,
+    pub version_id: String,
+    pub display_name: String,
+    pub file_path: String,
+    pub enabled: bool,
+    pub pinned: bool,
+    pub installed_at: String,
+}

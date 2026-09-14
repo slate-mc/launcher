@@ -1,5 +1,5 @@
 use crate::database::now_rfc3339;
-use crate::{Database, StorageError};
+use crate::{Database, NewInstanceMod, StorageError};
 use slate_domain::{AccountId, InstanceId, JobId, LoaderFamily, RequestId, RevisionId, SessionId};
 use sqlx::Row;
 use std::path::PathBuf;
@@ -87,6 +87,16 @@ pub struct InstalledRuntime {
     pub arch: String,
     pub executable_ref: String,
     pub source_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompletedInstall {
+    pub job_id: JobId,
+    pub revision_id: RevisionId,
+    pub manifest_digest: String,
+    pub client_version: String,
+    pub runtime: InstalledRuntime,
+    pub message: String,
 }
 
 impl Database {
@@ -273,6 +283,34 @@ impl Database {
         runtime: InstalledRuntime,
         message: &str,
     ) -> Result<(), StorageError> {
+        self.complete_instance_install_inner(
+            CompletedInstall {
+                job_id,
+                revision_id,
+                manifest_digest: manifest_digest.to_owned(),
+                client_version: client_version.to_owned(),
+                runtime,
+                message: message.to_owned(),
+            },
+            None,
+        )
+        .await
+    }
+
+    pub async fn complete_instance_mod_install(
+        &self,
+        completion: CompletedInstall,
+        installed_mod: NewInstanceMod,
+    ) -> Result<(), StorageError> {
+        self.complete_instance_install_inner(completion, Some(installed_mod))
+            .await
+    }
+
+    async fn complete_instance_install_inner(
+        &self,
+        completion: CompletedInstall,
+        installed_mod: Option<NewInstanceMod>,
+    ) -> Result<(), StorageError> {
         let now = now_rfc3339()?;
         let runtime_id = Uuid::new_v4().to_string();
         let mut transaction = self.pool.begin().await?;
@@ -281,7 +319,7 @@ impl Database {
              INNER JOIN instances i ON i.id = j.entity_id \
              WHERE j.id = ? AND j.state IN ('queued', 'running') AND i.trashed_at IS NULL)",
         )
-        .bind(job_id.to_string())
+        .bind(completion.job_id.to_string())
         .fetch_one(&mut *transaction)
         .await?;
         if !active {
@@ -297,14 +335,14 @@ impl Database {
               source_digest = excluded.source_digest, verified_at = excluded.verified_at",
         )
         .bind(&runtime_id)
-        .bind(&runtime.vendor)
-        .bind(&runtime.release_name)
-        .bind(&runtime.java_version)
-        .bind(i64::from(runtime.major))
-        .bind(&runtime.os)
-        .bind(&runtime.arch)
-        .bind(&runtime.executable_ref)
-        .bind(&runtime.source_digest)
+        .bind(&completion.runtime.vendor)
+        .bind(&completion.runtime.release_name)
+        .bind(&completion.runtime.java_version)
+        .bind(i64::from(completion.runtime.major))
+        .bind(&completion.runtime.os)
+        .bind(&completion.runtime.arch)
+        .bind(&completion.runtime.executable_ref)
+        .bind(&completion.runtime.source_digest)
         .bind(&now)
         .execute(&mut *transaction)
         .await?;
@@ -312,32 +350,54 @@ impl Database {
             "SELECT id FROM runtime_installations \
              WHERE vendor = ? AND release_name = ? AND os = ? AND arch = ?",
         )
-        .bind(&runtime.vendor)
-        .bind(&runtime.release_name)
-        .bind(&runtime.os)
-        .bind(&runtime.arch)
+        .bind(&completion.runtime.vendor)
+        .bind(&completion.runtime.release_name)
+        .bind(&completion.runtime.os)
+        .bind(&completion.runtime.arch)
         .fetch_one(&mut *transaction)
         .await?;
 
         let instance_id: String =
             sqlx::query_scalar("SELECT instance_id FROM instance_revisions WHERE id = ?")
-                .bind(revision_id.to_string())
+                .bind(completion.revision_id.to_string())
                 .fetch_optional(&mut *transaction)
                 .await?
                 .ok_or(StorageError::RevisionNotFound)?;
+        if let Some(installed_mod) = installed_mod {
+            sqlx::query(
+                "INSERT INTO instance_mods \
+                 (instance_id, provider, project_id, version_id, display_name, file_path, \
+                  hashes_json, enabled, pinned, installed_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?) \
+                 ON CONFLICT(instance_id, provider, project_id) DO UPDATE SET \
+                  version_id = excluded.version_id, display_name = excluded.display_name, \
+                  file_path = excluded.file_path, hashes_json = excluded.hashes_json, \
+                  enabled = 1, installed_at = excluded.installed_at",
+            )
+            .bind(&instance_id)
+            .bind(installed_mod.provider.as_str())
+            .bind(installed_mod.project_id.trim())
+            .bind(installed_mod.version_id.trim())
+            .bind(installed_mod.display_name.trim())
+            .bind(installed_mod.file_path.trim())
+            .bind(serde_json::to_string(&installed_mod.hashes)?)
+            .bind(&now)
+            .execute(&mut *transaction)
+            .await?;
+        }
         sqlx::query(
             "UPDATE instance_revisions SET manifest_digest = ?, client_version = ?, \
              runtime_id = ?, installed_at = ?, status = 'installed' WHERE id = ?",
         )
-        .bind(manifest_digest)
-        .bind(client_version)
+        .bind(&completion.manifest_digest)
+        .bind(&completion.client_version)
         .bind(stored_runtime_id)
         .bind(&now)
-        .bind(revision_id.to_string())
+        .bind(completion.revision_id.to_string())
         .execute(&mut *transaction)
         .await?;
         sqlx::query("UPDATE instances SET active_revision_id = ?, updated_at = ? WHERE id = ?")
-            .bind(revision_id.to_string())
+            .bind(completion.revision_id.to_string())
             .bind(&now)
             .bind(&instance_id)
             .execute(&mut *transaction)
@@ -350,10 +410,10 @@ impl Database {
         .await?;
         update_job_transaction(
             &mut transaction,
-            job_id,
+            completion.job_id,
             JobState::Succeeded,
             "complete",
-            message,
+            &completion.message,
             &now,
         )
         .await?;

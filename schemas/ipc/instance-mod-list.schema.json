@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Array_of_InstanceModSummary",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/InstanceModSummary"
+  },
+  "$defs": {
+    "InstanceModSummary": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "filePath": {
+          "type": "string"
+        },
+        "installedAt": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "projectId",
+        "versionId",
+        "displayName",
+        "filePath",
+        "enabled",
+        "pinned",
+        "installedAt"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}
