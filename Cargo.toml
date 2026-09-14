@@ -8,10 +8,12 @@ members = [
     "crates/loaders",
     "crates/installer",
     "crates/minecraft",
+    "crates/modpack-api-contracts",
     "crates/platform",
     "crates/process",
     "crates/storage",
     "tools/xtask",
+    "services/modpack-api",
 ]
 default-members = [
     "apps/desktop/src-tauri",
@@ -21,10 +23,12 @@ default-members = [
     "crates/loaders",
     "crates/installer",
     "crates/minecraft",
+    "crates/modpack-api-contracts",
     "crates/platform",
     "crates/process",
     "crates/storage",
     "tools/xtask",
+    "services/modpack-api",
 ]
 
 [workspace.package]
@@ -35,6 +39,9 @@ publish = false
 
 [workspace.dependencies]
 base64 = "=0.22.1"
+anyhow = "=1.0.104"
+async-trait = "=0.1.92"
+axum = "=0.8.9"
 directories = "=6.0.0"
 futures-util = "=0.3.32"
 keyring = "=4.2.0"
@@ -79,6 +86,11 @@ url = "=2.5.8"
 zip = { version = "=8.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tauri = "=2.11.4"
 tauri-build = "=2.6.3"
+moka = { version = "=0.12.16", features = ["sync"] }
+tower = "=0.5.3"
+tower-http = { version = "=0.7.1", features = ["compression-gzip", "cors", "request-id", "trace"] }
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "fmt", "json"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
