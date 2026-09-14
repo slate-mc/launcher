@@ -50,6 +50,13 @@ progress may be lost. Exits are detected with the owned child handle and persist
 crashed, or user-cancelled. Graceful companion-assisted shutdown and safe process reattachment after
 a full launcher-process restart remain later lifecycle work.
 
+While a session is supervised, the instance Overview subscribes to its combined stdout/stderr log
+through a Tauri channel. The renderer supplies only the session ID; Rust resolves the launcher-owned
+path from the process supervisor. A subscription begins with at most the latest 256 KiB, then sends
+32 KiB append chunks at a bounded cadence and reports truncation, closure, or read failure. The UI
+keeps at most 250,000 characters, supports follow and local clear controls, and unsubscribes when the
+view unmounts. The complete session log remains in the instance's `logs` directory.
+
 ## Reproducible smoke validation
 
 The ignored target directory may be reused so large assets and managed runtimes are not downloaded

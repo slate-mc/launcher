@@ -3,7 +3,8 @@ use crate::{
     CreateInstanceRequest, EventEnvelope, GameSessionSummary, InstallInstanceRequest,
     InstallJobSummary, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
     LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, PreflightSummary,
-    RedactedLaunchPlan, StopGameSessionRequest, UpdateInstanceConfigurationRequest,
+    RedactedLaunchPlan, SessionLogEvent, SessionLogSubscription, StopGameSessionRequest,
+    SubscribeSessionLogRequest, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -51,6 +52,19 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(StopGameSessionRequest),
         ),
         (
+            "subscribe-session-log-request",
+            schema_for!(SubscribeSessionLogRequest),
+        ),
+        (
+            "unsubscribe-session-log-request",
+            schema_for!(UnsubscribeSessionLogRequest),
+        ),
+        (
+            "session-log-subscription",
+            schema_for!(SessionLogSubscription),
+        ),
+        ("session-log-event", schema_for!(SessionLogEvent)),
+        (
             "minecraft-account-summary",
             schema_for!(MinecraftAccountSummary),
         ),
@@ -82,7 +96,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 21);
+        assert_eq!(schemas.len(), 25);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

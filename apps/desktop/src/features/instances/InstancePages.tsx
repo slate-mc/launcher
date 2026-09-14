@@ -20,6 +20,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { ComboBox } from "../../components/ComboBox";
 import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
+import { SessionLogPanel } from "../../components/SessionLogPanel";
 import {
   EmptyState,
   InlineNotice,
@@ -47,7 +48,11 @@ import {
   setupStateLabel,
   setupStateTone,
 } from "../../lib/format";
-import type { LauncherInstance, LoaderKind } from "../../types/launcher";
+import type {
+  GameSession,
+  LauncherInstance,
+  LoaderKind,
+} from "../../types/launcher";
 
 type InstanceSection = "overview" | "content" | "settings";
 
@@ -185,6 +190,9 @@ function Overview({ instance }: { instance: LauncherInstance }) {
   const [confirmTrash, setConfirmTrash] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [trackedLogSession, setTrackedLogSession] = useState<
+    GameSession | undefined
+  >();
   const accountsQuery = useQuery({
     queryKey: ["minecraft-accounts"],
     queryFn: listAccounts,
@@ -261,7 +269,11 @@ function Overview({ instance }: { instance: LauncherInstance }) {
   const activeSession = sessionsQuery.data?.find(
     (session) => session.instanceId === instance.id,
   );
-
+  const retainedLogSession =
+    trackedLogSession?.instanceId === instance.id
+      ? trackedLogSession
+      : undefined;
+  const logSession = activeSession ?? retainedLogSession;
   useEffect(() => {
     if (installJob?.state === "succeeded" || installJob?.state === "failed") {
       void queryClient.invalidateQueries({
@@ -469,6 +481,15 @@ function Overview({ instance }: { instance: LauncherInstance }) {
             </InlineNotice>
           ) : null}
         </section>
+
+        {logSession ? (
+          <SessionLogPanel
+            key={logSession.id}
+            session={logSession}
+            active={activeSession?.id === logSession.id}
+            onAttached={setTrackedLogSession}
+          />
+        ) : null}
 
         <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
           <h2 className="m-0 text-[15px] font-bold tracking-[-.015em]">

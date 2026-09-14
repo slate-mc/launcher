@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SessionLogEvent",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/SessionLogEventKindDto"
+    },
+    "offset": {
+      "description": "Decimal string so file offsets remain lossless at the JavaScript boundary.",
+      "type": "string"
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "subscriptionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "text": {
+      "type": "string"
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "subscriptionId",
+    "sessionId",
+    "kind",
+    "offset",
+    "truncated",
+    "text"
+  ],
+  "$defs": {
+    "SessionLogEventKindDto": {
+      "type": "string",
+      "enum": [
+        "snapshot",
+        "append",
+        "reset",
+        "closed",
+        "error"
+      ]
+    }
+  }
+}

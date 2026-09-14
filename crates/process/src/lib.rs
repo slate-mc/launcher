@@ -6,7 +6,11 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::process::Child;
+
+const LOG_SNAPSHOT_BYTES: u64 = 256 * 1024;
+const LOG_CHUNK_BYTES: u64 = 32 * 1024;
 
 #[derive(Clone, Debug, Default)]
 pub struct ProcessSupervisor {
@@ -52,6 +56,84 @@ pub struct ActiveProcess {
     pub pid: u32,
     pub log_path: PathBuf,
     pub state: ProcessState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LogChunkKind {
+    Snapshot,
+    Append,
+    Reset,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LogChunk {
+    pub kind: LogChunkKind,
+    pub offset: u64,
+    pub truncated: bool,
+    pub text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct SessionLogTail {
+    path: PathBuf,
+    offset: u64,
+}
+
+impl SessionLogTail {
+    #[must_use]
+    pub const fn new(path: PathBuf) -> Self {
+        Self { path, offset: 0 }
+    }
+
+    #[must_use]
+    pub const fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    pub async fn snapshot(&mut self) -> Result<LogChunk, ProcessError> {
+        let length = tokio::fs::metadata(&self.path).await?.len();
+        let start = length.saturating_sub(LOG_SNAPSHOT_BYTES);
+        let (text, bytes_read) = read_log_range(&self.path, start, LOG_SNAPSHOT_BYTES).await?;
+        self.offset = start.saturating_add(bytes_read);
+        Ok(LogChunk {
+            kind: LogChunkKind::Snapshot,
+            offset: self.offset,
+            truncated: start > 0,
+            text,
+        })
+    }
+
+    pub async fn next_chunk(&mut self) -> Result<Option<LogChunk>, ProcessError> {
+        let length = tokio::fs::metadata(&self.path).await?.len();
+        let (kind, start) = if length < self.offset {
+            (LogChunkKind::Reset, 0)
+        } else if length == self.offset {
+            return Ok(None);
+        } else {
+            (LogChunkKind::Append, self.offset)
+        };
+        let (text, bytes_read) = read_log_range(&self.path, start, LOG_CHUNK_BYTES).await?;
+        self.offset = start.saturating_add(bytes_read);
+        Ok(Some(LogChunk {
+            kind,
+            offset: self.offset,
+            truncated: false,
+            text,
+        }))
+    }
+}
+
+async fn read_log_range(
+    path: &std::path::Path,
+    start: u64,
+    limit: u64,
+) -> Result<(String, u64), ProcessError> {
+    let mut file = tokio::fs::File::open(path).await?;
+    file.seek(std::io::SeekFrom::Start(start)).await?;
+    let mut bytes = Vec::new();
+    file.take(limit).read_to_end(&mut bytes).await?;
+    let bytes_read = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    Ok((String::from_utf8_lossy(&bytes).into_owned(), bytes_read))
 }
 
 impl ProcessSupervisor {
@@ -174,6 +256,25 @@ impl ProcessSupervisor {
         }))
     }
 
+    pub fn active_for_session(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<ActiveProcess>, ProcessError> {
+        let children = self
+            .children
+            .lock()
+            .map_err(|_| ProcessError::LockPoisoned)?;
+        Ok(children.iter().find_map(|(instance_id, process)| {
+            (process.session_id == session_id).then(|| ActiveProcess {
+                instance_id: *instance_id,
+                session_id: process.session_id,
+                pid: process.pid,
+                log_path: process.log_path.clone(),
+                state: process.state,
+            })
+        }))
+    }
+
     pub fn force_stop(&self, session_id: SessionId) -> Result<ActiveProcess, ProcessError> {
         let mut children = self
             .children
@@ -224,10 +325,66 @@ pub enum ProcessError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProcessError, ProcessState, ProcessSupervisor};
+    use super::{
+        LOG_SNAPSHOT_BYTES, LogChunkKind, ProcessError, ProcessState, ProcessSupervisor,
+        SessionLogTail,
+    };
     use slate_domain::{InstanceId, SessionId};
     use slate_minecraft::{LaunchArgument, LaunchPlan};
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn log_tail_snapshots_appends_and_recovers_from_truncation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("session.log");
+        tokio::fs::write(&path, "booting\n").await?;
+        let mut tail = SessionLogTail::new(path.clone());
+
+        let snapshot = tail.snapshot().await?;
+        assert_eq!(snapshot.kind, LogChunkKind::Snapshot);
+        assert!(!snapshot.truncated);
+        assert_eq!(snapshot.text, "booting\n");
+        assert!(tail.next_chunk().await?.is_none());
+
+        let mut file = tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .await?;
+        tokio::io::AsyncWriteExt::write_all(&mut file, b"ready\n").await?;
+        drop(file);
+        let appended = tail
+            .next_chunk()
+            .await?
+            .ok_or("expected appended log data")?;
+        assert_eq!(appended.kind, LogChunkKind::Append);
+        assert_eq!(appended.text, "ready\n");
+
+        tokio::fs::write(&path, "restarted\n").await?;
+        let reset = tail.next_chunk().await?.ok_or("expected reset log data")?;
+        assert_eq!(reset.kind, LogChunkKind::Reset);
+        assert_eq!(reset.text, "restarted\n");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn log_snapshot_is_bounded_and_retains_the_file_offset()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("large-session.log");
+        let extra = 4096_u64;
+        let file_length = LOG_SNAPSHOT_BYTES + extra;
+        let contents = vec![b'x'; usize::try_from(file_length)?];
+        tokio::fs::write(&path, contents).await?;
+        let mut tail = SessionLogTail::new(path);
+
+        let snapshot = tail.snapshot().await?;
+
+        assert_eq!(snapshot.offset, file_length);
+        assert!(snapshot.truncated);
+        assert_eq!(u64::try_from(snapshot.text.len())?, LOG_SNAPSHOT_BYTES);
+        Ok(())
+    }
 
     #[test]
     #[ignore]
@@ -260,6 +417,12 @@ mod tests {
                 .active_for_instance(instance_id)?
                 .map(|value| value.pid),
             Some(started.pid)
+        );
+        assert_eq!(
+            supervisor
+                .active_for_session(session_id)?
+                .map(|value| value.instance_id),
+            Some(instance_id)
         );
         assert!(matches!(
             supervisor.start(

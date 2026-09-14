@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   authFlowStatusSchema,
   authStartSchema,
@@ -16,6 +16,8 @@ import {
   minecraftVersionCatalogSchema,
   preferencesSchema,
   preflightSchema,
+  sessionLogEventSchema,
+  sessionLogSubscriptionSchema,
   type AppPreferences,
   type AuthFlowStatus,
   type AuthStart,
@@ -28,6 +30,7 @@ import {
   type MinecraftVersionCatalog,
   type MinecraftAccount,
   type GameSession,
+  type SessionLogEvent,
   type InstallJob,
   type Preflight,
   type ServerPreview,
@@ -539,6 +542,30 @@ export async function forceStopGameSession(id: string): Promise<GameSession> {
   throw new Error(
     "Minecraft process control is available only in the slate desktop app.",
   );
+}
+
+export async function subscribeSessionLog(
+  sessionId: string,
+  onEvent: (event: SessionLogEvent) => void,
+): Promise<() => Promise<void>> {
+  if (bridgeMode !== "native") {
+    throw new Error(
+      "Live Minecraft logs are available only in the slate desktop app.",
+    );
+  }
+  const channel = new Channel<unknown>();
+  channel.onmessage = (value) => onEvent(sessionLogEventSchema.parse(value));
+  const subscription = sessionLogSubscriptionSchema.parse(
+    await invoke("session_log_subscribe", {
+      request: { sessionId },
+      onEvent: channel,
+    }),
+  );
+  return async () => {
+    await invoke("session_log_unsubscribe", {
+      request: { subscriptionId: subscription.id },
+    });
+  };
 }
 
 export async function getPreferences(): Promise<AppPreferences> {

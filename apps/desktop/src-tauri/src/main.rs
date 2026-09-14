@@ -12,8 +12,10 @@ use slate_contracts::{
     LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
     MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
     MinecraftVersionOption, PreflightSummary, ReduceMotionPreferenceDto, RenameInstanceRequest,
-    SetDefaultAccountRequest, SetFavoriteRequest, StopGameSessionRequest, ThemePreferenceDto,
-    TrashInstanceRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
+    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest,
+    SetFavoriteRequest, StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto,
+    TrashInstanceRequest, UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest,
+    UpdateInstanceConfigurationRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, ManagementMode, RequestId, RevisionId,
@@ -30,7 +32,9 @@ use slate_minecraft::{
     RuleContext,
 };
 use slate_platform::{AppPaths, detect_java_runtime, probe_java_executable};
-use slate_process::{ActiveProcess, ProcessState, ProcessSupervisor};
+use slate_process::{
+    ActiveProcess, LogChunk, LogChunkKind, ProcessState, ProcessSupervisor, SessionLogTail,
+};
 use slate_storage::{
     AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, Database, InstallJobRecord,
     InstalledRuntime, JobState, NewInstance, ReduceMotionPreference, StorageError, ThemePreference,
@@ -53,6 +57,44 @@ struct DesktopState {
     auth_client: MinecraftAuthClient,
     credential_vault: CredentialVault,
     auth_flows: AuthCoordinator,
+    log_streams: SessionLogCoordinator,
+}
+
+#[derive(Clone, Debug, Default)]
+struct SessionLogCoordinator {
+    inner: Arc<Mutex<HashMap<Uuid, tokio::sync::oneshot::Sender<()>>>>,
+}
+
+impl SessionLogCoordinator {
+    fn insert(
+        &self,
+        subscription_id: Uuid,
+        cancel_signal: tokio::sync::oneshot::Sender<()>,
+    ) -> Result<(), AppError> {
+        self.inner
+            .lock()
+            .map_err(|_| log_stream_state_error())?
+            .insert(subscription_id, cancel_signal);
+        Ok(())
+    }
+
+    fn cancel(&self, subscription_id: Uuid) -> Result<(), AppError> {
+        if let Some(cancel_signal) = self
+            .inner
+            .lock()
+            .map_err(|_| log_stream_state_error())?
+            .remove(&subscription_id)
+        {
+            let _ = cancel_signal.send(());
+        }
+        Ok(())
+    }
+
+    fn finish(&self, subscription_id: Uuid) {
+        if let Ok(mut streams) = self.inner.lock() {
+            streams.remove(&subscription_id);
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -208,6 +250,7 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         CapabilitySummary::available("metadata.neoforge"),
         CapabilitySummary::available("minecraft.install"),
         CapabilitySummary::available("minecraft.launch"),
+        CapabilitySummary::available("minecraft.session_logs"),
         if credential_vault_ready {
             CapabilitySummary::available("minecraft.account")
         } else {
@@ -1078,6 +1121,67 @@ async fn session_force_stop(
 }
 
 #[tauri::command]
+async fn session_log_subscribe(
+    state: tauri::State<'_, DesktopState>,
+    request: SubscribeSessionLogRequest,
+    on_event: tauri::ipc::Channel<SessionLogEvent>,
+) -> Result<SessionLogSubscription, AppError> {
+    refresh_exited_sessions(state.inner()).await;
+    let session_id = SessionId::from_uuid(request.session_id);
+    let process = state
+        .processes
+        .active_for_session(session_id)
+        .map_err(process_state_error)?
+        .ok_or_else(|| {
+            AppError::new(
+                "local.session_not_running",
+                "That Minecraft session is no longer available for live log streaming.",
+            )
+        })?;
+    let subscription_id = Uuid::new_v4();
+    let mut tail = SessionLogTail::new(process.log_path);
+    let snapshot = tail.snapshot().await.map_err(|_| {
+        AppError::new(
+            "local.session_log_unavailable",
+            "slate could not read this Minecraft session log.",
+        )
+        .retryable(true)
+    })?;
+    send_session_log_chunk(&on_event, subscription_id, session_id, snapshot)
+        .map_err(|_| log_channel_error())?;
+
+    let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
+    state.log_streams.insert(subscription_id, cancel_sender)?;
+    let coordinator = state.log_streams.clone();
+    let processes = state.processes.clone();
+    tauri::async_runtime::spawn(async move {
+        stream_session_log(
+            processes,
+            session_id,
+            subscription_id,
+            tail,
+            on_event,
+            cancel_receiver,
+        )
+        .await;
+        coordinator.finish(subscription_id);
+    });
+
+    Ok(SessionLogSubscription {
+        id: subscription_id,
+        session_id: request.session_id,
+    })
+}
+
+#[tauri::command]
+fn session_log_unsubscribe(
+    state: tauri::State<'_, DesktopState>,
+    request: UnsubscribeSessionLogRequest,
+) -> Result<(), AppError> {
+    state.log_streams.cancel(request.subscription_id)
+}
+
+#[tauri::command]
 async fn preferences_get(
     state: tauri::State<'_, DesktopState>,
 ) -> Result<AppPreferencesDto, AppError> {
@@ -1617,6 +1721,118 @@ fn process_stop_error(error: slate_process::ProcessError) -> AppError {
     }
 }
 
+fn log_stream_state_error() -> AppError {
+    AppError::new(
+        "local.session_log_state_unavailable",
+        "slate could not update the live log subscription.",
+    )
+    .retryable(true)
+}
+
+fn log_channel_error() -> AppError {
+    AppError::new(
+        "local.session_log_channel_unavailable",
+        "slate could not connect the live Minecraft log to this window.",
+    )
+    .retryable(true)
+}
+
+fn send_session_log_chunk(
+    channel: &tauri::ipc::Channel<SessionLogEvent>,
+    subscription_id: Uuid,
+    session_id: SessionId,
+    chunk: LogChunk,
+) -> tauri::Result<()> {
+    channel.send(SessionLogEvent {
+        subscription_id,
+        session_id: session_id.as_uuid(),
+        kind: match chunk.kind {
+            LogChunkKind::Snapshot => SessionLogEventKindDto::Snapshot,
+            LogChunkKind::Append => SessionLogEventKindDto::Append,
+            LogChunkKind::Reset => SessionLogEventKindDto::Reset,
+        },
+        offset: chunk.offset.to_string(),
+        truncated: chunk.truncated,
+        text: chunk.text,
+    })
+}
+
+async fn stream_session_log(
+    processes: ProcessSupervisor,
+    session_id: SessionId,
+    subscription_id: Uuid,
+    mut tail: SessionLogTail,
+    channel: tauri::ipc::Channel<SessionLogEvent>,
+    mut cancel: tokio::sync::oneshot::Receiver<()>,
+) {
+    let mut interval = tokio::time::interval(Duration::from_millis(200));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            _ = &mut cancel => return,
+            _ = interval.tick() => {
+                let mut caught_up = false;
+                for _ in 0..4 {
+                    match tail.next_chunk().await {
+                        Ok(Some(chunk)) => {
+                            if send_session_log_chunk(
+                                &channel,
+                                subscription_id,
+                                session_id,
+                                chunk,
+                            ).is_err() {
+                                return;
+                            }
+                        }
+                        Ok(None) => {
+                            caught_up = true;
+                            break;
+                        }
+                        Err(_) => {
+                            let _ = channel.send(SessionLogEvent {
+                                subscription_id,
+                                session_id: session_id.as_uuid(),
+                                kind: SessionLogEventKindDto::Error,
+                                offset: tail.offset().to_string(),
+                                truncated: false,
+                                text: "slate could not continue reading this session log.".to_owned(),
+                            });
+                            return;
+                        }
+                    }
+                }
+
+                match processes.active_for_session(session_id) {
+                    Ok(Some(_)) => {}
+                    Ok(None) if caught_up => {
+                        let _ = channel.send(SessionLogEvent {
+                            subscription_id,
+                            session_id: session_id.as_uuid(),
+                            kind: SessionLogEventKindDto::Closed,
+                            offset: tail.offset().to_string(),
+                            truncated: false,
+                            text: String::new(),
+                        });
+                        return;
+                    }
+                    Ok(None) => {}
+                    Err(_) => {
+                        let _ = channel.send(SessionLogEvent {
+                            subscription_id,
+                            session_id: session_id.as_uuid(),
+                            kind: SessionLogEventKindDto::Error,
+                            offset: tail.offset().to_string(),
+                            truncated: false,
+                            text: "slate could not verify the game process state.".to_owned(),
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn bounded_error_message(message: &str) -> String {
     const MAX_CHARACTERS: usize = 500;
     let mut bounded = message.chars().take(MAX_CHARACTERS).collect::<String>();
@@ -1722,6 +1938,7 @@ fn main() {
                 auth_client,
                 credential_vault: CredentialVault,
                 auth_flows: AuthCoordinator::default(),
+                log_streams: SessionLogCoordinator::default(),
             });
             Ok(())
         })
@@ -1748,6 +1965,8 @@ fn main() {
             instance_launch,
             sessions_list,
             session_force_stop,
+            session_log_subscribe,
+            session_log_unsubscribe,
             preferences_get,
             preferences_update,
             preflight_get,

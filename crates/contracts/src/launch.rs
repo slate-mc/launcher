@@ -28,6 +28,47 @@ pub struct StopGameSessionRequest {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SubscribeSessionLogRequest {
+    pub session_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsubscribeSessionLogRequest {
+    pub subscription_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLogSubscription {
+    pub id: Uuid,
+    pub session_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SessionLogEventKindDto {
+    Snapshot,
+    Append,
+    Reset,
+    Closed,
+    Error,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLogEvent {
+    pub subscription_id: Uuid,
+    pub session_id: Uuid,
+    pub kind: SessionLogEventKindDto,
+    /// Decimal string so file offsets remain lossless at the JavaScript boundary.
+    pub offset: String,
+    pub truncated: bool,
+    pub text: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum GameSessionStateDto {
     Running,
     Stopping,

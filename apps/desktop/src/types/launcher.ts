@@ -155,6 +155,20 @@ export const gameSessionSchema = z.object({
 
 export const gameSessionListSchema = z.array(gameSessionSchema);
 
+export const sessionLogSubscriptionSchema = z.object({
+  id: z.string().uuid(),
+  sessionId: z.string().uuid(),
+});
+
+export const sessionLogEventSchema = z.object({
+  subscriptionId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  kind: z.enum(["snapshot", "append", "reset", "closed", "error"]),
+  offset: z.string().regex(/^\d+$/),
+  truncated: z.boolean(),
+  text: z.string(),
+});
+
 export const minecraftAccountSchema = z.object({
   id: z.string().uuid(),
   profileId: z.string().uuid(),
@@ -199,6 +213,10 @@ export type MinecraftVersionCatalog = z.infer<
 export type LoaderVersionCatalog = z.infer<typeof loaderVersionCatalogSchema>;
 export type InstallJob = z.infer<typeof installJobSchema>;
 export type GameSession = z.infer<typeof gameSessionSchema>;
+export type SessionLogSubscription = z.infer<
+  typeof sessionLogSubscriptionSchema
+>;
+export type SessionLogEvent = z.infer<typeof sessionLogEventSchema>;
 export type MinecraftAccount = z.infer<typeof minecraftAccountSchema>;
 export type AuthStart = z.infer<typeof authStartSchema>;
 export type AuthFlowStatus = z.infer<typeof authFlowStatusSchema>;

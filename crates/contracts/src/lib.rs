@@ -30,7 +30,8 @@ pub use instance::{
 };
 pub use launch::{
     GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,
-    StopGameSessionRequest,
+    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, StopGameSessionRequest,
+    SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
 };
 pub use schema::schema_documents;
 pub use settings::{
