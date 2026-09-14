@@ -1,4 +1,4 @@
-use super::{ModpackProvider, ProviderError, modpacks_ch::ModpacksChProvider};
+use super::{ModpackProvider, ProviderError, ResolvedMod, modpacks_ch::ModpacksChProvider};
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use async_trait::async_trait;
 use slate_modpack_api_contracts::{
@@ -46,5 +46,18 @@ impl ModpackProvider for FtbProvider {
 
     async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError> {
         self.0.categories().await
+    }
+
+    async fn search_mods(&self, _request: SearchRequest) -> Result<SearchPage, ProviderError> {
+        Err(ProviderError::UnsupportedContent)
+    }
+
+    async fn resolve_mod(
+        &self,
+        _project_id: &str,
+        _minecraft_version: &str,
+        _loader: slate_modpack_api_contracts::LoaderKind,
+    ) -> Result<ResolvedMod, ProviderError> {
+        Err(ProviderError::UnsupportedContent)
     }
 }

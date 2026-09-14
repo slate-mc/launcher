@@ -10,7 +10,7 @@ pub use modrinth::ModrinthProvider;
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use async_trait::async_trait;
 use slate_modpack_api_contracts::{
-    CategorySummary, Modpack, ModpackVersion, ModpackVersionSummary, Provider,
+    CategorySummary, Hashes, Modpack, ModpackVersion, ModpackVersionSummary, Provider,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -36,6 +36,26 @@ pub trait ModpackProvider: Send + Sync {
     ) -> Result<ModpackVersion, ProviderError>;
 
     async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError>;
+
+    async fn search_mods(&self, request: SearchRequest) -> Result<SearchPage, ProviderError>;
+
+    async fn resolve_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: slate_modpack_api_contracts::LoaderKind,
+    ) -> Result<ResolvedMod, ProviderError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedMod {
+    pub project_id: String,
+    pub version_id: String,
+    pub version_name: String,
+    pub file_name: String,
+    pub url: String,
+    pub size: u64,
+    pub hashes: Hashes,
 }
 
 #[derive(Clone)]
@@ -92,4 +112,6 @@ pub enum ProviderError {
     DownloadUnavailable,
     #[error("modpack loader is unsupported")]
     UnsupportedLoader,
+    #[error("provider does not support this content type")]
+    UnsupportedContent,
 }

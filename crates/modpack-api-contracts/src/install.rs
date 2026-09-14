@@ -1,4 +1,4 @@
-use crate::{Hashes, Loader, MemoryRecommendation, Provider};
+use crate::{Hashes, Loader, LoaderKind, MemoryRecommendation, Provider};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,13 @@ pub struct InstallPlanRequest {
     pub arch: Architecture,
     #[serde(default)]
     pub include_optional: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ModInstallPlanRequest {
+    pub minecraft_version: String,
+    pub loader: LoaderKind,
+    pub loader_version: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

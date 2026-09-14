@@ -1,6 +1,7 @@
 mod health;
 mod metadata;
 mod modpacks;
+mod mods;
 mod providers;
 
 use crate::providers::{MissingResource, ProviderError};
@@ -17,6 +18,7 @@ pub fn router() -> Router<AppState> {
         "/v1",
         metadata::routes()
             .merge(providers::routes())
+            .merge(mods::routes())
             .merge(modpacks::routes()),
     )
 }
@@ -84,6 +86,13 @@ pub fn provider_error(context: &RequestContext, error: ProviderError) -> ApiErro
             StatusCode::BAD_REQUEST,
             ApiErrorCode::UnsupportedLoader,
             "The modpack loader is not supported.",
+            false,
+        ),
+        ProviderError::UnsupportedContent => ApiError::new(
+            context,
+            StatusCode::BAD_REQUEST,
+            ApiErrorCode::InvalidProvider,
+            "The provider does not support this content type.",
             false,
         ),
     }

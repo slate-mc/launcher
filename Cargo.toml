@@ -89,6 +89,7 @@ zip = { version = "=8.3.0", default-features = false, features = ["deflate-flate
 tauri = "=2.11.4"
 tauri-build = "=2.6.3"
 moka = { version = "=0.12.16", features = ["sync"] }
+percent-encoding = "=2.3.2"
 tower = "=0.5.3"
 tower-http = { version = "=0.7.1", features = ["compression-gzip", "cors", "request-id", "trace"] }
 tracing = "=0.1.44"

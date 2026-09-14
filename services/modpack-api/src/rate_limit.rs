@@ -116,7 +116,7 @@ enum RateCategory {
 impl RateCategory {
     fn for_request(request: &Request) -> Option<Self> {
         let path = request.uri().path();
-        if path == "/v1/modpacks" {
+        if path == "/v1/modpacks" || path == "/v1/mods" {
             Some(Self::Search)
         } else if path.ends_with("/install-plan") {
             Some(Self::InstallPlan)

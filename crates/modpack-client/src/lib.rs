@@ -3,7 +3,8 @@
 use reqwest::{Method, StatusCode};
 use slate_modpack_api_contracts::{
     ApiEnvelope, ApiErrorCode, CategoriesResponse, InstallPlan, InstallPlanRequest, LoaderKind,
-    Modpack, ModpackVersion, Provider, ProvidersResponse, ReleaseType, SearchResponse, VersionPage,
+    ModInstallPlanRequest, Modpack, ModpackVersion, Provider, ProvidersResponse, ReleaseType,
+    SearchResponse, VersionPage,
 };
 use std::time::Duration;
 use url::Url;
@@ -74,6 +75,46 @@ impl ModpackApiClient {
             if let Some(value) = options.category.as_deref() {
                 query.append_pair("category", value);
             }
+            query.append_pair("sort", options.sort.as_str());
+            if let Some(cursor) = &options.cursor {
+                query.append_pair("cursor", cursor);
+            }
+            if let Some(page) = options.page {
+                query.append_pair("page", &page.to_string());
+            }
+            query.append_pair("limit", &options.limit.to_string());
+        }
+        self.get(url).await
+    }
+
+    pub async fn search_mods(
+        &self,
+        options: &SearchOptions,
+    ) -> Result<SearchResponse, ClientError> {
+        options.validate()?;
+        let minecraft_version = options
+            .minecraft_version
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or(ClientError::MissingModTarget)?;
+        let loader = options
+            .loader
+            .filter(|value| *value != LoaderKind::Vanilla)
+            .ok_or(ClientError::MissingModTarget)?;
+        if options.provider == Some(Provider::Ftb) {
+            return Err(ClientError::UnsupportedModProvider);
+        }
+        let mut url = self.endpoint(&["v1", "mods"])?;
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(value) = options.query.as_deref() {
+                query.append_pair("q", value);
+            }
+            if let Some(value) = options.provider.map(Provider::as_str) {
+                query.append_pair("provider", value);
+            }
+            query.append_pair("minecraft_version", minecraft_version);
+            query.append_pair("loader", loader_name(loader));
             query.append_pair("sort", options.sort.as_str());
             if let Some(cursor) = &options.cursor {
                 query.append_pair("cursor", cursor);
@@ -161,6 +202,29 @@ impl ModpackApiClient {
         ])?;
         let body = serde_json::to_vec(request)?;
         self.send(Method::POST, url, Some(body)).await
+    }
+
+    pub async fn mod_install_plan(
+        &self,
+        provider: Provider,
+        project_id: &str,
+        request: &ModInstallPlanRequest,
+    ) -> Result<InstallPlan, ClientError> {
+        if provider == Provider::Ftb {
+            return Err(ClientError::UnsupportedModProvider);
+        }
+        if request.minecraft_version.trim().is_empty()
+            || request.loader == LoaderKind::Vanilla
+            || request
+                .loader_version
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(ClientError::MissingModTarget);
+        }
+        let url = self.endpoint(&["v1", "mods", provider.as_str(), project_id, "install-plan"])?;
+        self.send(Method::POST, url, Some(serde_json::to_vec(request)?))
+            .await
     }
 
     pub async fn categories(
@@ -390,6 +454,10 @@ pub enum ClientError {
     AmbiguousPagination,
     #[error("modpack pagination is invalid")]
     InvalidPagination,
+    #[error("individual mod operations require an exact modded Minecraft target")]
+    MissingModTarget,
+    #[error("the selected provider does not support individual mods")]
+    UnsupportedModProvider,
     #[error("the Slate modpack API response exceeded its size limit")]
     ResponseTooLarge,
     #[error("the Slate modpack API returned an invalid response envelope")]

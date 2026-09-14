@@ -1,4 +1,4 @@
-use super::{MissingResource, ProviderError};
+use super::{MissingResource, ProviderError, ResolvedMod};
 use crate::domain::{SearchPage, SearchRequest, SearchSort, VersionQuery, normalize_install_path};
 use crate::upstream::{CachePolicy, UpstreamClient, UpstreamError};
 use futures_util::stream::{self, StreamExt, TryStreamExt};
@@ -86,6 +86,249 @@ impl ModpacksChProvider {
             .collect::<Vec<_>>();
         items.truncate(request.limit);
         Ok(SearchPage { items, page, pages })
+    }
+
+    pub async fn search_mods(&self, request: SearchRequest) -> Result<SearchPage, ProviderError> {
+        if self.provider == Provider::Ftb {
+            return Err(ProviderError::UnsupportedContent);
+        }
+        let minecraft_version = request
+            .minecraft_version
+            .as_deref()
+            .ok_or(ProviderError::InvalidResponse)?;
+        let loader = request.loader.ok_or(ProviderError::UnsupportedLoader)?;
+        if loader == LoaderKind::Vanilla {
+            return Err(ProviderError::UnsupportedLoader);
+        }
+
+        let action = if request.query.is_some() {
+            "search"
+        } else {
+            "browse"
+        };
+        let page = request.page.to_string();
+        let path = [
+            "public",
+            self.provider.as_str(),
+            "mods",
+            action,
+            minecraft_version,
+            loader_name(loader),
+            upstream_sort(request.sort),
+            page.as_str(),
+        ];
+        let query = request
+            .query
+            .as_deref()
+            .map_or_else(Vec::new, |term| vec![("term", term)]);
+        let response: UpstreamBrowse = self
+            .upstream
+            .get_json(&path, &query, CachePolicy::Search)
+            .await
+            .map_err(|error| map_upstream_error(error, MissingResource::Project))?;
+        ensure_success(response.status.as_deref())?;
+        let page = response
+            .page
+            .as_ref()
+            .and_then(FlexibleId::as_u32)
+            .unwrap_or(request.page);
+        let pages = response
+            .pages
+            .as_ref()
+            .and_then(FlexibleId::as_u32)
+            .unwrap_or(page);
+        let mut items = response
+            .mods
+            .into_iter()
+            .filter(|card| provider_matches(card, self.provider))
+            .map(|card| {
+                let mut item = map_search_card(card, self.provider, Some(loader));
+                // The upstream route itself applies these exact filters. Its card tags
+                // can describe only the newest release, so preserve the queried target.
+                item.minecraft_versions = vec![minecraft_version.to_owned()];
+                item.loaders = vec![loader];
+                item
+            })
+            .collect::<Vec<_>>();
+        items.truncate(request.limit);
+        Ok(SearchPage { items, page, pages })
+    }
+
+    pub async fn resolve_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<ResolvedMod, ProviderError> {
+        validate_identifier(project_id)?;
+        if minecraft_version.is_empty() || minecraft_version.len() > 32 {
+            return Err(ProviderError::InvalidIdentifier);
+        }
+        if loader == LoaderKind::Vanilla {
+            return Err(ProviderError::UnsupportedLoader);
+        }
+        match self.provider {
+            Provider::CurseForge => {
+                self.resolve_curseforge_mod(project_id, minecraft_version, loader)
+                    .await
+            }
+            Provider::Modrinth => {
+                self.resolve_modrinth_mod(project_id, minecraft_version, loader)
+                    .await
+            }
+            Provider::Ftb => Err(ProviderError::UnsupportedContent),
+        }
+    }
+
+    async fn resolve_curseforge_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<ResolvedMod, ProviderError> {
+        let response: UpstreamVersionHistory = self
+            .upstream
+            .get_json(
+                &[
+                    "public",
+                    "curseforge",
+                    project_id,
+                    "versions",
+                    minecraft_version,
+                    loader_name(loader),
+                    "1",
+                ],
+                &[],
+                CachePolicy::Versions,
+            )
+            .await
+            .map_err(|error| map_upstream_error(error, MissingResource::Project))?;
+        ensure_success(response.status.as_deref())?;
+        let query = VersionQuery {
+            minecraft_version: Some(minecraft_version.to_owned()),
+            loader: Some(loader),
+            release_type: None,
+            page: 1,
+            limit: 1,
+        };
+        let version = response
+            .versions
+            .into_iter()
+            .filter(|version| !version.private.unwrap_or(false))
+            .filter(|version| summary_matches(version, &query))
+            .max_by_key(|version| version.updated)
+            .ok_or(ProviderError::NotFound(MissingResource::Version))?;
+        let version_id = version.id.to_string_value();
+        let artifact: UpstreamModArtifact = self
+            .upstream
+            .get_json(
+                &["public", "curseforge", project_id, &version_id],
+                &[],
+                CachePolicy::Version,
+            )
+            .await
+            .map_err(|error| map_upstream_error(error, MissingResource::Version))?;
+        // modpacks.ch identifies a standalone jar as a non-pack error while still
+        // returning its authoritative manifestUrl. That URL is the useful payload.
+        let url = artifact
+            .manifest_url
+            .as_deref()
+            .and_then(safe_mod_artifact_url)
+            .ok_or(ProviderError::DownloadUnavailable)?;
+        let metadata = self
+            .upstream
+            .artifact_metadata(&url)
+            .await
+            .map_err(|error| map_upstream_error(error, MissingResource::Version))?;
+        let file_name = file_name_from_url(&url)
+            .unwrap_or_else(|| format!("{}-{version_id}.jar", slugify(&version.name)));
+        Ok(ResolvedMod {
+            project_id: project_id.to_owned(),
+            version_id,
+            version_name: bounded_text(&version.name, 160),
+            file_name,
+            url,
+            size: metadata.size,
+            hashes: Hashes {
+                sha512: Some(metadata.sha512.clone()),
+                sha256: Some(metadata.sha256.clone()),
+                sha1: None,
+            },
+        })
+    }
+
+    async fn resolve_modrinth_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<ResolvedMod, ProviderError> {
+        let game_versions = serde_json::to_string(&[minecraft_version])
+            .map_err(|_| ProviderError::InvalidResponse)?;
+        let loaders = serde_json::to_string(&[loader_name(loader)])
+            .map_err(|_| ProviderError::InvalidResponse)?;
+        let versions: Vec<ModrinthVersion> = self
+            .upstream
+            .get_modrinth_json(
+                &["project", project_id, "version"],
+                &[
+                    ("game_versions", game_versions.as_str()),
+                    ("loaders", loaders.as_str()),
+                ],
+                CachePolicy::Versions,
+            )
+            .await
+            .map_err(|error| map_upstream_error(error, MissingResource::Project))?;
+        let version = versions
+            .into_iter()
+            .filter(|version| {
+                version
+                    .game_versions
+                    .iter()
+                    .any(|value| value == minecraft_version)
+            })
+            .filter(|version| {
+                version
+                    .loaders
+                    .iter()
+                    .any(|value| parse_loader(value) == Some(loader))
+            })
+            .max_by(|left, right| left.date_published.cmp(&right.date_published))
+            .ok_or(ProviderError::NotFound(MissingResource::Version))?;
+        let file = version
+            .files
+            .iter()
+            .find(|file| file.primary)
+            .or_else(|| version.files.first())
+            .ok_or(ProviderError::DownloadUnavailable)?;
+        let url = safe_mod_artifact_url(&file.url).ok_or(ProviderError::DownloadUnavailable)?;
+        let mut hashes = Hashes {
+            sha512: valid_hash(file.hashes.sha512.as_deref(), 128),
+            sha256: valid_hash(file.hashes.sha256.as_deref(), 64),
+            sha1: valid_hash(file.hashes.sha1.as_deref(), 40),
+        };
+        let mut size = file.size;
+        if !hashes.has_cryptographic_hash() || size == 0 {
+            let metadata = self
+                .upstream
+                .artifact_metadata(&url)
+                .await
+                .map_err(|error| map_upstream_error(error, MissingResource::Version))?;
+            size = metadata.size;
+            hashes.sha256 = Some(metadata.sha256.clone());
+            hashes.sha512 = Some(metadata.sha512.clone());
+        }
+        let file_name = safe_jar_file_name(&file.filename)
+            .unwrap_or_else(|| format!("{}-{}.jar", slugify(&version.version_number), version.id));
+        Ok(ResolvedMod {
+            project_id: project_id.to_owned(),
+            version_id: version.id,
+            version_name: bounded_text(&version.name, 160),
+            file_name,
+            url,
+            size,
+            hashes,
+        })
     }
 
     async fn search_ftb(&self, request: SearchRequest) -> Result<SearchPage, ProviderError> {
@@ -669,6 +912,47 @@ fn safe_download_url(value: &str) -> Option<String> {
     }
 }
 
+fn safe_mod_artifact_url(value: &str) -> Option<String> {
+    let url = Url::parse(value).ok()?;
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    let Host::Domain(domain) = url.host()? else {
+        return None;
+    };
+    let domain = domain.to_ascii_lowercase();
+    if domain == "cdn.modrinth.com"
+        || domain == "edge.forgecdn.net"
+        || domain.ends_with(".forgecdn.net")
+    {
+        Some(url.to_string())
+    } else {
+        None
+    }
+}
+
+fn safe_jar_file_name(value: &str) -> Option<String> {
+    if value.is_empty()
+        || value.len() > 240
+        || !value.to_ascii_lowercase().ends_with(".jar")
+        || value.contains(['/', '\\', ':', '\0'])
+        || matches!(value, "." | "..")
+    {
+        None
+    } else {
+        Some(value.to_owned())
+    }
+}
+
+fn file_name_from_url(value: &str) -> Option<String> {
+    let url = Url::parse(value).ok()?;
+    let encoded = url.path_segments()?.next_back()?;
+    let decoded = percent_encoding::percent_decode_str(encoded)
+        .decode_utf8()
+        .ok()?;
+    safe_jar_file_name(&decoded)
+}
+
 fn provider_matches(card: &UpstreamBrowseCard, provider: Provider) -> bool {
     match provider {
         Provider::Ftb => {
@@ -858,9 +1142,54 @@ struct UpstreamBrowse {
     #[serde(default)]
     packs: Vec<UpstreamBrowseCard>,
     #[serde(default)]
+    mods: Vec<UpstreamBrowseCard>,
+    #[serde(default)]
     page: Option<FlexibleId>,
     #[serde(default)]
     pages: Option<FlexibleId>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpstreamModArtifact {
+    #[serde(rename = "manifestUrl", default)]
+    manifest_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModrinthVersion {
+    id: String,
+    name: String,
+    version_number: String,
+    #[serde(default)]
+    game_versions: Vec<String>,
+    #[serde(default)]
+    loaders: Vec<String>,
+    #[serde(default)]
+    date_published: String,
+    #[serde(default)]
+    files: Vec<ModrinthFile>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModrinthFile {
+    url: String,
+    filename: String,
+    #[serde(default)]
+    size: u64,
+    #[serde(default)]
+    primary: bool,
+    #[serde(default)]
+    hashes: ModrinthHashes,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ModrinthHashes {
+    #[serde(default)]
+    sha512: Option<String>,
+    #[serde(default)]
+    sha256: Option<String>,
+    #[serde(default)]
+    sha1: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

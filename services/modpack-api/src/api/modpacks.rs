@@ -313,7 +313,7 @@ async fn update(
     ))
 }
 
-fn provider_adapter(
+pub(super) fn provider_adapter(
     state: &AppState,
     context: &RequestContext,
     provider: Provider,
@@ -323,7 +323,10 @@ fn provider_adapter(
     })
 }
 
-fn validated_limit(context: &RequestContext, value: Option<usize>) -> Result<usize, ApiError> {
+pub(super) fn validated_limit(
+    context: &RequestContext,
+    value: Option<usize>,
+) -> Result<usize, ApiError> {
     let limit = value.unwrap_or(DEFAULT_LIMIT);
     if (1..=MAX_LIMIT).contains(&limit) {
         Ok(limit)
@@ -335,7 +338,7 @@ fn validated_limit(context: &RequestContext, value: Option<usize>) -> Result<usi
     }
 }
 
-fn bounded_optional(
+pub(super) fn bounded_optional(
     context: &RequestContext,
     field: &str,
     value: Option<String>,
@@ -359,14 +362,14 @@ fn bounded_optional(
     Ok(Some(value.to_owned()))
 }
 
-fn parse_optional_loader(
+pub(super) fn parse_optional_loader(
     context: &RequestContext,
     value: Option<&str>,
 ) -> Result<Option<LoaderKind>, ApiError> {
     value.map(|value| parse_loader(context, value)).transpose()
 }
 
-fn parse_loader(context: &RequestContext, value: &str) -> Result<LoaderKind, ApiError> {
+pub(super) fn parse_loader(context: &RequestContext, value: &str) -> Result<LoaderKind, ApiError> {
     match value.to_ascii_lowercase().as_str() {
         "vanilla" => Ok(LoaderKind::Vanilla),
         "forge" => Ok(LoaderKind::Forge),
@@ -384,7 +387,10 @@ fn parse_loader(context: &RequestContext, value: &str) -> Result<LoaderKind, Api
     }
 }
 
-fn parse_sort(context: &RequestContext, value: Option<&str>) -> Result<SearchSort, ApiError> {
+pub(super) fn parse_sort(
+    context: &RequestContext,
+    value: Option<&str>,
+) -> Result<SearchSort, ApiError> {
     match value.unwrap_or("relevance").to_ascii_lowercase().as_str() {
         "relevance" => Ok(SearchSort::Relevance),
         "downloads" => Ok(SearchSort::Downloads),
@@ -438,7 +444,7 @@ fn decode_cursor(context: &RequestContext, cursor: Option<&str>) -> Result<u32, 
     Ok(cursor.page)
 }
 
-fn resolve_page(
+pub(super) fn resolve_page(
     context: &RequestContext,
     cursor: Option<&str>,
     page: Option<u32>,
@@ -465,7 +471,7 @@ fn resolve_page(
     decode_cursor(context, cursor)
 }
 
-fn encode_cursor(page: u32) -> String {
+pub(super) fn encode_cursor(page: u32) -> String {
     let bytes = serde_json::to_vec(&PageCursor { page }).unwrap_or_default();
     URL_SAFE_NO_PAD.encode(bytes)
 }
@@ -475,12 +481,12 @@ fn invalid_cursor(context: &RequestContext) -> ApiError {
         .with_field("cursor", "Use the opaque cursor returned by this endpoint.")
 }
 
-fn invalid_query(context: &RequestContext) -> ApiError {
+pub(super) fn invalid_query(context: &RequestContext) -> ApiError {
     ApiError::invalid_request(context, "The request query is invalid.")
         .with_field("query", "Check the query parameter names and value types.")
 }
 
-fn invalid_path(context: &RequestContext) -> ApiError {
+pub(super) fn invalid_path(context: &RequestContext) -> ApiError {
     ApiError::invalid_request(context, "The request path is invalid.").with_field(
         "path",
         "Use valid provider, project, and version identifiers.",
@@ -523,7 +529,7 @@ fn install_plan_error(context: &RequestContext, error: InstallPlanError) -> ApiE
     }
 }
 
-fn interleave(mut pages: Vec<Vec<ModpackSummary>>) -> Vec<ModpackSummary> {
+pub(super) fn interleave(mut pages: Vec<Vec<ModpackSummary>>) -> Vec<ModpackSummary> {
     let mut items = Vec::new();
     let maximum = pages.iter().map(Vec::len).max().unwrap_or(0);
     for index in 0..maximum {
@@ -536,7 +542,7 @@ fn interleave(mut pages: Vec<Vec<ModpackSummary>>) -> Vec<ModpackSummary> {
     items
 }
 
-fn sort_items(items: &mut [ModpackSummary], sort: SearchSort) {
+pub(super) fn sort_items(items: &mut [ModpackSummary], sort: SearchSort) {
     match sort {
         SearchSort::Relevance => {}
         SearchSort::Downloads => {

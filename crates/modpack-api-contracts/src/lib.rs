@@ -14,7 +14,7 @@ pub use file::{
 };
 pub use install::{
     Architecture, ExtractAction, InstallPlan, InstallPlanDownload, InstallPlanInstance,
-    InstallPlanRequest, JavaPlan, Platform, RuntimePlan,
+    InstallPlanRequest, JavaPlan, ModInstallPlanRequest, Platform, RuntimePlan,
 };
 pub use metadata::{
     CategoriesResponse, CategorySummary, HealthResponse, LoaderTypesResponse, MinecraftReleaseKind,

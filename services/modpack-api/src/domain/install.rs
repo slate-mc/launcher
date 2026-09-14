@@ -143,7 +143,7 @@ fn safe_identifier(value: &str) -> String {
     }
 }
 
-fn java_major_for_minecraft(version: &str) -> u32 {
+pub(crate) fn java_major_for_minecraft(version: &str) -> u32 {
     let parts = version
         .split('.')
         .filter_map(|part| part.parse::<u32>().ok())

@@ -1,4 +1,4 @@
-use super::{ModpackProvider, ProviderError, modpacks_ch::ModpacksChProvider};
+use super::{ModpackProvider, ProviderError, ResolvedMod, modpacks_ch::ModpacksChProvider};
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use async_trait::async_trait;
 use slate_modpack_api_contracts::{
@@ -46,5 +46,20 @@ impl ModpackProvider for ModrinthProvider {
 
     async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError> {
         self.0.categories().await
+    }
+
+    async fn search_mods(&self, request: SearchRequest) -> Result<SearchPage, ProviderError> {
+        self.0.search_mods(request).await
+    }
+
+    async fn resolve_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: slate_modpack_api_contracts::LoaderKind,
+    ) -> Result<ResolvedMod, ProviderError> {
+        self.0
+            .resolve_mod(project_id, minecraft_version, loader)
+            .await
     }
 }

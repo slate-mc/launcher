@@ -19,6 +19,7 @@ pub struct UpstreamClient {
     base_url: Url,
     client: reqwest::Client,
     artifact_client: reqwest::Client,
+    modrinth_client: reqwest::Client,
     artifact_metadata: Cache<String, Arc<ArtifactMetadata>>,
     caches: ResponseCaches,
 }
@@ -75,10 +76,28 @@ impl UpstreamClient {
             }))
             .user_agent(user_agent)
             .build()?;
+        let modrinth_client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() >= 5 {
+                    return attempt.error(std::io::Error::other("redirect limit exceeded"));
+                }
+                if attempt.url().scheme() == "https"
+                    && attempt.url().host_str() == Some("api.modrinth.com")
+                {
+                    attempt.follow()
+                } else {
+                    attempt.stop()
+                }
+            }))
+            .user_agent(user_agent)
+            .build()?;
         Ok(Self {
             base_url,
             client,
             artifact_client,
+            modrinth_client,
             artifact_metadata: Cache::builder()
                 .time_to_live(Duration::from_secs(30 * 60))
                 .max_capacity(256)
@@ -141,6 +160,41 @@ impl UpstreamClient {
         let metadata = Arc::new(self.fetch_artifact_metadata(url).await?);
         self.artifact_metadata.insert(key, metadata.clone());
         Ok(metadata)
+    }
+
+    pub async fn get_modrinth_json<T: DeserializeOwned>(
+        &self,
+        path: &[&str],
+        query: &[(&str, &str)],
+        policy: CachePolicy,
+    ) -> Result<T, UpstreamError> {
+        let mut url = Url::parse("https://api.modrinth.com/v2/")
+            .map_err(|_| UpstreamError::InvalidBaseUrl)?;
+        {
+            let mut segments = url
+                .path_segments_mut()
+                .map_err(|_| UpstreamError::InvalidBaseUrl)?;
+            segments.pop_if_empty();
+            for segment in path {
+                if segment.is_empty() {
+                    return Err(UpstreamError::InvalidPathSegment);
+                }
+                segments.push(segment);
+            }
+        }
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(query.iter().copied());
+        }
+        let key = url.as_str().to_owned();
+        if let Some(value) = self.caches.get(policy, &key) {
+            return serde_json::from_value((*value).clone())
+                .map_err(UpstreamError::InvalidResponse);
+        }
+        let value = Arc::new(fetch_json_with_client(&self.modrinth_client, url).await?);
+        let parsed =
+            serde_json::from_value((*value).clone()).map_err(UpstreamError::InvalidResponse)?;
+        self.caches.insert(policy, key, value);
+        Ok(parsed)
     }
 
     async fn fetch_json(&self, url: Url, manifest: bool) -> Result<Value, UpstreamError> {
@@ -283,6 +337,61 @@ impl UpstreamClient {
         }
         Ok(url)
     }
+}
+
+async fn fetch_json_with_client(
+    client: &reqwest::Client,
+    url: Url,
+) -> Result<Value, UpstreamError> {
+    let request_id = Uuid::new_v4();
+    for attempt in 0_u32..=2 {
+        let response = client.get(url.clone()).send().await;
+        match response {
+            Ok(response) if response.status().is_success() => {
+                if response
+                    .content_length()
+                    .is_some_and(|length| length > MAX_RESPONSE_BYTES)
+                {
+                    return Err(UpstreamError::ResponseTooLarge);
+                }
+                let bytes = response.bytes().await?;
+                if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_RESPONSE_BYTES {
+                    return Err(UpstreamError::ResponseTooLarge);
+                }
+                return serde_json::from_slice(&bytes).map_err(UpstreamError::InvalidResponse);
+            }
+            Ok(response) if response.status() == StatusCode::NOT_FOUND => {
+                return Err(UpstreamError::NotFound);
+            }
+            Ok(response)
+                if response.status() == StatusCode::TOO_MANY_REQUESTS
+                    || response.status().is_server_error() =>
+            {
+                if attempt == 2 {
+                    return Err(if response.status() == StatusCode::TOO_MANY_REQUESTS {
+                        UpstreamError::RateLimited
+                    } else {
+                        UpstreamError::Unavailable
+                    });
+                }
+                tokio::time::sleep(retry_delay(
+                    attempt,
+                    request_id,
+                    response.headers().get(reqwest::header::RETRY_AFTER),
+                ))
+                .await;
+            }
+            Ok(response) => return Err(UpstreamError::Rejected(response.status())),
+            Err(error) if error.is_timeout() || error.is_connect() => {
+                if attempt == 2 {
+                    return Err(UpstreamError::Unavailable);
+                }
+                tokio::time::sleep(retry_delay(attempt, request_id, None)).await;
+            }
+            Err(error) => return Err(UpstreamError::Request(error)),
+        }
+    }
+    Err(UpstreamError::Unavailable)
 }
 
 fn trusted_artifact_url(url: &Url) -> bool {

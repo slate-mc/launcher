@@ -4357,6 +4357,7 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "moka",
+ "percent-encoding",
  "reqwest",
  "serde",
  "serde_json",
