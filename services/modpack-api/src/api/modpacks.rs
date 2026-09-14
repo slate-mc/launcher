@@ -51,6 +51,7 @@ struct SearchQuery {
     category: Option<String>,
     sort: Option<String>,
     cursor: Option<String>,
+    page: Option<u32>,
     limit: Option<usize>,
 }
 
@@ -60,7 +61,7 @@ async fn search(
     query: Result<Query<SearchQuery>, QueryRejection>,
 ) -> Result<Response, ApiError> {
     let Query(query) = query.map_err(|_| invalid_query(&context))?;
-    let page = decode_cursor(&context, query.cursor.as_deref())?;
+    let page = resolve_page(&context, query.cursor.as_deref(), query.page)?;
     let limit = validated_limit(&context, query.limit)?;
     let loader = parse_optional_loader(&context, query.loader.as_deref())?;
     let sort = parse_sort(&context, query.sort.as_deref())?;
@@ -162,6 +163,7 @@ struct VersionsQuery {
     loader: Option<String>,
     release_type: Option<String>,
     cursor: Option<String>,
+    page: Option<u32>,
     limit: Option<usize>,
 }
 
@@ -174,7 +176,7 @@ async fn versions(
     let Path((provider, project_id)) = path.map_err(|_| invalid_path(&context))?;
     let Query(query) = query.map_err(|_| invalid_query(&context))?;
     let provider = provider_from_str(&context, &provider)?;
-    let page = decode_cursor(&context, query.cursor.as_deref())?;
+    let page = resolve_page(&context, query.cursor.as_deref(), query.page)?;
     let limit = validated_limit(&context, query.limit)?;
     let request = VersionQuery {
         minecraft_version: bounded_optional(
@@ -436,6 +438,33 @@ fn decode_cursor(context: &RequestContext, cursor: Option<&str>) -> Result<u32, 
     Ok(cursor.page)
 }
 
+fn resolve_page(
+    context: &RequestContext,
+    cursor: Option<&str>,
+    page: Option<u32>,
+) -> Result<u32, ApiError> {
+    if cursor.is_some() && page.is_some() {
+        return Err(ApiError::invalid_request(
+            context,
+            "Choose either a page number or a pagination cursor.",
+        )
+        .with_field(
+            "pagination",
+            "The page and cursor parameters cannot be used together.",
+        ));
+    }
+    if let Some(page) = page {
+        if (1..=MAX_PAGE).contains(&page) {
+            return Ok(page);
+        }
+        return Err(
+            ApiError::invalid_request(context, "The page number is invalid.")
+                .with_field("page", "Use an integer from 1 through 10000."),
+        );
+    }
+    decode_cursor(context, cursor)
+}
+
 fn encode_cursor(page: u32) -> String {
     let bytes = serde_json::to_vec(&PageCursor { page }).unwrap_or_default();
     URL_SAFE_NO_PAD.encode(bytes)
@@ -521,7 +550,7 @@ fn sort_items(items: &mut [ModpackSummary], sort: SearchSort) {
 
 #[cfg(test)]
 mod tests {
-    use super::{PageCursor, URL_SAFE_NO_PAD, decode_cursor};
+    use super::{PageCursor, URL_SAFE_NO_PAD, decode_cursor, resolve_page};
     use crate::response::RequestContext;
     use base64::Engine;
     use serde_json::json;
@@ -535,5 +564,15 @@ mod tests {
         let oversized =
             URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"page": 10001})).unwrap_or_default());
         assert!(decode_cursor(&context, Some(&oversized)).is_err());
+    }
+
+    #[test]
+    fn page_number_and_cursor_are_mutually_exclusive() {
+        let context = RequestContext::for_test();
+        let cursor =
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&PageCursor { page: 2 }).unwrap_or_default());
+        assert!(matches!(resolve_page(&context, None, Some(4)), Ok(4)));
+        assert!(resolve_page(&context, Some(&cursor), Some(4)).is_err());
+        assert!(resolve_page(&context, None, Some(0)).is_err());
     }
 }
