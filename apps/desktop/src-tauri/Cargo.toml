@@ -15,6 +15,8 @@ slate-domain = { path = "../../../crates/domain" }
 slate-installer = { path = "../../../crates/installer" }
 slate-loaders = { path = "../../../crates/loaders" }
 slate-minecraft = { path = "../../../crates/minecraft" }
+slate-modpack-api-contracts = { path = "../../../crates/modpack-api-contracts" }
+slate-modpack-client = { path = "../../../crates/modpack-client" }
 slate-platform = { path = "../../../crates/platform" }
 slate-process = { path = "../../../crates/process" }
 slate-storage = { path = "../../../crates/storage" }

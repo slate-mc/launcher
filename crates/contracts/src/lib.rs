@@ -11,6 +11,7 @@ mod events;
 mod install;
 mod instance;
 mod launch;
+mod modpack;
 mod schema;
 mod settings;
 mod system;
@@ -32,6 +33,10 @@ pub use launch::{
     GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,
     SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, StopGameSessionRequest,
     SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
+};
+pub use modpack::{
+    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackVersionRequest,
+    ModpackVersionsRequest,
 };
 pub use schema::schema_documents;
 pub use settings::{

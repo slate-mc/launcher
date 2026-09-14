@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SearchResponse",
+  "type": "object",
+  "properties": {
+    "has_more": {
+      "type": "boolean"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ModpackSummary"
+      }
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider_status": {
+      "type": "object",
+      "properties": {
+        "curseforge": {
+          "$ref": "#/$defs/ProviderStatus"
+        },
+        "ftb": {
+          "$ref": "#/$defs/ProviderStatus"
+        },
+        "modrinth": {
+          "$ref": "#/$defs/ProviderStatus"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "items",
+    "has_more",
+    "provider_status"
+  ],
+  "$defs": {
+    "Author": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "LoaderKind": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "forge",
+        "neoforge",
+        "fabric",
+        "quilt"
+      ]
+    },
+    "ModpackSummary": {
+      "type": "object",
+      "properties": {
+        "authors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Author"
+          }
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "downloads": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "icon_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "loaders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LoaderKind"
+          }
+        },
+        "minecraft_versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "id",
+        "slug",
+        "name",
+        "summary",
+        "authors",
+        "downloads",
+        "updated_at",
+        "minecraft_versions",
+        "loaders",
+        "categories"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    },
+    "ProviderStatus": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "unavailable"
+      ]
+    }
+  }
+}

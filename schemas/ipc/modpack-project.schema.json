@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Modpack",
+  "type": "object",
+  "properties": {
+    "authors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Author"
+      }
+    },
+    "banner_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "categories": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "description": {
+      "type": "string"
+    },
+    "downloads": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "icon_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "latest_version": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VersionReference"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "links": {
+      "$ref": "#/$defs/ModpackLinks"
+    },
+    "loaders": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LoaderKind"
+      }
+    },
+    "minecraft_versions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "name": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "provider",
+    "id",
+    "slug",
+    "name",
+    "summary",
+    "description",
+    "authors",
+    "downloads",
+    "categories",
+    "minecraft_versions",
+    "loaders",
+    "links",
+    "updated_at"
+  ],
+  "$defs": {
+    "Author": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "LoaderKind": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "forge",
+        "neoforge",
+        "fabric",
+        "quilt"
+      ]
+    },
+    "ModpackLinks": {
+      "type": "object",
+      "properties": {
+        "issues": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "website": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    },
+    "VersionReference": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    }
+  }
+}

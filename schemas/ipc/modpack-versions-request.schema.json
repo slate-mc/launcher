@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModpackVersionsRequest",
+  "type": "object",
+  "properties": {
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "limit": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint",
+      "minimum": 0
+    },
+    "loader": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LoaderKind"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "minecraftVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "page": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "releaseType": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReleaseType"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "provider",
+    "projectId"
+  ],
+  "$defs": {
+    "LoaderKind": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "forge",
+        "neoforge",
+        "fabric",
+        "quilt"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    },
+    "ReleaseType": {
+      "type": "string",
+      "enum": [
+        "release",
+        "beta",
+        "alpha",
+        "unknown"
+      ]
+    }
+  }
+}

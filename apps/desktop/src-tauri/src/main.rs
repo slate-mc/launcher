@@ -11,11 +11,12 @@ use slate_contracts::{
     InstallJobSummary, InstanceModeDto, InstanceSummary, JavaRuntimeSummary, LaunchInstanceRequest,
     LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
     MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
-    MinecraftVersionOption, PreflightSummary, ReduceMotionPreferenceDto, RenameInstanceRequest,
-    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest,
-    SetFavoriteRequest, StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto,
-    TrashInstanceRequest, UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest,
-    UpdateInstanceConfigurationRequest,
+    MinecraftVersionOption, ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto,
+    ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto,
+    RenameInstanceRequest, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
+    SetDefaultAccountRequest, SetFavoriteRequest, StopGameSessionRequest,
+    SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
+    UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, ManagementMode, RequestId, RevisionId,
@@ -31,6 +32,10 @@ use slate_minecraft::{
     LaunchPlanner, LaunchRequest, MojangMetadataClient, OperatingSystem, ResolvedVersion,
     RuleContext,
 };
+use slate_modpack_api_contracts::{
+    Modpack, ModpackVersion, ProvidersResponse, SearchResponse, VersionPage,
+};
+use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
 use slate_platform::{AppPaths, detect_java_runtime, probe_java_executable};
 use slate_process::{
     ActiveProcess, LogChunk, LogChunkKind, ProcessState, ProcessSupervisor, SessionLogTail,
@@ -58,6 +63,7 @@ struct DesktopState {
     credential_vault: CredentialVault,
     auth_flows: AuthCoordinator,
     log_streams: SessionLogCoordinator,
+    modpacks: ModpackApiClient,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -251,6 +257,7 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         CapabilitySummary::available("minecraft.install"),
         CapabilitySummary::available("minecraft.launch"),
         CapabilitySummary::available("minecraft.session_logs"),
+        CapabilitySummary::available("content.modpacks"),
         if credential_vault_ready {
             CapabilitySummary::available("minecraft.account")
         } else {
@@ -260,6 +267,87 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
             )
         },
     ])
+}
+
+#[tauri::command]
+async fn modpack_providers(
+    state: tauri::State<'_, DesktopState>,
+) -> Result<ProvidersResponse, AppError> {
+    state.modpacks.providers().await.map_err(modpack_api_error)
+}
+
+#[tauri::command]
+async fn modpacks_search(
+    state: tauri::State<'_, DesktopState>,
+    request: ModpackSearchRequest,
+) -> Result<SearchResponse, AppError> {
+    state
+        .modpacks
+        .search(&SearchOptions {
+            query: request.query,
+            provider: request.provider,
+            minecraft_version: request.minecraft_version,
+            loader: request.loader,
+            category: request.category,
+            sort: match request.sort {
+                ModpackSortDto::Relevance => SearchSort::Relevance,
+                ModpackSortDto::Downloads => SearchSort::Downloads,
+                ModpackSortDto::Updated => SearchSort::Updated,
+                ModpackSortDto::Newest => SearchSort::Newest,
+            },
+            cursor: request.cursor,
+            page: request.page,
+            limit: request.limit.unwrap_or(20),
+        })
+        .await
+        .map_err(modpack_api_error)
+}
+
+#[tauri::command]
+async fn modpack_get(
+    state: tauri::State<'_, DesktopState>,
+    request: ModpackProjectRequest,
+) -> Result<Modpack, AppError> {
+    state
+        .modpacks
+        .project(request.provider, &request.project_id)
+        .await
+        .map_err(modpack_api_error)
+}
+
+#[tauri::command]
+async fn modpack_versions_list(
+    state: tauri::State<'_, DesktopState>,
+    request: ModpackVersionsRequest,
+) -> Result<VersionPage, AppError> {
+    state
+        .modpacks
+        .versions(
+            request.provider,
+            &request.project_id,
+            &VersionOptions {
+                minecraft_version: request.minecraft_version,
+                loader: request.loader,
+                release_type: request.release_type,
+                cursor: request.cursor,
+                page: request.page,
+                limit: request.limit.unwrap_or(20),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)
+}
+
+#[tauri::command]
+async fn modpack_version_get(
+    state: tauri::State<'_, DesktopState>,
+    request: ModpackVersionRequest,
+) -> Result<ModpackVersion, AppError> {
+    state
+        .modpacks
+        .version(request.provider, &request.project_id, &request.version_id)
+        .await
+        .map_err(modpack_api_error)
 }
 
 #[tauri::command]
@@ -1692,6 +1780,10 @@ fn process_state_error(_: slate_process::ProcessError) -> AppError {
     .retryable(true)
 }
 
+fn modpack_api_error(error: slate_modpack_client::ClientError) -> AppError {
+    AppError::new("modpack.service_unavailable", error.user_message()).retryable(true)
+}
+
 fn process_start_error(error: slate_process::ProcessError) -> AppError {
     if matches!(error, slate_process::ProcessError::InstanceAlreadyRunning) {
         AppError::new(
@@ -1930,6 +2022,7 @@ fn main() {
                 SLATE_MICROSOFT_CLIENT_ID,
                 MICROSOFT_CONSUMER_TENANT,
             )?)?;
+            let modpacks = ModpackApiClient::for_current_build()?;
             app.manage(DesktopState {
                 database,
                 paths,
@@ -1939,6 +2032,7 @@ fn main() {
                 credential_vault: CredentialVault,
                 auth_flows: AuthCoordinator::default(),
                 log_streams: SessionLogCoordinator::default(),
+                modpacks,
             });
             Ok(())
         })
@@ -1970,6 +2064,11 @@ fn main() {
             preferences_get,
             preferences_update,
             preflight_get,
+            modpack_providers,
+            modpacks_search,
+            modpack_get,
+            modpack_versions_list,
+            modpack_version_get,
         ])
         .run(tauri::generate_context!());
 

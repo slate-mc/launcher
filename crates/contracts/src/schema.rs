@@ -2,7 +2,8 @@ use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
     CreateInstanceRequest, EventEnvelope, GameSessionSummary, InstallInstanceRequest,
     InstallJobSummary, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
-    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, PreflightSummary,
+    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary,
     RedactedLaunchPlan, SessionLogEvent, SessionLogSubscription, StopGameSessionRequest,
     SubscribeSessionLogRequest, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
 };
@@ -64,6 +65,35 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(SessionLogSubscription),
         ),
         ("session-log-event", schema_for!(SessionLogEvent)),
+        ("modpack-search-request", schema_for!(ModpackSearchRequest)),
+        (
+            "modpack-search-response",
+            schema_for!(slate_modpack_api_contracts::SearchResponse),
+        ),
+        (
+            "modpack-project-request",
+            schema_for!(ModpackProjectRequest),
+        ),
+        (
+            "modpack-project",
+            schema_for!(slate_modpack_api_contracts::Modpack),
+        ),
+        (
+            "modpack-versions-request",
+            schema_for!(ModpackVersionsRequest),
+        ),
+        (
+            "modpack-version-page",
+            schema_for!(slate_modpack_api_contracts::VersionPage),
+        ),
+        (
+            "modpack-version-request",
+            schema_for!(ModpackVersionRequest),
+        ),
+        (
+            "modpack-version",
+            schema_for!(slate_modpack_api_contracts::ModpackVersion),
+        ),
         (
             "minecraft-account-summary",
             schema_for!(MinecraftAccountSummary),
@@ -96,7 +126,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 25);
+        assert_eq!(schemas.len(), 33);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

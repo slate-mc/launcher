@@ -4248,6 +4248,7 @@ dependencies = [
  "serde",
  "serde_json",
  "slate-domain",
+ "slate-modpack-api-contracts",
  "uuid",
 ]
 
@@ -4262,6 +4263,8 @@ dependencies = [
  "slate-installer",
  "slate-loaders",
  "slate-minecraft",
+ "slate-modpack-api-contracts",
+ "slate-modpack-client",
  "slate-platform",
  "slate-process",
  "slate-storage",
@@ -4378,6 +4381,18 @@ dependencies = [
  "serde",
  "thiserror 2.0.20",
  "uuid",
+]
+
+[[package]]
+name = "slate-modpack-client"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "slate-modpack-api-contracts",
+ "thiserror 2.0.20",
+ "url",
 ]
 
 [[package]]

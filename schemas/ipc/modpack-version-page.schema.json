@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VersionPage",
+  "type": "object",
+  "properties": {
+    "has_more": {
+      "type": "boolean"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ModpackVersionSummary"
+      }
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "items",
+    "has_more"
+  ],
+  "$defs": {
+    "Loader": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/LoaderKind"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "LoaderKind": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "forge",
+        "neoforge",
+        "fabric",
+        "quilt"
+      ]
+    },
+    "ModpackVersionSummary": {
+      "type": "object",
+      "properties": {
+        "changelog": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "loader": {
+          "$ref": "#/$defs/Loader"
+        },
+        "minecraft_version": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "published_at": {
+          "type": "string"
+        },
+        "release_type": {
+          "$ref": "#/$defs/ReleaseType"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "release_type",
+        "minecraft_version",
+        "loader",
+        "published_at"
+      ]
+    },
+    "ReleaseType": {
+      "type": "string",
+      "enum": [
+        "release",
+        "beta",
+        "alpha",
+        "unknown"
+      ]
+    }
+  }
+}

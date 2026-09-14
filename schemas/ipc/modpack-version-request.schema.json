@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModpackVersionRequest",
+  "type": "object",
+  "properties": {
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "versionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "provider",
+    "projectId",
+    "versionId"
+  ],
+  "$defs": {
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}
