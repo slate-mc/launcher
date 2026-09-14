@@ -23,7 +23,7 @@
       "minimum": 0
     },
     "state": {
-      "type": "string"
+      "$ref": "#/$defs/GameSessionStateDto"
     }
   },
   "required": [
@@ -33,5 +33,14 @@
     "mode",
     "pid",
     "logName"
-  ]
+  ],
+  "$defs": {
+    "GameSessionStateDto": {
+      "type": "string",
+      "enum": [
+        "running",
+        "stopping"
+      ]
+    }
+  }
 }

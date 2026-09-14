@@ -16,14 +16,21 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { EmptyState, InlineNotice, PageHeader } from "../../components/PageScaffold";
+import {
+  EmptyState,
+  InlineNotice,
+  PageHeader,
+} from "../../components/PageScaffold";
+import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import { MinecraftHead } from "../../components/MinecraftHead";
 import {
   bridgeMode,
   cancelMinecraftAuth,
   getMinecraftAuthStatus,
   listAccounts,
+  listGameSessions,
   listInstallJobs,
+  listInstances,
   previewServers,
   refreshMinecraftAccount,
   removeMinecraftAccount,
@@ -48,7 +55,17 @@ export function ActivityPage() {
     queryFn: listInstallJobs,
     refetchInterval: 1_000,
   });
+  const sessionsQuery = useQuery({
+    queryKey: ["game-sessions"],
+    queryFn: listGameSessions,
+    refetchInterval: 750,
+  });
+  const instancesQuery = useQuery({
+    queryKey: ["instances"],
+    queryFn: listInstances,
+  });
   const jobs = jobsQuery.data ?? [];
+  const sessions = sessionsQuery.data ?? [];
 
   return (
     <div className="min-h-full bg-app-bg">
@@ -57,58 +74,109 @@ export function ActivityPage() {
         title="Jobs and sessions"
         description="Downloads and instance preparation remain visible across navigation and restarts."
       />
-      {jobsQuery.isError ? (
+      {jobsQuery.isError || sessionsQuery.isError ? (
         <EmptyState
           error
           title="Activity is unavailable"
           description="slate could not read the durable installation queue. Your files were not changed."
         />
-      ) : jobs.length === 0 ? (
+      ) : jobs.length === 0 && sessions.length === 0 ? (
         <EmptyState
-          title="No installation activity"
-          description="Install an instance to see its durable preparation job here."
+          title="No active games or installation activity"
+          description="Launch or install an instance to see its lifecycle here."
         />
       ) : (
-        <div className="mx-auto max-w-[940px] px-8 py-7">
-          <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
-            <div className="grid grid-cols-[minmax(0,1fr)_130px_150px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
-              <span>Installation</span>
-              <span>State</span>
-              <span>Updated</span>
-            </div>
-            <div className="divide-y divide-app-separator/55">
-              {jobs.map((job) => (
-                <div
-                  key={job.id}
-                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_130px_150px] items-center gap-4 px-5 py-3"
-                >
-                  <span className="min-w-0">
-                    <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
-                      {job.message}
-                    </strong>
-                    <small className="mt-1 block font-mono text-[10px] text-app-muted">
-                      {job.phase} · {job.id.slice(0, 8)}
-                    </small>
-                  </span>
-                  <span className="inline-flex items-center gap-2 text-xs text-app-secondary">
-                    <span
-                      className={`size-2 rounded-full ${
-                        job.state === "succeeded"
-                          ? "bg-app-accent"
-                          : job.state === "failed"
-                            ? "bg-app-danger"
-                            : "bg-app-warning"
-                      }`}
-                    />
-                    {job.state[0].toUpperCase() + job.state.slice(1)}
-                  </span>
-                  <time className="text-[11px] text-app-secondary">
-                    {new Date(job.updatedAt).toLocaleString()}
-                  </time>
-                </div>
-              ))}
-            </div>
-          </section>
+        <div className="mx-auto grid max-w-[940px] gap-6 px-8 py-7">
+          {sessions.length > 0 ? (
+            <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
+              <div className="flex items-center justify-between border-b border-app-separator/55 px-5 py-3">
+                <span className="text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+                  Active Minecraft sessions
+                </span>
+                <span className="font-mono text-[10px] text-app-muted">
+                  {sessions.length} active
+                </span>
+              </div>
+              <div className="divide-y divide-app-separator/55">
+                {sessions.map((session) => {
+                  const instance = instancesQuery.data?.find(
+                    (candidate) => candidate.id === session.instanceId,
+                  );
+                  return (
+                    <div
+                      key={session.id}
+                      className="grid min-h-16 grid-cols-[minmax(0,1fr)_130px_150px] items-center gap-4 px-5 py-3"
+                    >
+                      <span className="min-w-0">
+                        <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
+                          {instance?.name ??
+                            `Instance ${session.instanceId.slice(0, 8)}`}
+                        </strong>
+                        <small className="mt-1 block font-mono text-[10px] text-app-muted">
+                          PID {session.pid} · {session.logName}
+                        </small>
+                      </span>
+                      <span className="inline-flex items-center gap-2 text-xs text-app-secondary">
+                        <span className="size-2 rounded-full bg-app-warning" />
+                        {session.state === "stopping" ? "Stopping" : "Running"}
+                      </span>
+                      <Link
+                        to="/instances/$instanceId/overview"
+                        params={{ instanceId: session.instanceId }}
+                        className="text-[11px] font-bold text-app-accent no-underline hover:underline"
+                      >
+                        Open instance
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+          {jobs.length > 0 ? (
+            <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
+              <div className="grid grid-cols-[minmax(0,1fr)_130px_150px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+                <span>Installation</span>
+                <span>State</span>
+                <span>Updated</span>
+              </div>
+              <div className="divide-y divide-app-separator/55">
+                {jobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className="grid min-h-16 grid-cols-[minmax(0,1fr)_130px_150px] items-center gap-4 px-5 py-3"
+                  >
+                    <span className="min-w-0">
+                      <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
+                        {job.message}
+                      </strong>
+                      <small className="mt-1 block font-mono text-[10px] text-app-muted">
+                        {job.phase} · {job.id.slice(0, 8)}
+                      </small>
+                      {job.state === "running" || job.state === "queued" ? (
+                        <InstallProgressIndicator job={job} className="mt-2" />
+                      ) : null}
+                    </span>
+                    <span className="inline-flex items-center gap-2 text-xs text-app-secondary">
+                      <span
+                        className={`size-2 rounded-full ${
+                          job.state === "succeeded"
+                            ? "bg-app-accent"
+                            : job.state === "failed"
+                              ? "bg-app-danger"
+                              : "bg-app-warning"
+                        }`}
+                      />
+                      {job.state[0].toUpperCase() + job.state.slice(1)}
+                    </span>
+                    <time className="text-[11px] text-app-secondary">
+                      {new Date(job.updatedAt).toLocaleString()}
+                    </time>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       )}
     </div>
@@ -130,7 +198,9 @@ export function AccountsPage() {
     enabled: Boolean(flowId),
     refetchInterval: (query) => {
       const state = query.state.data?.state;
-      return state === "succeeded" || state === "failed" || state === "cancelled"
+      return state === "succeeded" ||
+        state === "failed" ||
+        state === "cancelled"
         ? false
         : 800;
     },
@@ -177,7 +247,10 @@ export function AccountsPage() {
 
   useEffect(() => {
     const missingSkin = accountsQuery.data?.find(
-      (account) => account.status === "ready" && !account.skinUrl && !repairedSkinIds.current.has(account.id),
+      (account) =>
+        account.status === "ready" &&
+        !account.skinUrl &&
+        !repairedSkinIds.current.has(account.id),
     );
     if (missingSkin && !refreshMutation.isPending) {
       repairedSkinIds.current.add(missingSkin.id);
@@ -200,11 +273,17 @@ export function AccountsPage() {
           <button
             type="button"
             className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent hover:brightness-105 disabled:opacity-50"
-            disabled={bridgeMode !== "native" || authActive || startMutation.isPending}
+            disabled={
+              bridgeMode !== "native" || authActive || startMutation.isPending
+            }
             onClick={() => startMutation.mutate()}
           >
             {startMutation.isPending ? (
-              <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
+              <LoaderCircle
+                className="animate-spin"
+                size={16}
+                aria-hidden="true"
+              />
             ) : (
               <Plus size={16} aria-hidden="true" />
             )}
@@ -245,12 +324,14 @@ export function AccountsPage() {
 
         {statusQuery.data?.state === "succeeded" ? (
           <InlineNotice tone="positive" title="Minecraft account connected">
-            {statusQuery.data.account?.displayName ?? "Your account"} is ready to launch.
+            {statusQuery.data.account?.displayName ?? "Your account"} is ready
+            to launch.
           </InlineNotice>
         ) : null}
         {statusQuery.data?.state === "failed" ? (
           <InlineNotice tone="danger" title="Sign-in did not complete">
-            {statusQuery.data.userMessage ?? "Start a new Microsoft sign-in and try again."}
+            {statusQuery.data.userMessage ??
+              "Start a new Microsoft sign-in and try again."}
           </InlineNotice>
         ) : null}
         {startMutation.isError ? (
@@ -267,7 +348,8 @@ export function AccountsPage() {
             <div>
               <h2 className="m-0 text-[15px] font-bold">Connected accounts</h2>
               <p className="mt-1 mb-0 text-[11px] text-app-secondary">
-                The default account is used unless an instance selects another one.
+                The default account is used unless an instance selects another
+                one.
               </p>
             </div>
             <span className="font-mono text-[10px] text-app-muted">
@@ -276,15 +358,22 @@ export function AccountsPage() {
           </div>
 
           {accountsQuery.isPending ? (
-            <div className="grid gap-px bg-app-separator/45" aria-label="Loading accounts">
+            <div
+              className="grid gap-px bg-app-separator/45"
+              aria-label="Loading accounts"
+            >
               {[0, 1].map((index) => (
-                <div key={index} className="h-[76px] animate-pulse bg-app-surface" />
+                <div
+                  key={index}
+                  className="h-[76px] animate-pulse bg-app-surface"
+                />
               ))}
             </div>
           ) : accountsQuery.isError ? (
             <div className="p-5">
               <InlineNotice tone="danger" title="Accounts unavailable">
-                Your credentials were not changed. Reload this page to retry local storage.
+                Your credentials were not changed. Reload this page to retry
+                local storage.
               </InlineNotice>
             </div>
           ) : accounts.length === 0 ? (
@@ -292,10 +381,12 @@ export function AccountsPage() {
               <span className="mx-auto inline-flex size-11 items-center justify-center rounded-control bg-app-raised text-app-accent">
                 <UserRound size={21} aria-hidden="true" />
               </span>
-              <h2 className="mt-4 mb-1 text-base font-bold">Connect Minecraft to play</h2>
+              <h2 className="mt-4 mb-1 text-base font-bold">
+                Connect Minecraft to play
+              </h2>
               <p className="mx-auto mt-0 mb-0 max-w-[480px] text-xs/[19px] text-app-secondary">
-                Sign in through Microsoft, then slate verifies Java Edition ownership and saves the
-                refresh credential in your system vault.
+                Sign in through Microsoft, then slate verifies Java Edition
+                ownership and saves the refresh credential in your system vault.
               </p>
             </div>
           ) : (
@@ -320,7 +411,9 @@ export function AccountsPage() {
                         ) : null}
                       </span>
                       <small className="mt-0.5 block font-mono text-[10px] text-app-muted">
-                        {account.status === "ready" ? "Minecraft ready" : "Sign-in required"}
+                        {account.status === "ready"
+                          ? "Minecraft ready"
+                          : "Sign-in required"}
                       </small>
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -385,7 +478,8 @@ export function AccountsPage() {
 
         <p className="mt-4 flex items-center gap-2 text-[11px] text-app-muted">
           <ExternalLink size={14} aria-hidden="true" />
-          Microsoft credentials never enter the webview or slate’s SQLite database.
+          Microsoft credentials never enter the webview or slate’s SQLite
+          database.
         </p>
       </div>
     </div>
@@ -414,8 +508,8 @@ export function ServersPage() {
       {bridgeMode === "preview" ? (
         <div className="px-8 py-7">
           <InlineNotice title="Fixture-only server rows">
-            These entries demonstrate layout in browser preview. They are never returned by the
-            native adapter.
+            These entries demonstrate layout in browser preview. They are never
+            returned by the native adapter.
           </InlineNotice>
           <div className="mt-5 overflow-hidden rounded-control border border-app-separator/70">
             {previewServers.map((server) => (
@@ -427,7 +521,9 @@ export function ServersPage() {
                   <Server size={18} aria-hidden="true" />
                 </span>
                 <span className="min-w-0">
-                  <strong className="block text-xs font-bold">{server.name}</strong>
+                  <strong className="block text-xs font-bold">
+                    {server.name}
+                  </strong>
                   <small className="font-mono text-[10px] text-app-muted">
                     {server.address}
                   </small>

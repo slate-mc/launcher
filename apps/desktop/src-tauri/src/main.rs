@@ -7,21 +7,21 @@ use slate_auth::{
 use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, AuthCancelRequest, AuthFlowStateDto,
     AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary, CreateInstanceRequest,
-    GameSessionSummary, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
-    InstanceModeDto, InstanceSummary, JavaRuntimeSummary, LaunchInstanceRequest, LoaderKindDto,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
+    GameSessionStateDto, GameSessionSummary, InstallInstanceRequest, InstallJobStateDto,
+    InstallJobSummary, InstanceModeDto, InstanceSummary, JavaRuntimeSummary, LaunchInstanceRequest,
+    LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
     MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
     MinecraftVersionOption, PreflightSummary, ReduceMotionPreferenceDto, RenameInstanceRequest,
-    SetDefaultAccountRequest, SetFavoriteRequest, ThemePreferenceDto, TrashInstanceRequest,
-    UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
+    SetDefaultAccountRequest, SetFavoriteRequest, StopGameSessionRequest, ThemePreferenceDto,
+    TrashInstanceRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, ManagementMode, RequestId, RevisionId,
     SessionId, StorageRootId,
 };
 use slate_installer::{
-    InstallRequest as NativeInstallRequest, install, load_installed_revision,
-    verify_installed_launch_artifacts,
+    InstallProgress, InstallRequest as NativeInstallRequest, install_with_progress,
+    load_installed_revision, verify_installed_launch_artifacts,
 };
 use slate_loaders::{FabricAdapter, NeoForgeAdapter};
 use slate_minecraft::{
@@ -30,13 +30,14 @@ use slate_minecraft::{
     RuleContext,
 };
 use slate_platform::{AppPaths, detect_java_runtime, probe_java_executable};
-use slate_process::ProcessSupervisor;
+use slate_process::{ActiveProcess, ProcessState, ProcessSupervisor};
 use slate_storage::{
     AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, Database, InstallJobRecord,
     InstalledRuntime, JobState, NewInstance, ReduceMotionPreference, StorageError, ThemePreference,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 use time::OffsetDateTime;
@@ -671,9 +672,22 @@ async fn instance_trash(
     state: tauri::State<'_, DesktopState>,
     request: TrashInstanceRequest,
 ) -> Result<(), AppError> {
+    refresh_exited_sessions(state.inner()).await;
+    let instance_id = InstanceId::from_uuid(request.id);
+    if state
+        .processes
+        .active_for_instance(instance_id)
+        .map_err(process_state_error)?
+        .is_some()
+    {
+        return Err(AppError::new(
+            "local.instance_running",
+            "Stop Minecraft before moving this instance to trash.",
+        ));
+    }
     state
         .database
-        .trash_instance(InstanceId::from_uuid(request.id), request.expected_revision)
+        .trash_instance(instance_id, request.expected_revision)
         .await
         .map_err(|error| map_storage_error(error, "slate could not move the instance to trash."))
 }
@@ -683,12 +697,24 @@ async fn instance_install(
     state: tauri::State<'_, DesktopState>,
     request: InstallInstanceRequest,
 ) -> Result<InstallJobSummary, AppError> {
+    refresh_exited_sessions(state.inner()).await;
     let instance_id = InstanceId::from_uuid(request.id);
     let instance = state
         .database
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    if state
+        .processes
+        .active_for_instance(instance_id)
+        .map_err(process_state_error)?
+        .is_some()
+    {
+        return Err(AppError::new(
+            "local.instance_running",
+            "Minecraft is already running for this instance.",
+        ));
+    }
     if instance.setup_state == slate_domain::InstanceSetupState::Preparing {
         return Err(AppError::new(
             "local.install_already_running",
@@ -708,20 +734,57 @@ async fn instance_install(
     let response = install_job_summary(pending.job.clone());
     let task_state = state.inner().clone();
     tauri::async_runtime::spawn(async move {
-        let _ = task_state
-            .database
-            .mark_install_running(pending.job.id, "metadata", "Resolving official metadata")
-            .await;
-        let result = install(NativeInstallRequest {
-            instance_id,
-            revision_id: pending.revision_id,
-            minecraft_version: instance.minecraft_version,
-            loader_kind: instance.loader_kind,
-            loader_version: instance.loader_version,
-            download_concurrency: preferences.download_concurrency,
-            paths: task_state.paths.clone(),
-        })
+        let (progress_tx, mut progress_rx) =
+            tokio::sync::mpsc::unbounded_channel::<InstallProgress>();
+        let progress_gate = Arc::new(Mutex::new((None, Instant::now() - Duration::from_secs(1))));
+        let progress_database = task_state.database.clone();
+        let progress_job_id = pending.job.id;
+        let progress_task = tauri::async_runtime::spawn(async move {
+            while let Some(progress) = progress_rx.recv().await {
+                let _ = progress_database
+                    .update_install_progress(
+                        progress_job_id,
+                        progress.phase.as_str(),
+                        &progress.message,
+                        progress.completed_items,
+                        progress.total_items,
+                    )
+                    .await;
+            }
+        });
+        let result = install_with_progress(
+            NativeInstallRequest {
+                instance_id,
+                revision_id: pending.revision_id,
+                minecraft_version: instance.minecraft_version,
+                loader_kind: instance.loader_kind,
+                loader_version: instance.loader_version,
+                download_concurrency: preferences.download_concurrency,
+                paths: task_state.paths.clone(),
+            },
+            move |progress| {
+                let now = Instant::now();
+                let finished_stage = progress.completed_items == progress.total_items
+                    && progress.total_items.is_some();
+                let should_send = progress_gate.lock().is_ok_and(|mut gate| {
+                    let phase_changed = gate.0 != Some(progress.phase);
+                    if phase_changed
+                        || finished_stage
+                        || now.duration_since(gate.1) >= Duration::from_millis(125)
+                    {
+                        *gate = (Some(progress.phase), now);
+                        true
+                    } else {
+                        false
+                    }
+                });
+                if should_send {
+                    let _ = progress_tx.send(progress);
+                }
+            },
+        )
         .await;
+        let _ = progress_task.await;
         match result {
             Ok(outcome) => {
                 let runtime = InstalledRuntime {
@@ -782,6 +845,17 @@ async fn instance_launch(
 ) -> Result<GameSessionSummary, AppError> {
     refresh_exited_sessions(state.inner()).await;
     let instance_id = InstanceId::from_uuid(request.id);
+    if state
+        .processes
+        .active_for_instance(instance_id)
+        .map_err(process_state_error)?
+        .is_some()
+    {
+        return Err(AppError::new(
+            "local.instance_running",
+            "Minecraft is already running for this instance.",
+        ));
+    }
     let instance = state
         .database
         .get_instance(instance_id)
@@ -941,10 +1015,16 @@ async fn instance_launch(
         .instance(instance_id)
         .join("logs")
         .join(format!("{session_id}.log"));
-    let started = state
+    let started = match state
         .processes
         .start(instance_id, session_id, &preparation.plan, log_path)
-        .map_err(|error| AppError::new("local.launch_failed", error.to_string()))?;
+    {
+        Ok(started) => started,
+        Err(error) => {
+            let _ = state.database.fail_session_start(session_id).await;
+            return Err(process_start_error(error));
+        }
+    };
     if let Err(error) = state
         .database
         .mark_session_running(session_id, started.pid)
@@ -953,6 +1033,7 @@ async fn instance_launch(
         let _ = state
             .processes
             .terminate_after_tracking_failure(instance_id);
+        let _ = state.database.fail_session_start(session_id).await;
         return Err(map_storage_error(
             error,
             "The game was stopped because slate could not track its session.",
@@ -961,7 +1042,7 @@ async fn instance_launch(
     Ok(GameSessionSummary {
         id: session_id.as_uuid(),
         instance_id: instance_id.as_uuid(),
-        state: "running".to_owned(),
+        state: GameSessionStateDto::Running,
         mode: "authenticated".to_owned(),
         pid: started.pid,
         log_name: started.log_path.file_name().map_or_else(
@@ -969,6 +1050,31 @@ async fn instance_launch(
             |name| name.to_string_lossy().into_owned(),
         ),
     })
+}
+
+#[tauri::command]
+async fn sessions_list(
+    state: tauri::State<'_, DesktopState>,
+) -> Result<Vec<GameSessionSummary>, AppError> {
+    refresh_exited_sessions(state.inner()).await;
+    state
+        .processes
+        .active()
+        .map(|processes| processes.into_iter().map(game_session_summary).collect())
+        .map_err(process_state_error)
+}
+
+#[tauri::command]
+async fn session_force_stop(
+    state: tauri::State<'_, DesktopState>,
+    request: StopGameSessionRequest,
+) -> Result<GameSessionSummary, AppError> {
+    refresh_exited_sessions(state.inner()).await;
+    state
+        .processes
+        .force_stop(SessionId::from_uuid(request.id))
+        .map(game_session_summary)
+        .map_err(process_stop_error)
 }
 
 #[tauri::command]
@@ -1450,8 +1556,64 @@ fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
         },
         phase: record.phase,
         message,
+        completed_items: record.completed_items,
+        total_items: record.total_items,
         created_at: record.created_at,
         updated_at: record.updated_at,
+    }
+}
+
+fn game_session_summary(process: ActiveProcess) -> GameSessionSummary {
+    GameSessionSummary {
+        id: process.session_id.as_uuid(),
+        instance_id: process.instance_id.as_uuid(),
+        state: match process.state {
+            ProcessState::Running => GameSessionStateDto::Running,
+            ProcessState::Stopping => GameSessionStateDto::Stopping,
+        },
+        mode: "authenticated".to_owned(),
+        pid: process.pid,
+        log_name: process.log_path.file_name().map_or_else(
+            || "session.log".to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        ),
+    }
+}
+
+fn process_state_error(_: slate_process::ProcessError) -> AppError {
+    AppError::new(
+        "local.process_state_unavailable",
+        "slate could not read the current Minecraft process state.",
+    )
+    .retryable(true)
+}
+
+fn process_start_error(error: slate_process::ProcessError) -> AppError {
+    if matches!(error, slate_process::ProcessError::InstanceAlreadyRunning) {
+        AppError::new(
+            "local.instance_running",
+            "Minecraft is already running for this instance.",
+        )
+    } else {
+        AppError::new(
+            "local.launch_failed",
+            "slate could not start the Minecraft process. Check the instance log and try again.",
+        )
+    }
+}
+
+fn process_stop_error(error: slate_process::ProcessError) -> AppError {
+    if matches!(error, slate_process::ProcessError::SessionNotFound) {
+        AppError::new(
+            "local.session_not_running",
+            "That Minecraft session has already stopped.",
+        )
+    } else {
+        AppError::new(
+            "local.stop_failed",
+            "slate could not force-close the Minecraft process.",
+        )
+        .retryable(true)
     }
 }
 
@@ -1529,7 +1691,7 @@ async fn refresh_exited_sessions(state: &DesktopState) {
     for process in exited {
         let _ = state
             .database
-            .finish_session(process.session_id, process.exit_code)
+            .finish_session(process.session_id, process.exit_code, process.force_stopped)
             .await;
     }
 }
@@ -1542,6 +1704,7 @@ fn main() {
             paths.ensure_base_directories()?;
             let database =
                 tauri::async_runtime::block_on(Database::connect(&paths.state_database()))?;
+            tauri::async_runtime::block_on(database.recover_interrupted_installs())?;
             let canonical_storage = std::fs::canonicalize(paths.storage_root())?;
             let canonical_storage = canonical_storage.to_string_lossy().into_owned();
             let storage_root_id = tauri::async_runtime::block_on(
@@ -1583,6 +1746,8 @@ fn main() {
             instance_install,
             install_jobs_list,
             instance_launch,
+            sessions_list,
+            session_force_stop,
             preferences_get,
             preferences_update,
             preflight_get,

@@ -28,7 +28,10 @@ pub use instance::{
     ManagementModeDto, RenameInstanceRequest, SetFavoriteRequest, TrashInstanceRequest,
     UpdateInstanceConfigurationRequest,
 };
-pub use launch::{GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan};
+pub use launch::{
+    GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,
+    StopGameSessionRequest,
+};
 pub use schema::schema_documents;
 pub use settings::{
     AppPreferencesDto, ReduceMotionPreferenceDto, ThemePreferenceDto, UpdateAppPreferencesRequest,

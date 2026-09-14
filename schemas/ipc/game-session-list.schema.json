@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Array_of_GameSessionSummary",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/GameSessionSummary"
+  },
+  "$defs": {
+    "GameSessionStateDto": {
+      "type": "string",
+      "enum": [
+        "running",
+        "stopping"
+      ]
+    },
+    "GameSessionSummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "instanceId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "logName": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "state": {
+          "$ref": "#/$defs/GameSessionStateDto"
+        }
+      },
+      "required": [
+        "id",
+        "instanceId",
+        "state",
+        "mode",
+        "pid",
+        "logName"
+      ]
+    }
+  }
+}

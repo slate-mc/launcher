@@ -39,9 +39,7 @@ export const instanceSummarySchema = z.object({
   description: z.string().optional(),
   lastPlayed: z.string().optional(),
   modCount: z.number().int().nonnegative().optional(),
-  artworkTone: z
-    .enum(["meadow", "workshop", "vanilla", "nether"])
-    .optional(),
+  artworkTone: z.enum(["meadow", "workshop", "vanilla", "nether"]).optional(),
 });
 
 export const instanceSummaryListSchema = z.array(instanceSummarySchema);
@@ -78,10 +76,7 @@ export const createInstanceSchema = z
         message: "Modded instances require Fabric or NeoForge.",
       });
     }
-    if (
-      value.loaderKind !== "vanilla" &&
-      !(value.loaderVersion?.trim().length)
-    ) {
+    if (value.loaderKind !== "vanilla" && !value.loaderVersion?.trim().length) {
       context.addIssue({
         code: "custom",
         path: ["loaderVersion"],
@@ -141,6 +136,8 @@ export const installJobSchema = z.object({
   state: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
   phase: z.string(),
   message: z.string(),
+  completedItems: z.number().int().nonnegative().optional(),
+  totalItems: z.number().int().nonnegative().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -150,11 +147,13 @@ export const installJobListSchema = z.array(installJobSchema);
 export const gameSessionSchema = z.object({
   id: z.string().uuid(),
   instanceId: z.string().uuid(),
-  state: z.string(),
+  state: z.enum(["running", "stopping"]),
   mode: z.literal("authenticated"),
   pid: z.number().int().nonnegative(),
   logName: z.string(),
 });
+
+export const gameSessionListSchema = z.array(gameSessionSchema);
 
 export const minecraftAccountSchema = z.object({
   id: z.string().uuid(),

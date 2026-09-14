@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -7,19 +7,23 @@ import {
   ChevronDown,
   CircleAlert,
   Layers3,
+  LoaderCircle,
   Newspaper,
   Play,
   Plus,
   RotateCcw,
   Server,
   Signal,
+  Square,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   bridgeMode,
+  forceStopGameSession,
   getBootstrap,
   launchInstance,
   listAccounts,
+  listGameSessions,
   listInstances,
   previewServers,
   previewUpdates,
@@ -43,8 +47,10 @@ const instanceGridClass =
   "grid grid-cols-[minmax(220px,1.45fr)_minmax(140px,.9fr)_minmax(100px,.65fr)_minmax(90px,.58fr)] items-center gap-4 max-[1180px]:grid-cols-[minmax(190px,1.3fr)_minmax(120px,.75fr)_minmax(90px,.55fr)]";
 
 export function HomePage() {
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string>();
   const [filter, setFilter] = useState<Filter>("all");
+  const [confirmStopId, setConfirmStopId] = useState<string>();
   const bootstrapQuery = useQuery({
     queryKey: ["bootstrap"],
     queryFn: getBootstrap,
@@ -57,9 +63,29 @@ export function HomePage() {
     queryKey: ["minecraft-accounts"],
     queryFn: listAccounts,
   });
+  const sessionsQuery = useQuery({
+    queryKey: ["game-sessions"],
+    queryFn: listGameSessions,
+    refetchInterval: 750,
+  });
   const launchMutation = useMutation({
-    mutationFn: ({ instanceId, accountId }: { instanceId: string; accountId: string }) =>
-      launchInstance(instanceId, accountId),
+    mutationFn: ({
+      instanceId,
+      accountId,
+    }: {
+      instanceId: string;
+      accountId: string;
+    }) => launchInstance(instanceId, accountId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["game-sessions"] });
+    },
+  });
+  const stopMutation = useMutation({
+    mutationFn: forceStopGameSession,
+    onSuccess: async () => {
+      setConfirmStopId(undefined);
+      await queryClient.invalidateQueries({ queryKey: ["game-sessions"] });
+    },
   });
 
   const instances = instancesQuery.data ?? emptyInstances;
@@ -82,17 +108,26 @@ export function HomePage() {
     accountsQuery.data?.find(
       (account) => account.isDefault && account.status === "ready",
     ) ?? accountsQuery.data?.find((account) => account.status === "ready");
-  const playReason = !launchCapability?.available
-    ? (launchCapability?.unavailableReason ?? "Launch supervision is unavailable.")
-    : selected?.setupState !== "ready"
-      ? "Install this instance before launching."
-      : !defaultAccount
-        ? "Connect a Minecraft account before launching."
-        : "Start Minecraft with the default account.";
+  const activeSession = sessionsQuery.data?.find(
+    (session) => session.instanceId === selected?.id,
+  );
+  const playReason = activeSession
+    ? activeSession.state === "stopping"
+      ? "Minecraft is stopping."
+      : "Review the warning before force-closing Minecraft."
+    : !launchCapability?.available
+      ? (launchCapability?.unavailableReason ??
+        "Launch supervision is unavailable.")
+      : selected?.setupState !== "ready"
+        ? "Install this instance before launching."
+        : !defaultAccount
+          ? "Connect a Minecraft account before launching."
+          : "Start Minecraft with the default account.";
   const canPlay =
     launchCapability?.available === true &&
     selected?.setupState === "ready" &&
     Boolean(defaultAccount) &&
+    !activeSession &&
     !launchMutation.isPending;
 
   if (instancesQuery.isPending) {
@@ -146,10 +181,7 @@ export function HomePage() {
           className="hero-landscape absolute inset-0 -z-30 bg-cover bg-center opacity-[.86]"
           aria-hidden="true"
         />
-        <div
-          className="hero-shade absolute inset-0 -z-20"
-          aria-hidden="true"
-        />
+        <div className="hero-shade absolute inset-0 -z-20" aria-hidden="true" />
         <div className="absolute top-[72px] left-8 max-w-[520px]">
           <p className={eyebrowClass}>Continue playing</p>
           <h1
@@ -182,7 +214,9 @@ export function HomePage() {
                 {defaultAccount?.displayName ?? "Connect account"}
               </strong>
               <small className="mt-px block overflow-hidden text-[11px] text-app-muted text-ellipsis whitespace-nowrap">
-                {defaultAccount ? "Minecraft account" : "Microsoft sign-in required"}
+                {defaultAccount
+                  ? "Minecraft account"
+                  : "Microsoft sign-in required"}
               </small>
             </span>
             <ChevronDown size={17} aria-hidden="true" />
@@ -190,13 +224,21 @@ export function HomePage() {
           <button
             className={cn(
               controlButtonClass,
-              "h-11 w-full bg-app-accent text-[17px] text-app-on-accent hover:bg-[#9be0bc] active:translate-y-px disabled:bg-app-raised disabled:text-app-muted disabled:opacity-80",
+              "h-11 w-full text-[17px] active:translate-y-px disabled:bg-app-raised disabled:text-app-muted disabled:opacity-80",
+              activeSession
+                ? "border border-app-danger/50 bg-app-sidebar text-app-danger hover:bg-app-danger/10"
+                : "bg-app-accent text-app-on-accent hover:bg-[#9be0bc]",
             )}
             type="button"
-            disabled={!canPlay}
+            disabled={
+              activeSession?.state === "stopping" ||
+              (!activeSession && !canPlay)
+            }
             title={playReason}
             onClick={() => {
-              if (selected && defaultAccount) {
+              if (activeSession) {
+                setConfirmStopId(activeSession.id);
+              } else if (selected && defaultAccount) {
                 launchMutation.mutate({
                   instanceId: selected.id,
                   accountId: defaultAccount.id,
@@ -204,17 +246,64 @@ export function HomePage() {
               }
             }}
           >
-            <Play size={21} fill="currentColor" aria-hidden="true" />
-            {launchMutation.isPending ? "Starting…" : "Play"}
+            {activeSession ? (
+              activeSession.state === "stopping" ? (
+                <LoaderCircle
+                  className="animate-spin"
+                  size={20}
+                  aria-hidden="true"
+                />
+              ) : (
+                <Square size={17} fill="currentColor" aria-hidden="true" />
+              )
+            ) : (
+              <Play size={21} fill="currentColor" aria-hidden="true" />
+            )}
+            {activeSession?.state === "stopping"
+              ? "Stopping…"
+              : activeSession
+                ? "Stop game"
+                : launchMutation.isPending
+                  ? "Starting…"
+                  : "Play"}
           </button>
-          {launchMutation.isSuccess ? (
+          {activeSession && confirmStopId === activeSession.id ? (
+            <div className="rounded-compact border border-app-danger/35 bg-app-sidebar/95 px-3 py-2.5">
+              <p className="m-0 text-[10px]/[15px] text-app-secondary">
+                Force-closing may lose unsaved world progress.
+              </p>
+              <div className="mt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="h-7 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary"
+                  onClick={() => setConfirmStopId(undefined)}
+                >
+                  Keep running
+                </button>
+                <button
+                  type="button"
+                  className="h-7 rounded-compact bg-app-danger px-2.5 text-[10px] font-bold text-[#24110f]"
+                  disabled={stopMutation.isPending}
+                  onClick={() => stopMutation.mutate(activeSession.id)}
+                >
+                  Force close
+                </button>
+              </div>
+            </div>
+          ) : activeSession ? (
+            <p className="m-0 rounded-compact bg-app-sidebar/95 px-3 py-2 font-mono text-[10px] text-app-accent">
+              Running · PID {activeSession.pid}
+            </p>
+          ) : launchMutation.isSuccess ? (
             <p className="m-0 rounded-compact bg-app-sidebar/95 px-3 py-2 text-[10px] text-app-accent">
               Minecraft started · PID {launchMutation.data.pid}
             </p>
           ) : null}
-          {launchMutation.isError ? (
+          {launchMutation.isError || stopMutation.isError ? (
             <p className="m-0 rounded-compact bg-app-danger/10 px-3 py-2 text-[10px] text-app-danger">
-              Minecraft did not start. Open the instance for details.
+              {stopMutation.isError
+                ? "Minecraft did not stop. Open the instance for details."
+                : "Minecraft did not start. Open the instance for details."}
             </p>
           ) : null}
         </div>
@@ -232,7 +321,10 @@ export function HomePage() {
                 instance.id === selected.id &&
                   "border-app-accent shadow-[inset_0_0_0_1px_var(--slate-accent)]",
               )}
-              onClick={() => setSelectedId(instance.id)}
+              onClick={() => {
+                setSelectedId(instance.id);
+                setConfirmStopId(undefined);
+              }}
             >
               <InstanceArtwork instance={instance} compact />
               <span className="min-w-0 px-2.5">
@@ -354,10 +446,18 @@ export function HomePage() {
                   <span
                     className={cn(
                       "size-2 shrink-0 rounded-full bg-app-muted",
-                      instance.setupState === "ready" && "bg-app-accent",
+                      sessionsQuery.data?.some(
+                        (session) => session.instanceId === instance.id,
+                      )
+                        ? "bg-app-warning"
+                        : instance.setupState === "ready" && "bg-app-accent",
                     )}
                   />
-                  {setupStateLabel(instance.setupState)}
+                  {sessionsQuery.data?.some(
+                    (session) => session.instanceId === instance.id,
+                  )
+                    ? "Running"
+                    : setupStateLabel(instance.setupState)}
                 </span>
                 <span className="text-xs text-app-secondary max-[1180px]:hidden">
                   {instance.lastPlayed ?? "Never"}
@@ -424,11 +524,7 @@ function HomeSkeleton() {
 function EmptyHome() {
   return (
     <section className="flex min-h-full flex-col items-center justify-center px-8 py-[10vh] text-center">
-      <img
-        src="/brand/slate-symbol-jade.svg"
-        alt=""
-        className="mb-6 w-20"
-      />
+      <img src="/brand/slate-symbol-jade.svg" alt="" className="mb-6 w-20" />
       <p className={eyebrowClass}>Your library</p>
       <h1 className="m-0 text-[34px]/[40px] font-bold tracking-[-.035em]">
         Your game. Your setup.
@@ -438,7 +534,10 @@ function EmptyHome() {
         setup isolated and verifies its files before launch.
       </p>
       <Link
-        className={cn(controlButtonClass, "h-11 bg-app-accent text-app-on-accent no-underline")}
+        className={cn(
+          controlButtonClass,
+          "h-11 bg-app-accent text-app-on-accent no-underline",
+        )}
         to="/library/new"
       >
         <Plus size={18} aria-hidden="true" />
@@ -489,9 +588,7 @@ function SummarySection({
   divided?: boolean;
 }) {
   return (
-    <section
-      className={cn(divided && "border-t border-app-separator/55 pt-6")}
-    >
+    <section className={cn(divided && "border-t border-app-separator/55 pt-6")}>
       <div className="flex items-start justify-between gap-5">
         <div>
           <h2 className="m-0 text-lg/[24px] font-bold tracking-[-.025em]">
@@ -529,7 +626,10 @@ function ServerRow({ server }: { server: ServerPreview }) {
       <span className="font-mono text-[10px] text-app-secondary">
         {server.players}
       </span>
-      <span className="inline-flex text-app-accent" aria-label="Strong connection">
+      <span
+        className="inline-flex text-app-accent"
+        aria-label="Strong connection"
+      >
         <Signal size={18} aria-hidden="true" />
       </span>
       <button

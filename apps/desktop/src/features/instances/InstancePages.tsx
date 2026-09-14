@@ -8,23 +8,32 @@ import {
   FolderArchive,
   Heart,
   Layers3,
+  LoaderCircle,
   Play,
   RotateCcw,
   Save,
   Settings2,
+  Square,
   Trash2,
   UserRound,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { ComboBox } from "../../components/ComboBox";
-import { EmptyState, InlineNotice, StatusPill } from "../../components/PageScaffold";
+import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import {
+  EmptyState,
+  InlineNotice,
+  StatusPill,
+} from "../../components/PageScaffold";
+import {
+  forceStopGameSession,
   getInstance,
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
   installInstance,
   launchInstance,
   listAccounts,
+  listGameSessions,
   listInstallJobs,
   renameInstance,
   setInstanceFavorite,
@@ -112,11 +121,12 @@ function InstanceHeader({
   instance: LauncherInstance;
   section: InstanceSection;
 }) {
-  const tabs: Array<{ id: InstanceSection; label: string; icon: typeof Box }> = [
-    { id: "overview", label: "Overview", icon: Box },
-    { id: "content", label: "Content", icon: Layers3 },
-    { id: "settings", label: "Settings", icon: Settings2 },
-  ];
+  const tabs: Array<{ id: InstanceSection; label: string; icon: typeof Box }> =
+    [
+      { id: "overview", label: "Overview", icon: Box },
+      { id: "content", label: "Content", icon: Layers3 },
+      { id: "settings", label: "Settings", icon: Settings2 },
+    ];
   return (
     <header className="border-b border-app-separator/55 bg-app-sidebar/45 px-8 pt-7">
       <Link
@@ -173,6 +183,7 @@ function Overview({ instance }: { instance: LauncherInstance }) {
   const navigate = useNavigate();
   const [name, setName] = useState(instance.name);
   const [confirmTrash, setConfirmTrash] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const accountsQuery = useQuery({
     queryKey: ["minecraft-accounts"],
@@ -182,6 +193,11 @@ function Overview({ instance }: { instance: LauncherInstance }) {
     queryKey: ["install-jobs"],
     queryFn: listInstallJobs,
     refetchInterval: 1_000,
+  });
+  const sessionsQuery = useQuery({
+    queryKey: ["game-sessions"],
+    queryFn: listGameSessions,
+    refetchInterval: 750,
   });
   const installJob = jobsQuery.data?.find(
     (job) => job.instanceId === instance.id,
@@ -222,6 +238,16 @@ function Overview({ instance }: { instance: LauncherInstance }) {
   const launchMutation = useMutation({
     mutationFn: ({ accountId }: { accountId: string }) =>
       launchInstance(instance.id, accountId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["game-sessions"] });
+    },
+  });
+  const stopMutation = useMutation({
+    mutationFn: forceStopGameSession,
+    onSuccess: async () => {
+      setConfirmStop(false);
+      await queryClient.invalidateQueries({ queryKey: ["game-sessions"] });
+    },
   });
 
   const readyAccounts = (accountsQuery.data ?? []).filter(
@@ -232,10 +258,15 @@ function Overview({ instance }: { instance: LauncherInstance }) {
     readyAccounts.find((account) => account.isDefault)?.id ||
     readyAccounts[0]?.id ||
     "";
+  const activeSession = sessionsQuery.data?.find(
+    (session) => session.instanceId === instance.id,
+  );
 
   useEffect(() => {
     if (installJob?.state === "succeeded" || installJob?.state === "failed") {
-      void queryClient.invalidateQueries({ queryKey: ["instance", instance.id] });
+      void queryClient.invalidateQueries({
+        queryKey: ["instance", instance.id],
+      });
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
     }
   }, [installJob?.state, instance.id, queryClient]);
@@ -256,43 +287,61 @@ function Overview({ instance }: { instance: LauncherInstance }) {
                 Pre-launch status
               </p>
               <h2 className="mt-2 mb-1 text-lg font-bold tracking-[-.02em]">
-                {ready
-                  ? "Ready to launch"
-                  : installing
-                    ? "Installing and verifying"
-                    : instance.setupState === "blocked"
-                      ? "Installation needs attention"
-                      : "Ready to install"}
+                {activeSession
+                  ? activeSession.state === "stopping"
+                    ? "Stopping Minecraft"
+                    : "Minecraft is running"
+                  : ready
+                    ? "Ready to launch"
+                    : installing
+                      ? "Installing and verifying"
+                      : instance.setupState === "blocked"
+                        ? "Installation needs attention"
+                        : "Ready to install"}
               </h2>
               <p className="m-0 max-w-[600px] text-xs/[19px] text-app-secondary">
-                {ready
-                  ? "Game files, loader files, natives, assets, and the version-specific managed Java runtime are installed."
-                  : installing
-                    ? (installJob?.message ??
-                      "Resolving metadata and preparing downloads.")
-                    : instance.loaderKind === "neoForge"
-                      ? "Install downloads verified game files and runs NeoForge’s official client installer in slate’s managed directory."
-                      : "Install downloads and verifies the base game, assets, libraries, natives, and matching Java runtime."}
+                {activeSession
+                  ? activeSession.state === "stopping"
+                    ? `Waiting for process ${activeSession.pid} to exit.`
+                    : `Process ${activeSession.pid} is active. slate will keep checking it while the launcher is open.`
+                  : ready
+                    ? "Game files, loader files, natives, assets, and the version-specific managed Java runtime are installed."
+                    : installing
+                      ? (installJob?.message ??
+                        "Resolving metadata and preparing downloads.")
+                      : instance.loaderKind === "neoForge"
+                        ? "Install downloads verified game files and runs NeoForge’s official client installer in slate’s managed directory."
+                        : "Install downloads and verifies the base game, assets, libraries, natives, and matching Java runtime."}
               </p>
             </div>
             <button
               type="button"
-              className="inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent hover:brightness-105 disabled:bg-app-raised disabled:text-app-muted disabled:opacity-70"
+              className={`inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-control px-4 text-xs font-bold disabled:bg-app-raised disabled:text-app-muted disabled:opacity-70 ${
+                activeSession
+                  ? "border border-app-danger/45 bg-transparent text-app-danger hover:bg-app-danger/10"
+                  : "bg-app-accent text-app-on-accent hover:brightness-105"
+              }`}
               disabled={
+                activeSession?.state === "stopping" ||
                 installing ||
                 installMutation.isPending ||
                 launchMutation.isPending ||
+                stopMutation.isPending ||
                 (ready && !effectiveAccountId)
               }
               title={
-                ready
-                  ? effectiveAccountId
-                    ? "Start Minecraft with the selected account."
-                    : "Connect a Minecraft account before launching."
-                  : "Install this exact instance revision."
+                activeSession
+                  ? "Review the warning before force-closing Minecraft."
+                  : ready
+                    ? effectiveAccountId
+                      ? "Start Minecraft with the selected account."
+                      : "Connect a Minecraft account before launching."
+                    : "Install this exact instance revision."
               }
               onClick={() => {
-                if (ready) {
+                if (activeSession) {
+                  setConfirmStop(true);
+                } else if (ready) {
                   launchMutation.mutate({ accountId: effectiveAccountId });
                 } else {
                   installMutation.mutate({
@@ -302,23 +351,71 @@ function Overview({ instance }: { instance: LauncherInstance }) {
                 }
               }}
             >
-              {ready ? (
+              {activeSession ? (
+                activeSession.state === "stopping" ? (
+                  <LoaderCircle
+                    className="animate-spin"
+                    size={17}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Square size={15} fill="currentColor" aria-hidden="true" />
+                )
+              ) : ready ? (
                 <Play size={17} fill="currentColor" aria-hidden="true" />
               ) : (
                 <Download size={17} aria-hidden="true" />
               )}
-              {launchMutation.isPending
-                ? "Starting…"
-                : ready
-                  ? "Play"
-                  : installing || installMutation.isPending
-                    ? "Installing…"
-                    : instance.setupState === "blocked"
-                      ? "Retry install"
-                      : "Install"}
+              {activeSession?.state === "stopping"
+                ? "Stopping…"
+                : activeSession
+                  ? "Stop game"
+                  : launchMutation.isPending
+                    ? "Starting…"
+                    : ready
+                      ? "Play"
+                      : installing || installMutation.isPending
+                        ? "Installing…"
+                        : instance.setupState === "blocked"
+                          ? "Retry install"
+                          : "Install"}
             </button>
           </div>
-          {ready ? (
+          {installing && installJob ? (
+            <InstallProgressIndicator job={installJob} />
+          ) : null}
+          {activeSession && confirmStop ? (
+            <div
+              className="mt-4 flex items-center gap-4 border-t border-app-separator/55 pt-4"
+              role="alert"
+            >
+              <span className="min-w-0 flex-1">
+                <strong className="block text-xs font-bold text-app-text">
+                  Force-close Minecraft?
+                </strong>
+                <span className="mt-0.5 block text-[11px]/[17px] text-app-secondary">
+                  slate cannot request an in-game save yet. Unsaved world
+                  progress may be lost.
+                </span>
+              </span>
+              <button
+                type="button"
+                className="h-8 rounded-compact border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary hover:text-app-text"
+                onClick={() => setConfirmStop(false)}
+              >
+                Keep running
+              </button>
+              <button
+                type="button"
+                className="h-8 rounded-compact bg-app-danger px-3 text-[11px] font-bold text-[#24110f] disabled:opacity-50"
+                disabled={stopMutation.isPending}
+                onClick={() => stopMutation.mutate(activeSession.id)}
+              >
+                Force close
+              </button>
+            </div>
+          ) : null}
+          {ready && !activeSession ? (
             <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 border-t border-app-separator/55 pt-4">
               {readyAccounts.length > 0 ? (
                 <ComboBox
@@ -327,7 +424,9 @@ function Overview({ instance }: { instance: LauncherInstance }) {
                   options={readyAccounts.map((account) => ({
                     value: account.id,
                     label: account.displayName,
-                    description: account.isDefault ? "Default account" : "Minecraft Java Edition",
+                    description: account.isDefault
+                      ? "Default account"
+                      : "Minecraft Java Edition",
                     recommended: account.isDefault,
                   }))}
                   onValueChange={setSelectedAccountId}
@@ -338,7 +437,8 @@ function Overview({ instance }: { instance: LauncherInstance }) {
                     Minecraft account required
                   </strong>
                   <p className="mt-1 mb-0 text-[11px]/[17px] text-app-muted">
-                    Connect and verify a Microsoft account before starting this instance.
+                    Connect and verify a Microsoft account before starting this
+                    instance.
                   </p>
                 </div>
               )}
@@ -357,17 +457,15 @@ function Overview({ instance }: { instance: LauncherInstance }) {
                 "slate could not queue the installation. Reload the instance and try again."}
             </InlineNotice>
           ) : null}
-          {launchMutation.isSuccess ? (
-            <InlineNotice tone="success" title="Minecraft started">
-              Session {launchMutation.data.id.slice(0, 8)} is running as process{" "}
-              {launchMutation.data.pid}. Logs are stored as{" "}
-              {launchMutation.data.logName}.
-            </InlineNotice>
-          ) : null}
           {launchMutation.isError ? (
             <InlineNotice tone="danger" title="Minecraft did not start">
-              The installed files were left intact. Reinstall if verification reports a
-              missing or corrupt artifact.
+              The installed files were left intact. Reinstall if verification
+              reports a missing or corrupt artifact.
+            </InlineNotice>
+          ) : null}
+          {stopMutation.isError ? (
+            <InlineNotice tone="danger" title="Minecraft did not stop">
+              The process is still being tracked. Try force-closing it again.
             </InlineNotice>
           ) : null}
         </section>
@@ -377,7 +475,8 @@ function Overview({ instance }: { instance: LauncherInstance }) {
             Identity
           </h2>
           <p className="mt-1 mb-5 text-xs text-app-secondary">
-            The name is presentation only; slate keeps the stable instance ID underneath.
+            The name is presentation only; slate keeps the stable instance ID
+            underneath.
           </p>
           <label className="block text-xs font-bold text-app-text">
             Instance name
@@ -469,6 +568,12 @@ function Overview({ instance }: { instance: LauncherInstance }) {
             <button
               type="button"
               className="inline-flex h-9 items-center justify-center gap-2 rounded-control border border-app-danger/35 bg-transparent text-xs font-bold text-app-danger hover:bg-app-danger/10"
+              disabled={Boolean(activeSession)}
+              title={
+                activeSession
+                  ? "Stop Minecraft before moving this instance to trash."
+                  : undefined
+              }
               onClick={() => setConfirmTrash(true)}
             >
               <Trash2 size={16} aria-hidden="true" />
@@ -496,8 +601,8 @@ function Overview({ instance }: { instance: LauncherInstance }) {
               Move {instance.name} to trash?
             </h2>
             <p className="mt-2 mb-0 text-xs/[19px] text-app-secondary">
-              The library record will be hidden, but slate will not delete the managed
-              instance files in this implementation.
+              The library record will be hidden, but slate will not delete the
+              managed instance files in this implementation.
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button
@@ -555,7 +660,11 @@ function Content({ instance }: { instance: LauncherInstance }) {
                 : "bg-transparent text-app-muted"
             }`}
             disabled={index !== 0}
-            title={index === 0 ? undefined : "This content inventory is not implemented yet."}
+            title={
+              index === 0
+                ? undefined
+                : "This content inventory is not implemented yet."
+            }
           >
             {label}
             <span className="font-mono text-[10px]">{count}</span>
@@ -590,7 +699,9 @@ function Content({ instance }: { instance: LauncherInstance }) {
 
 function InstanceSettings({ instance }: { instance: LauncherInstance }) {
   const queryClient = useQueryClient();
-  const [minecraftVersion, setMinecraftVersion] = useState(instance.minecraftVersion);
+  const [minecraftVersion, setMinecraftVersion] = useState(
+    instance.minecraftVersion,
+  );
   const [loaderKind, setLoaderKind] = useState<LoaderKind>(instance.loaderKind);
   const [loaderSelection, setLoaderSelection] = useState({
     catalogKey: `${instance.minecraftVersion}|${instance.loaderKind}`,
@@ -650,7 +761,8 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
     }
     if (loaderKind !== "vanilla" && loaderQuery.data?.versions.length === 0) {
       setMessage(
-        loaderQuery.data?.unavailableReason ?? "No compatible loader release is available.",
+        loaderQuery.data?.unavailableReason ??
+          "No compatible loader release is available.",
       );
       return;
     }
@@ -669,20 +781,25 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
       <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
         <h2 className="m-0 text-[15px] font-bold">Game and runtime</h2>
         <p className="mt-1 mb-5 text-xs text-app-secondary">
-          Changing these values returns the profile to Configured until a future install job succeeds.
+          Changing these values returns the profile to Configured until a future
+          install job succeeds.
         </p>
         <div className="grid grid-cols-2 gap-5">
           <ComboBox
             label="Minecraft version"
             value={minecraftVersion}
-            options={(versionsQuery.data?.versions ?? []).map((version, index) => ({
-              value: version.id,
-              label: `Minecraft ${version.id}`,
-              description: index === 0 ? "Latest release" : "Release",
-              recommended: index === 0,
-            }))}
+            options={(versionsQuery.data?.versions ?? []).map(
+              (version, index) => ({
+                value: version.id,
+                label: `Minecraft ${version.id}`,
+                description: index === 0 ? "Latest release" : "Release",
+                recommended: index === 0,
+              }),
+            )}
             disabled={versionsQuery.isPending || versionsQuery.isError}
-            placeholder={versionsQuery.isPending ? "Loading releases…" : "Choose a release"}
+            placeholder={
+              versionsQuery.isPending ? "Loading releases…" : "Choose a release"
+            }
             onValueChange={(value) => {
               setMinecraftVersion(value);
             }}
@@ -731,7 +848,10 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
                   ? "Loading compatible versions…"
                   : "Choose a loader version"
             }
-            emptyText={loaderQuery.data?.unavailableReason ?? "No compatible loader versions"}
+            emptyText={
+              loaderQuery.data?.unavailableReason ??
+              "No compatible loader versions"
+            }
             onValueChange={(value) =>
               setLoaderSelection({ catalogKey: loaderCatalogKey, value })
             }
@@ -766,7 +886,11 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
             onClick={save}
           >
             {mutation.isPending ? (
-              <RotateCcw className="animate-spin" size={16} aria-hidden="true" />
+              <RotateCcw
+                className="animate-spin"
+                size={16}
+                aria-hidden="true"
+              />
             ) : (
               <Check size={16} aria-hidden="true" />
             )}
@@ -777,12 +901,12 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
 
       <aside className="grid content-start gap-4">
         <InlineNotice title="Revision guarded">
-          Every edit includes revision {instance.revision}. A stale screen cannot silently
-          overwrite a newer change.
+          Every edit includes revision {instance.revision}. A stale screen
+          cannot silently overwrite a newer change.
         </InlineNotice>
         <InlineNotice tone="warning" title="Installation unavailable">
-          Metadata resolution and verified downloads are the next boundary. Saving here does not
-          mark the instance ready.
+          Metadata resolution and verified downloads are the next boundary.
+          Saving here does not mark the instance ready.
         </InlineNotice>
         <div className="rounded-control border border-app-separator bg-app-surface p-4">
           <span className="inline-flex items-center gap-2 text-xs font-bold text-app-text">
@@ -790,7 +914,8 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
             Managed storage
           </span>
           <p className="mt-2 mb-0 text-[11px]/[17px] text-app-secondary">
-            Paths stay behind the native boundary. The renderer receives stable IDs only.
+            Paths stay behind the native boundary. The renderer receives stable
+            IDs only.
           </p>
         </div>
       </aside>
@@ -822,7 +947,9 @@ function Detail({
   return (
     <div className="flex items-baseline justify-between gap-5 border-b border-app-separator/45 pb-2 last:border-0 last:pb-0">
       <dt className="text-[11px] text-app-muted">{label}</dt>
-      <dd className={`m-0 text-right text-xs font-semibold ${mono ? "font-mono text-[11px]" : ""}`}>
+      <dd
+        className={`m-0 text-right text-xs font-semibold ${mono ? "font-mono text-[11px]" : ""}`}
+      >
         {value}
       </dd>
     </div>

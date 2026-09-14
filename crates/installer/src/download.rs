@@ -38,6 +38,14 @@ pub struct DownloadSummary {
     pub reused: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DownloadProgress {
+    pub completed: usize,
+    pub total: usize,
+    pub downloaded: usize,
+    pub reused: usize,
+}
+
 impl Downloader {
     pub fn new(concurrency: u8) -> Result<Self, DownloadError> {
         if !(1..=8).contains(&concurrency) {
@@ -62,19 +70,39 @@ impl Downloader {
         &self,
         requirements: Vec<ArtifactRequirement>,
     ) -> Result<DownloadSummary, DownloadError> {
-        let results = stream::iter(requirements.into_iter().map(|requirement| {
+        self.download_all_with_progress(requirements, |_| {}).await
+    }
+
+    pub async fn download_all_with_progress<F>(
+        &self,
+        requirements: Vec<ArtifactRequirement>,
+        on_progress: F,
+    ) -> Result<DownloadSummary, DownloadError>
+    where
+        F: Fn(DownloadProgress) + Send + Sync,
+    {
+        let total = requirements.len();
+        let mut results = stream::iter(requirements.into_iter().map(|requirement| {
             let downloader = self.clone();
             async move { downloader.download_one(requirement).await }
         }))
-        .buffer_unordered(self.concurrency)
-        .collect::<Vec<_>>()
-        .await;
+        .buffer_unordered(self.concurrency);
 
         let mut summary = DownloadSummary::default();
-        for result in results {
+        let mut completed = 0;
+        while let Some(result) = results.next().await {
             match result? {
                 DownloadDisposition::Downloaded => summary.downloaded += 1,
                 DownloadDisposition::Reused => summary.reused += 1,
+            }
+            completed += 1;
+            if should_report_progress(completed, total) {
+                on_progress(DownloadProgress {
+                    completed,
+                    total,
+                    downloaded: summary.downloaded,
+                    reused: summary.reused,
+                });
             }
         }
         Ok(summary)
@@ -211,6 +239,11 @@ impl Downloader {
     }
 }
 
+fn should_report_progress(completed: usize, total: usize) -> bool {
+    let interval = (total / 100).max(1);
+    completed == 1 || completed == total || completed.is_multiple_of(interval)
+}
+
 fn is_retryable_http_error(error: &DownloadError) -> bool {
     let DownloadError::Http(error) = error else {
         return false;
@@ -296,7 +329,9 @@ pub enum DownloadError {
 
 #[cfg(test)]
 mod tests {
-    use super::{DownloadError, partial_path, retry_delay, validate_artifact_url};
+    use super::{
+        DownloadError, partial_path, retry_delay, should_report_progress, validate_artifact_url,
+    };
     use std::path::Path;
     use url::Url;
 
@@ -335,5 +370,15 @@ mod tests {
         assert!(first <= std::time::Duration::from_millis(505));
         assert!(second >= std::time::Duration::from_millis(500));
         assert!(second <= std::time::Duration::from_millis(755));
+    }
+
+    #[test]
+    fn download_progress_is_bounded_to_about_one_hundred_updates() {
+        let updates = (1..=5_000)
+            .filter(|completed| should_report_progress(*completed, 5_000))
+            .count();
+        assert!((100..=102).contains(&updates));
+        assert!(should_report_progress(1, 5_000));
+        assert!(should_report_progress(5_000, 5_000));
     }
 }

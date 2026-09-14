@@ -267,6 +267,7 @@ impl Database {
     ) -> Result<(), StorageError> {
         let expected_revision = revision_to_i64(expected_revision)?;
         let now = now_rfc3339()?;
+        let mut transaction = self.pool.begin().await?;
         let result = sqlx::query(
             "UPDATE instances SET trashed_at = ?, revision = revision + 1, updated_at = ? \
              WHERE id = ? AND revision = ? AND trashed_at IS NULL",
@@ -275,11 +276,33 @@ impl Database {
         .bind(&now)
         .bind(id.to_string())
         .bind(expected_revision)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await?;
-
-        self.ensure_updated(id, expected_revision, result.rows_affected())
-            .await
+        if result.rows_affected() == 0 {
+            transaction.rollback().await?;
+            return self.revision_error(id, expected_revision).await;
+        }
+        sqlx::query(
+            "UPDATE jobs SET state = 'cancelled', phase = 'cancelled', \
+             progress_json = json_set(progress_json, '$.message', \
+                 'Installation stopped because the instance was moved to trash.', \
+                 '$.completedItems', NULL, '$.totalItems', NULL), updated_at = ? \
+             WHERE kind = 'instance_install' AND entity_id = ? \
+                 AND state IN ('queued', 'running')",
+        )
+        .bind(&now)
+        .bind(id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "UPDATE instance_revisions SET status = 'failed' WHERE instance_id = ? \
+             AND status IN ('proposed', 'staged')",
+        )
+        .bind(id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(())
     }
 
     async fn ensure_updated(

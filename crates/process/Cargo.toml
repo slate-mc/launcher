@@ -11,5 +11,8 @@ slate-minecraft = { path = "../minecraft" }
 thiserror.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true

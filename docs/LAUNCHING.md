@@ -23,6 +23,13 @@ renderer sends stable IDs and never constructs paths, Java arguments, or credent
    every planned launch artifact; the manifest's own digest is committed with the database
    revision.
 
+The installer reports durable stages for metadata, base-game files, assets, Java, loader work,
+launch files, natives, verification, and commit. File-backed stages include bounded completed/total
+counters. The desktop polls the durable snapshot and renders determinate progress without coupling
+the job lifetime to a React component. On startup, jobs left queued or running by a previous
+launcher process become interrupted failures that can be retried; jobs belonging to trashed
+instances become cancelled.
+
 ## Launch pipeline
 
 Launch requires a ready instance and a connected Minecraft account. Rust refreshes the Microsoft,
@@ -32,6 +39,16 @@ digest, and re-hashes every planned launch artifact before starting Java. It the
 session and starts the supervised Java child process. Access tokens remain secret-marked native
 values and never cross IPC or appear in redacted plans. Revisions installed with an older manifest
 schema must be reinstalled before launch.
+
+## Active sessions
+
+The native process supervisor owns the active-session snapshot and enforces one Minecraft process
+per instance while allowing different instances to run concurrently. Home, instance details, the
+activity page, and the global footer poll that snapshot. A running instance replaces Play with Stop;
+the available stop operation is currently an explicit force-close and warns that unsaved world
+progress may be lost. Exits are detected with the owned child handle and persisted as exited,
+crashed, or user-cancelled. Graceful companion-assisted shutdown and safe process reattachment after
+a full launcher-process restart remain later lifecycle work.
 
 ## Reproducible smoke validation
 

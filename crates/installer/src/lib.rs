@@ -3,7 +3,7 @@
 mod download;
 mod runtime;
 
-pub use download::{DownloadError, DownloadSummary, Downloader};
+pub use download::{DownloadError, DownloadProgress, DownloadSummary, Downloader};
 pub use runtime::{ManagedJavaRuntime, RuntimeInstallError, ensure_managed_java};
 
 use serde::{Deserialize, Serialize};
@@ -51,6 +51,56 @@ pub struct InstallOutcome {
     pub reused_artifacts: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstallPhase {
+    Metadata,
+    BaseGame,
+    Assets,
+    Runtime,
+    Loader,
+    LaunchFiles,
+    Natives,
+    Verification,
+    Commit,
+}
+
+impl InstallPhase {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Metadata => "metadata",
+            Self::BaseGame => "base-game",
+            Self::Assets => "assets",
+            Self::Runtime => "runtime",
+            Self::Loader => "loader",
+            Self::LaunchFiles => "launch-files",
+            Self::Natives => "natives",
+            Self::Verification => "verification",
+            Self::Commit => "commit",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallProgress {
+    pub phase: InstallPhase,
+    pub message: String,
+    pub completed_items: Option<u64>,
+    pub total_items: Option<u64>,
+}
+
+impl InstallProgress {
+    #[must_use]
+    pub fn indeterminate(phase: InstallPhase, message: impl Into<String>) -> Self {
+        Self {
+            phase,
+            message: message.into(),
+            completed_items: None,
+            total_items: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct InstalledRevision {
     pub metadata_layers: Vec<VersionMetadata>,
@@ -81,7 +131,21 @@ struct InstalledRevisionManifest {
 }
 
 pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallError> {
+    install_with_progress(request, |_| {}).await
+}
+
+pub async fn install_with_progress<F>(
+    request: InstallRequest,
+    on_progress: F,
+) -> Result<InstallOutcome, InstallError>
+where
+    F: Fn(InstallProgress) + Send + Sync,
+{
     validate_request(&request)?;
+    on_progress(InstallProgress::indeterminate(
+        InstallPhase::Metadata,
+        format!("Resolving Minecraft {} metadata", request.minecraft_version),
+    ));
     let minecraft_root = request.paths.artifacts().join("minecraft");
     let revision_directory = request
         .paths
@@ -118,13 +182,35 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
     let base_resolved = ResolvedVersion::resolve(vec![base.clone()])?;
     let base_install = LaunchPlanner::prepare_install(&base_resolved, &layout, &rules)?;
     let downloader = Downloader::new(request.download_concurrency)?;
-    let mut summary = downloader
-        .download_all(base_install.required_artifacts)
-        .await?;
+    let mut summary = download_install_phase(
+        &downloader,
+        base_install.required_artifacts,
+        InstallPhase::BaseGame,
+        "Checking base game files",
+        &on_progress,
+    )
+    .await?;
     let assets = asset_requirements(&layout.assets_directory, &base_resolved)?;
-    merge_summary(&mut summary, downloader.download_all(assets).await?);
+    merge_summary(
+        &mut summary,
+        download_install_phase(
+            &downloader,
+            assets,
+            InstallPhase::Assets,
+            "Checking game assets",
+            &on_progress,
+        )
+        .await?,
+    );
 
     let java_architecture = current_java_architecture()?;
+    on_progress(InstallProgress::indeterminate(
+        InstallPhase::Runtime,
+        format!(
+            "Preparing managed Java {}",
+            base_install.required_java_major
+        ),
+    ));
     let runtime = ensure_managed_java(
         &request.paths.runtimes(),
         base_install.required_java_major,
@@ -133,12 +219,22 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
     .await?;
 
     let layers = match request.loader_kind {
-        LoaderFamily::Vanilla => vec![base],
+        LoaderFamily::Vanilla => {
+            on_progress(InstallProgress::indeterminate(
+                InstallPhase::Loader,
+                "Preparing the Vanilla launch profile",
+            ));
+            vec![base]
+        }
         LoaderFamily::Fabric => {
             let loader_version = request
                 .loader_version
                 .as_deref()
                 .ok_or(InstallError::LoaderVersionRequired)?;
+            on_progress(InstallProgress::indeterminate(
+                InstallPhase::Loader,
+                format!("Resolving Fabric {loader_version}"),
+            ));
             let overlay = FabricAdapter::new()?
                 .fetch_profile(&request.minecraft_version, loader_version)
                 .await?;
@@ -150,6 +246,10 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
                 .loader_version
                 .as_deref()
                 .ok_or(InstallError::LoaderVersionRequired)?;
+            on_progress(InstallProgress::indeterminate(
+                InstallPhase::Loader,
+                format!("Running the NeoForge {loader_version} client installer"),
+            ));
             let bundle = NeoForgeAdapter::new()?
                 .fetch_installer(&request.minecraft_version, loader_version)
                 .await?;
@@ -180,11 +280,30 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
     };
     merge_summary(
         &mut summary,
-        downloader.download_all(requirements.clone()).await?,
+        download_install_phase(
+            &downloader,
+            requirements.clone(),
+            InstallPhase::LaunchFiles,
+            "Checking loader and launch files",
+            &on_progress,
+        )
+        .await?,
     );
+    on_progress(InstallProgress::indeterminate(
+        InstallPhase::Natives,
+        "Extracting native libraries",
+    ));
     extract_natives(full_install.native_extractions).await?;
+    on_progress(InstallProgress::indeterminate(
+        InstallPhase::Verification,
+        "Creating the verified launch-file index",
+    ));
     let launch_artifacts = hash_launch_artifacts(&request.paths, requirements).await?;
 
+    on_progress(InstallProgress::indeterminate(
+        InstallPhase::Commit,
+        "Finalizing the installed revision",
+    ));
     let installed_manifest = InstalledRevisionManifest {
         schema_version: 2,
         instance_id: request.instance_id,
@@ -210,6 +329,36 @@ pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallE
         downloaded_artifacts: summary.downloaded,
         reused_artifacts: summary.reused,
     })
+}
+
+async fn download_install_phase<F>(
+    downloader: &Downloader,
+    requirements: Vec<ArtifactRequirement>,
+    phase: InstallPhase,
+    message: &'static str,
+    on_progress: &F,
+) -> Result<DownloadSummary, InstallError>
+where
+    F: Fn(InstallProgress) + Send + Sync,
+{
+    let total = u64::try_from(requirements.len()).unwrap_or(u64::MAX);
+    on_progress(InstallProgress {
+        phase,
+        message: message.to_owned(),
+        completed_items: Some(0),
+        total_items: Some(total),
+    });
+    let summary = downloader
+        .download_all_with_progress(requirements, |progress| {
+            on_progress(InstallProgress {
+                phase,
+                message: message.to_owned(),
+                completed_items: Some(u64::try_from(progress.completed).unwrap_or(u64::MAX)),
+                total_items: Some(u64::try_from(progress.total).unwrap_or(u64::MAX)),
+            });
+        })
+        .await?;
+    Ok(summary)
 }
 
 pub async fn load_installed_revision(

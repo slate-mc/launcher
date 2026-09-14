@@ -97,6 +97,8 @@ pub enum StorageError {
     InvalidStoredValue { field: &'static str, value: String },
     #[error("stored revision is negative")]
     NegativeRevision,
+    #[error("stored job progress is outside the supported range")]
+    ProgressOutOfRange,
     #[error("instance was not found")]
     InstanceNotFound,
     #[error("saved server was not found")]
@@ -105,6 +107,8 @@ pub enum StorageError {
     AccountNotFound,
     #[error("instance revision was not found")]
     RevisionNotFound,
+    #[error("installation job is no longer active")]
+    InstallNoLongerActive,
     #[error("instance does not have an installed revision")]
     InstalledRevisionNotFound,
     #[error("instance revision changed; expected {expected}")]

@@ -28,6 +28,10 @@ pub struct InstallJobSummary {
     pub state: InstallJobStateDto,
     pub phase: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_items: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_items: Option<u64>,
     pub created_at: String,
     pub updated_at: String,
 }

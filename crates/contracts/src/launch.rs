@@ -20,12 +20,25 @@ pub struct LaunchInstanceRequest {
     pub account_id: Option<Uuid>,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StopGameSessionRequest {
+    pub id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GameSessionStateDto {
+    Running,
+    Stopping,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameSessionSummary {
     pub id: Uuid,
     pub instance_id: Uuid,
-    pub state: String,
+    pub state: GameSessionStateDto,
     pub mode: String,
     pub pid: u32,
     pub log_name: String,

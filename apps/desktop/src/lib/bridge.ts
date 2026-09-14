@@ -4,6 +4,7 @@ import {
   authStartSchema,
   bootstrapSchema,
   createInstanceSchema,
+  gameSessionListSchema,
   gameSessionSchema,
   installJobListSchema,
   installJobSchema,
@@ -178,7 +179,8 @@ export async function getBootstrap(): Promise<Bootstrap> {
       {
         id: "minecraft.install",
         available: false,
-        unavailableReason: "Download and installation jobs are not implemented yet.",
+        unavailableReason:
+          "Download and installation jobs are not implemented yet.",
       },
       {
         id: "minecraft.launch",
@@ -212,7 +214,9 @@ export async function listAccounts(): Promise<MinecraftAccount[]> {
 
 export async function startMinecraftAuth(): Promise<AuthStart> {
   if (bridgeMode !== "native") {
-    throw new Error("Microsoft sign-in is available only in the slate desktop app.");
+    throw new Error(
+      "Microsoft sign-in is available only in the slate desktop app.",
+    );
   }
   return authStartSchema.parse(await invoke("auth_start"));
 }
@@ -221,7 +225,9 @@ export async function getMinecraftAuthStatus(
   flowId: string,
 ): Promise<AuthFlowStatus> {
   if (bridgeMode !== "native") {
-    throw new Error("Microsoft sign-in is available only in the slate desktop app.");
+    throw new Error(
+      "Microsoft sign-in is available only in the slate desktop app.",
+    );
   }
   return authFlowStatusSchema.parse(
     await invoke("auth_get_status", { flowId }),
@@ -232,7 +238,9 @@ export async function cancelMinecraftAuth(
   flowId: string,
 ): Promise<AuthFlowStatus> {
   if (bridgeMode !== "native") {
-    throw new Error("Microsoft sign-in is available only in the slate desktop app.");
+    throw new Error(
+      "Microsoft sign-in is available only in the slate desktop app.",
+    );
   }
   return authFlowStatusSchema.parse(
     await invoke("auth_cancel", { request: { flowId } }),
@@ -243,7 +251,9 @@ export async function refreshMinecraftAccount(
   id: string,
 ): Promise<MinecraftAccount> {
   if (bridgeMode !== "native") {
-    throw new Error("Account refresh is available only in the slate desktop app.");
+    throw new Error(
+      "Account refresh is available only in the slate desktop app.",
+    );
   }
   return minecraftAccountSchema.parse(
     await invoke("account_refresh", { request: { id } }),
@@ -254,7 +264,9 @@ export async function setDefaultMinecraftAccount(
   id: string,
 ): Promise<MinecraftAccount> {
   if (bridgeMode !== "native") {
-    throw new Error("Account selection is available only in the slate desktop app.");
+    throw new Error(
+      "Account selection is available only in the slate desktop app.",
+    );
   }
   return minecraftAccountSchema.parse(
     await invoke("account_set_default", { request: { id } }),
@@ -263,7 +275,9 @@ export async function setDefaultMinecraftAccount(
 
 export async function removeMinecraftAccount(id: string): Promise<void> {
   if (bridgeMode !== "native") {
-    throw new Error("Account removal is available only in the slate desktop app.");
+    throw new Error(
+      "Account removal is available only in the slate desktop app.",
+    );
   }
   await invoke("account_remove", { request: { id } });
 }
@@ -358,7 +372,10 @@ export async function createInstance(
   const timestamp = new Date().toISOString();
   const instance = instanceSummarySchema.parse({
     ...request,
-    loaderVersion: cleanLoaderVersion(request.loaderKind, request.loaderVersion),
+    loaderVersion: cleanLoaderVersion(
+      request.loaderKind,
+      request.loaderVersion,
+    ),
     id: crypto.randomUUID(),
     managementMode: "local",
     favorite: false,
@@ -384,10 +401,14 @@ export async function renameInstance(input: {
       await invoke("instance_rename", { request: input }),
     );
   }
-  return updatePreviewInstance(input.id, input.expectedRevision, (instance) => ({
-    ...instance,
-    name: input.name.trim(),
-  }));
+  return updatePreviewInstance(
+    input.id,
+    input.expectedRevision,
+    (instance) => ({
+      ...instance,
+      name: input.name.trim(),
+    }),
+  );
 }
 
 export async function updateInstanceConfiguration(input: {
@@ -412,15 +433,19 @@ export async function updateInstanceConfiguration(input: {
       }),
     );
   }
-  return updatePreviewInstance(input.id, input.expectedRevision, (instance) => ({
-    ...instance,
-    minecraftVersion: input.minecraftVersion.trim(),
-    loaderKind: input.loaderKind,
-    loaderVersion: cleanLoaderVersion(input.loaderKind, input.loaderVersion),
-    memoryMb: input.memoryMb,
-    setupState: "configured",
-    artworkTone: toneForLoader(input.loaderKind),
-  }));
+  return updatePreviewInstance(
+    input.id,
+    input.expectedRevision,
+    (instance) => ({
+      ...instance,
+      minecraftVersion: input.minecraftVersion.trim(),
+      loaderKind: input.loaderKind,
+      loaderVersion: cleanLoaderVersion(input.loaderKind, input.loaderVersion),
+      memoryMb: input.memoryMb,
+      setupState: "configured",
+      artworkTone: toneForLoader(input.loaderKind),
+    }),
+  );
 }
 
 export async function setInstanceFavorite(input: {
@@ -433,10 +458,14 @@ export async function setInstanceFavorite(input: {
       await invoke("instance_set_favorite", { request: input }),
     );
   }
-  return updatePreviewInstance(input.id, input.expectedRevision, (instance) => ({
-    ...instance,
-    favorite: input.favorite,
-  }));
+  return updatePreviewInstance(
+    input.id,
+    input.expectedRevision,
+    (instance) => ({
+      ...instance,
+      favorite: input.favorite,
+    }),
+  );
 }
 
 export async function trashInstance(input: {
@@ -448,12 +477,16 @@ export async function trashInstance(input: {
     return;
   }
   requirePreview();
-  const instance = previewInstances.find((candidate) => candidate.id === input.id);
+  const instance = previewInstances.find(
+    (candidate) => candidate.id === input.id,
+  );
   if (!instance) throw new Error("That instance no longer exists.");
   if (instance.revision !== input.expectedRevision) {
     throw new Error("That instance changed. Reload and try again.");
   }
-  previewInstances = previewInstances.filter((candidate) => candidate.id !== input.id);
+  previewInstances = previewInstances.filter(
+    (candidate) => candidate.id !== input.id,
+  );
   savePreviewInstances();
 }
 
@@ -485,7 +518,27 @@ export async function launchInstance(
       await invoke("instance_launch", { request: { id, accountId } }),
     );
   }
-  throw new Error("Minecraft launch is available only in the slate desktop app.");
+  throw new Error(
+    "Minecraft launch is available only in the slate desktop app.",
+  );
+}
+
+export async function listGameSessions(): Promise<GameSession[]> {
+  if (bridgeMode === "native") {
+    return gameSessionListSchema.parse(await invoke("sessions_list"));
+  }
+  return [];
+}
+
+export async function forceStopGameSession(id: string): Promise<GameSession> {
+  if (bridgeMode === "native") {
+    return gameSessionSchema.parse(
+      await invoke("session_force_stop", { request: { id } }),
+    );
+  }
+  throw new Error(
+    "Minecraft process control is available only in the slate desktop app.",
+  );
 }
 
 export async function getPreferences(): Promise<AppPreferences> {

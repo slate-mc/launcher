@@ -12,7 +12,14 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, type ComponentType } from "react";
-import { bridgeMode, getPreferences, getPreflight, listAccounts } from "../lib/bridge";
+import {
+  bridgeMode,
+  getPreferences,
+  getPreflight,
+  listAccounts,
+  listGameSessions,
+  listInstallJobs,
+} from "../lib/bridge";
 import { MinecraftHead } from "./MinecraftHead";
 
 type NavigationItem = {
@@ -45,8 +52,24 @@ export function AppShell() {
     queryKey: ["minecraft-accounts"],
     queryFn: listAccounts,
   });
+  const jobsQuery = useQuery({
+    queryKey: ["install-jobs"],
+    queryFn: listInstallJobs,
+    refetchInterval: 1_000,
+  });
+  const sessionsQuery = useQuery({
+    queryKey: ["game-sessions"],
+    queryFn: listGameSessions,
+    refetchInterval: 750,
+  });
+  const activeJobs = (jobsQuery.data ?? []).filter(
+    (job) => job.state === "queued" || job.state === "running",
+  );
+  const activeSessions = sessionsQuery.data ?? [];
+  const leadingJob = activeJobs[0];
   const activeAccount =
-    accountsQuery.data?.find((account) => account.isDefault) ?? accountsQuery.data?.[0];
+    accountsQuery.data?.find((account) => account.isDefault) ??
+    accountsQuery.data?.[0];
 
   useEffect(() => {
     const theme = preferencesQuery.data?.theme ?? "dark";
@@ -62,7 +85,11 @@ export function AppShell() {
   return (
     <div className="flex h-full min-h-[640px] min-w-[960px] flex-col bg-app-bg text-app-text">
       <header className="relative z-20 grid h-[72px] shrink-0 grid-cols-[185px_minmax(430px,1fr)_auto] items-stretch gap-4 border-b border-app-separator/50 bg-app-bg/98 px-6 max-[1180px]:grid-cols-[150px_minmax(380px,1fr)_auto] max-[1180px]:px-[18px]">
-        <Link className="flex w-fit items-center" to="/home" aria-label="slate home">
+        <Link
+          className="flex w-fit items-center"
+          to="/home"
+          aria-label="slate home"
+        >
           <img
             className="block w-[126px] max-[1180px]:w-28"
             src="/brand/slate-lockup-paper.svg"
@@ -79,7 +106,8 @@ export function AppShell() {
                 to={item.to}
                 className="relative inline-flex h-full min-w-[104px] items-center justify-center gap-[9px] px-4 text-[13px] font-semibold text-app-secondary no-underline transition-colors duration-[120ms] after:absolute after:right-[18px] after:bottom-0 after:left-[18px] after:h-0.5 after:scale-x-[.65] after:bg-app-accent after:opacity-0 after:transition-all after:duration-[120ms] hover:bg-app-hover/30 hover:text-app-text max-[1180px]:min-w-[88px] max-[1180px]:px-2.5"
                 activeProps={{
-                  className: "text-app-text after:scale-x-100 after:opacity-100",
+                  className:
+                    "text-app-text after:scale-x-100 after:opacity-100",
                 }}
               >
                 <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
@@ -90,11 +118,35 @@ export function AppShell() {
         </nav>
 
         <div className="flex items-center gap-1">
-          <Link className={quietAction} to="/activity" aria-label="Downloads" title="Downloads">
+          <Link
+            className={`${quietAction} relative`}
+            to="/activity"
+            aria-label={
+              activeJobs.length > 0
+                ? `${activeJobs.length} active installations`
+                : "Downloads"
+            }
+            title="Downloads"
+          >
             <Download size={19} aria-hidden="true" />
+            {activeJobs.length > 0 ? (
+              <span className="absolute top-1 right-1 size-1.5 rounded-full bg-app-accent" />
+            ) : null}
           </Link>
-          <Link className={quietAction} to="/activity" aria-label="Activity" title="Activity">
+          <Link
+            className={`${quietAction} relative`}
+            to="/activity"
+            aria-label={
+              activeSessions.length > 0
+                ? `${activeSessions.length} active game sessions`
+                : "Activity"
+            }
+            title="Activity"
+          >
             <Activity size={19} aria-hidden="true" />
+            {activeSessions.length > 0 ? (
+              <span className="absolute top-1 right-1 size-1.5 rounded-full bg-app-warning" />
+            ) : null}
           </Link>
           <Link
             className={quietAction}
@@ -145,7 +197,9 @@ export function AppShell() {
         <span className="inline-flex items-center gap-2 font-semibold text-app-text">
           <span
             className={`size-2 shrink-0 rounded-full ${
-              preflightQuery.data?.java.available ? "bg-app-accent" : "bg-app-warning"
+              preflightQuery.data?.java.available
+                ? "bg-app-accent"
+                : "bg-app-warning"
             }`}
           />
           {preflightQuery.isPending
@@ -155,7 +209,23 @@ export function AppShell() {
               : "Java needs attention"}
         </span>
         <span className="h-[18px] w-px bg-app-separator" />
-        <span>No active jobs</span>
+        <span className="max-w-[420px] overflow-hidden text-ellipsis whitespace-nowrap">
+          {leadingJob
+            ? `${leadingJob.message}${
+                leadingJob.completedItems !== undefined &&
+                leadingJob.totalItems !== undefined
+                  ? ` · ${leadingJob.completedItems.toLocaleString()} / ${leadingJob.totalItems.toLocaleString()}`
+                  : ""
+              }`
+            : "No active installations"}
+        </span>
+        {activeSessions.length > 0 ? (
+          <span className="inline-flex items-center gap-2 font-semibold text-app-text">
+            <span className="size-2 rounded-full bg-app-warning" />
+            {activeSessions.length}{" "}
+            {activeSessions.length === 1 ? "game" : "games"} running
+          </span>
+        ) : null}
         <span className="ml-auto">
           {bridgeMode === "native" ? "Native data" : "Preview environment"}
         </span>

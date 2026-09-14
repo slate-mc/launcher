@@ -3,6 +3,14 @@
   "title": "InstallJobSummary",
   "type": "object",
   "properties": {
+    "completedItems": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    },
     "createdAt": {
       "type": "string"
     },
@@ -26,6 +34,14 @@
     },
     "state": {
       "$ref": "#/$defs/InstallJobStateDto"
+    },
+    "totalItems": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
     },
     "updatedAt": {
       "type": "string"

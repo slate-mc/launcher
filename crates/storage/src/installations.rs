@@ -53,6 +53,8 @@ pub struct InstallJobRecord {
     pub state: JobState,
     pub phase: String,
     pub progress_json: String,
+    pub completed_items: Option<u64>,
+    pub total_items: Option<u64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -173,6 +175,8 @@ impl Database {
                 state: JobState::Queued,
                 phase: "metadata".to_owned(),
                 progress_json: progress,
+                completed_items: None,
+                total_items: None,
                 created_at: now.clone(),
                 updated_at: now,
             },
@@ -188,6 +192,78 @@ impl Database {
         update_job(&self.pool, job_id, JobState::Running, phase, message).await
     }
 
+    pub async fn update_install_progress(
+        &self,
+        job_id: JobId,
+        phase: &str,
+        message: &str,
+        completed_items: Option<u64>,
+        total_items: Option<u64>,
+    ) -> Result<(), StorageError> {
+        let completed_items = completed_items
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| StorageError::ProgressOutOfRange)?;
+        let total_items = total_items
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| StorageError::ProgressOutOfRange)?;
+        let now = now_rfc3339()?;
+        sqlx::query(
+            "UPDATE jobs SET state = 'running', phase = ?, progress_json = json_set(\
+             progress_json, '$.message', ?, '$.completedItems', ?, '$.totalItems', ?), \
+             updated_at = ? WHERE id = ? AND state IN ('queued', 'running')",
+        )
+        .bind(phase)
+        .bind(message)
+        .bind(completed_items)
+        .bind(total_items)
+        .bind(now)
+        .bind(job_id.to_string())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Resolves jobs whose worker belonged to a previous launcher process.
+    pub async fn recover_interrupted_installs(&self) -> Result<u64, StorageError> {
+        let now = now_rfc3339()?;
+        let mut transaction = self.pool.begin().await?;
+        sqlx::query(
+            "UPDATE instance_revisions SET status = 'failed' WHERE status IN ('proposed', 'staged') \
+             AND id IN (SELECT json_extract(progress_json, '$.revisionId') FROM jobs \
+             WHERE kind = 'instance_install' AND state IN ('queued', 'running'))",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "UPDATE instance_configuration SET setup_state = 'blocked' WHERE setup_state = 'preparing' \
+             AND instance_id IN (SELECT id FROM instances WHERE trashed_at IS NULL)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        let affected = sqlx::query(
+            "UPDATE jobs SET \
+             state = CASE WHEN EXISTS (SELECT 1 FROM instances i WHERE i.id = jobs.entity_id \
+                 AND i.trashed_at IS NULL) THEN 'failed' ELSE 'cancelled' END, \
+             phase = CASE WHEN EXISTS (SELECT 1 FROM instances i WHERE i.id = jobs.entity_id \
+                 AND i.trashed_at IS NULL) THEN 'interrupted' ELSE 'cancelled' END, \
+             progress_json = json_set(progress_json, '$.message', \
+                 CASE WHEN EXISTS (SELECT 1 FROM instances i WHERE i.id = jobs.entity_id \
+                     AND i.trashed_at IS NULL) \
+                 THEN 'Installation was interrupted when slate closed. Retry the installation.' \
+                 ELSE 'Installation stopped because the instance was moved to trash.' END, \
+                 '$.completedItems', NULL, '$.totalItems', NULL), \
+             updated_at = ? WHERE kind = 'instance_install' AND state IN ('queued', 'running')",
+        )
+        .bind(now)
+        .execute(&mut *transaction)
+        .await?
+        .rows_affected();
+        transaction.commit().await?;
+        Ok(affected)
+    }
+
     pub async fn complete_instance_install(
         &self,
         job_id: JobId,
@@ -200,6 +276,18 @@ impl Database {
         let now = now_rfc3339()?;
         let runtime_id = Uuid::new_v4().to_string();
         let mut transaction = self.pool.begin().await?;
+        let active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM jobs j \
+             INNER JOIN instances i ON i.id = j.entity_id \
+             WHERE j.id = ? AND j.state IN ('queued', 'running') AND i.trashed_at IS NULL)",
+        )
+        .bind(job_id.to_string())
+        .fetch_one(&mut *transaction)
+        .await?;
+        if !active {
+            transaction.rollback().await?;
+            return Err(StorageError::InstallNoLongerActive);
+        }
         sqlx::query(
             "INSERT INTO runtime_installations \
              (id, vendor, release_name, java_version, major, os, arch, executable_ref, \
@@ -281,6 +369,16 @@ impl Database {
     ) -> Result<(), StorageError> {
         let now = now_rfc3339()?;
         let mut transaction = self.pool.begin().await?;
+        let active: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM jobs WHERE id = ? AND state IN ('queued', 'running'))",
+        )
+        .bind(job_id.to_string())
+        .fetch_one(&mut *transaction)
+        .await?;
+        if !active {
+            transaction.rollback().await?;
+            return Ok(());
+        }
         let instance_id: Option<String> =
             sqlx::query_scalar("SELECT instance_id FROM instance_revisions WHERE id = ?")
                 .bind(revision_id.to_string())
@@ -320,7 +418,9 @@ impl Database {
         }
         let rows = sqlx::query(
             "SELECT j.id, j.entity_id, j.state, j.phase, j.progress_json, j.created_at, \
-             j.updated_at, json_extract(j.progress_json, '$.revisionId') AS revision_id \
+             j.updated_at, json_extract(j.progress_json, '$.revisionId') AS revision_id, \
+             json_extract(j.progress_json, '$.completedItems') AS completed_items, \
+             json_extract(j.progress_json, '$.totalItems') AS total_items \
              FROM jobs j WHERE j.kind = 'instance_install' \
              ORDER BY j.updated_at DESC LIMIT ?",
         )
@@ -413,8 +513,11 @@ impl Database {
         &self,
         session_id: SessionId,
         exit_code: Option<i32>,
+        force_stopped: bool,
     ) -> Result<(), StorageError> {
-        let state = if exit_code == Some(0) {
+        let state = if force_stopped {
+            "cancelled"
+        } else if exit_code == Some(0) {
             "exited"
         } else {
             "crashed"
@@ -426,6 +529,17 @@ impl Database {
             .bind(session_id.to_string())
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn fail_session_start(&self, session_id: SessionId) -> Result<(), StorageError> {
+        sqlx::query(
+            "UPDATE sessions SET ended_at = ?, state = 'failed' WHERE id = ? AND state = 'starting'",
+        )
+        .bind(now_rfc3339()?)
+        .bind(session_id.to_string())
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -509,6 +623,14 @@ fn row_to_install_job(row: &sqlx::sqlite::SqliteRow) -> Result<InstallJobRecord,
         state: JobState::try_from(state.as_str())?,
         phase: row.try_get("phase")?,
         progress_json: row.try_get("progress_json")?,
+        completed_items: row
+            .try_get::<Option<i64>, _>("completed_items")?
+            .map(|value| u64::try_from(value).map_err(|_| StorageError::ProgressOutOfRange))
+            .transpose()?,
+        total_items: row
+            .try_get::<Option<i64>, _>("total_items")?
+            .map(|value| u64::try_from(value).map_err(|_| StorageError::ProgressOutOfRange))
+            .transpose()?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
@@ -521,6 +643,8 @@ fn parse_uuid(value: String, field: &'static str) -> Result<Uuid, StorageError> 
 #[cfg(test)]
 mod tests {
     use super::JobState;
+    use crate::{Database, NewInstance};
+    use slate_domain::{InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId};
 
     #[test]
     fn job_states_match_database_values() {
@@ -529,5 +653,93 @@ mod tests {
             JobState::try_from("succeeded").ok(),
             Some(JobState::Succeeded)
         );
+    }
+
+    #[tokio::test]
+    async fn interrupted_install_progress_is_recovered_on_startup()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let instance = database
+            .create_instance(NewInstance {
+                name: InstanceName::parse("Interrupted")?,
+                mode: InstanceMode::Vanilla,
+                management_mode: ManagementMode::Local,
+                root_id: root,
+                minecraft_version: "1.21.1".to_owned(),
+                loader_kind: LoaderFamily::Vanilla,
+                loader_version: None,
+                memory_mb: 4096,
+            })
+            .await?;
+        let pending = database
+            .begin_instance_install(instance.id, instance.revision, RequestId::new())
+            .await?;
+        database
+            .update_install_progress(
+                pending.job.id,
+                "assets",
+                "Checking game assets",
+                Some(42),
+                Some(100),
+            )
+            .await?;
+
+        assert_eq!(database.recover_interrupted_installs().await?, 1);
+        let job = database
+            .list_install_jobs(10)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or("missing install job")?;
+        let recovered = database.get_instance(instance.id).await?;
+        assert_eq!(job.state, JobState::Failed);
+        assert_eq!(job.phase, "interrupted");
+        assert_eq!(job.completed_items, None);
+        assert_eq!(
+            recovered.setup_state,
+            slate_domain::InstanceSetupState::Blocked
+        );
+        database.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn trashing_an_instance_cancels_its_active_install()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let instance = database
+            .create_instance(NewInstance {
+                name: InstanceName::parse("Temporary")?,
+                mode: InstanceMode::Vanilla,
+                management_mode: ManagementMode::Local,
+                root_id: root,
+                minecraft_version: "1.21.1".to_owned(),
+                loader_kind: LoaderFamily::Vanilla,
+                loader_version: None,
+                memory_mb: 4096,
+            })
+            .await?;
+        database
+            .begin_instance_install(instance.id, instance.revision, RequestId::new())
+            .await?;
+
+        database
+            .trash_instance(instance.id, instance.revision + 1)
+            .await?;
+
+        let job = database
+            .list_install_jobs(10)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or("missing install job")?;
+        assert_eq!(job.state, JobState::Cancelled);
+        assert_eq!(job.phase, "cancelled");
+        database.close().await;
+        Ok(())
     }
 }
