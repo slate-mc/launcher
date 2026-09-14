@@ -1,4 +1,5 @@
 use crate::providers::{CurseForgeProvider, FtbProvider, ModrinthProvider, ProviderRegistry};
+use crate::rate_limit::RateLimiter;
 use crate::upstream::{UpstreamClient, UpstreamError};
 use moka::sync::Cache;
 use slate_minecraft::{MetadataFetchError, MojangMetadataClient, VersionManifest};
@@ -10,6 +11,7 @@ pub struct AppState {
     pub providers: ProviderRegistry,
     pub upstream: UpstreamClient,
     pub minecraft: MinecraftCatalog,
+    pub rate_limiter: RateLimiter,
 }
 
 impl AppState {
@@ -24,6 +26,7 @@ impl AppState {
             providers,
             upstream,
             minecraft: MinecraftCatalog::new()?,
+            rate_limiter: RateLimiter::default(),
         })
     }
 }

@@ -13,6 +13,10 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new(config.upstream_url.clone(), &config.upstream_user_agent)?;
     let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
     tracing::info!(address = %config.bind_address, "slate modpack API listening");
-    axum::serve(listener, router(state)).await?;
+    axum::serve(
+        listener,
+        router(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }

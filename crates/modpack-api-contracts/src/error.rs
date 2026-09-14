@@ -10,6 +10,7 @@ pub enum ApiErrorCode {
     VersionNotFound,
     ProviderUnavailable,
     UpstreamRateLimited,
+    RateLimited,
     DownloadUnavailable,
     InvalidInstallPath,
     UnsupportedLoader,
