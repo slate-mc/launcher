@@ -1,11 +1,12 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
     CreateInstanceRequest, EventEnvelope, GameSessionSummary, InstallInstanceRequest,
-    InstallJobSummary, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
-    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModpackProjectRequest,
-    ModpackSearchRequest, ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary,
-    RedactedLaunchPlan, SessionLogEvent, SessionLogSubscription, StopGameSessionRequest,
-    SubscribeSessionLogRequest, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    InstallJobSummary, InstallModpackRequest, InstanceSummary, LaunchInstanceRequest,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
+    ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackVersionRequest,
+    ModpackVersionsRequest, PreflightSummary, RedactedLaunchPlan, SessionLogEvent,
+    SessionLogSubscription, StopGameSessionRequest, SubscribeSessionLogRequest,
+    UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -95,6 +96,14 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(slate_modpack_api_contracts::ModpackVersion),
         ),
         (
+            "install-modpack-request",
+            schema_for!(InstallModpackRequest),
+        ),
+        (
+            "modpack-install-started",
+            schema_for!(ModpackInstallStarted),
+        ),
+        (
             "minecraft-account-summary",
             schema_for!(MinecraftAccountSummary),
         ),
@@ -126,7 +135,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 33);
+        assert_eq!(schemas.len(), 35);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

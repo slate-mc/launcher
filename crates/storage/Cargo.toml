@@ -7,7 +7,9 @@ publish.workspace = true
 
 [dependencies]
 slate-domain = { path = "../domain" }
+slate-modpack-api-contracts = { path = "../modpack-api-contracts" }
 slate-platform = { path = "../platform" }
+serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true
@@ -19,4 +21,3 @@ tokio.workspace = true
 
 [lints]
 workspace = true
-

@@ -53,3 +53,14 @@ pub struct ModpackVersionRequest {
     pub project_id: String,
     pub version_id: String,
 }
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallModpackRequest {
+    pub provider: Provider,
+    pub project_id: String,
+    pub version_id: String,
+    pub instance_name: String,
+    #[serde(default)]
+    pub include_optional: Vec<String>,
+}

@@ -671,6 +671,7 @@ mod tests {
                 loader_kind: LoaderFamily::Vanilla,
                 loader_version: None,
                 memory_mb: 4096,
+                modpack_source: None,
             })
             .await?;
         let pending = database
@@ -721,6 +722,7 @@ mod tests {
                 loader_kind: LoaderFamily::Vanilla,
                 loader_version: None,
                 memory_mb: 4096,
+                modpack_source: None,
             })
             .await?;
         database

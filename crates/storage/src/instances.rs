@@ -4,8 +4,10 @@ use slate_domain::{
     InstanceId, InstanceMode, InstanceName, InstanceSetupState, LoaderFamily, ManagementMode,
     StorageRootId,
 };
+use slate_modpack_api_contracts::Provider;
 use slate_platform::ManagedRelativePath;
 use sqlx::Row;
+use std::str::FromStr;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18,6 +20,27 @@ pub struct NewInstance {
     pub loader_kind: LoaderFamily,
     pub loader_version: Option<String>,
     pub memory_mb: u32,
+    pub modpack_source: Option<NewModpackSource>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NewModpackSource {
+    pub provider: Provider,
+    pub project_id: String,
+    pub version_id: String,
+    pub selected_optional: Vec<String>,
+    pub display_name: String,
+    pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ModpackSourceRecord {
+    pub provider: Provider,
+    pub project_id: String,
+    pub version_id: String,
+    pub selected_optional: Vec<String>,
+    pub display_name: String,
+    pub icon_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,6 +58,7 @@ pub struct InstanceRecord {
     pub loader_version: Option<String>,
     pub memory_mb: u32,
     pub setup_state: InstanceSetupState,
+    pub modpack_source: Option<ModpackSourceRecord>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -132,6 +156,26 @@ impl Database {
         .execute(&mut *transaction)
         .await?;
 
+        if let Some(source) = &instance.modpack_source {
+            sqlx::query(
+                "INSERT INTO instance_modpacks \
+                 (instance_id, provider, project_id, version_id, selected_optional_json, \
+                  display_name, icon_url, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(id.to_string())
+            .bind(source.provider.as_str())
+            .bind(source.project_id.trim())
+            .bind(source.version_id.trim())
+            .bind(serde_json::to_string(&source.selected_optional)?)
+            .bind(source.display_name.trim())
+            .bind(source.icon_url.as_deref())
+            .bind(&now)
+            .bind(&now)
+            .execute(&mut *transaction)
+            .await?;
+        }
+
         transaction.commit().await?;
         self.get_instance(id).await
     }
@@ -140,8 +184,12 @@ impl Database {
         let row = sqlx::query(
             "SELECT i.id, i.name, i.mode, i.management_mode, i.root_id, i.relative_path, \
              i.favorite, i.revision, i.created_at, i.updated_at, c.minecraft_version, \
-             c.loader_kind, c.loader_version, c.memory_mb, c.setup_state \
+             c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
+             m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
+             m.version_id AS modpack_version_id, m.selected_optional_json, \
+             m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.id = ? AND i.trashed_at IS NULL",
         )
         .bind(id.to_string())
@@ -160,8 +208,12 @@ impl Database {
         let rows = sqlx::query(
             "SELECT i.id, i.name, i.mode, i.management_mode, i.root_id, i.relative_path, \
              i.favorite, i.revision, i.created_at, i.updated_at, c.minecraft_version, \
-             c.loader_kind, c.loader_version, c.memory_mb, c.setup_state \
+             c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
+             m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
+             m.version_id AS modpack_version_id, m.selected_optional_json, \
+             m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.trashed_at IS NULL \
              ORDER BY i.favorite DESC, i.name COLLATE NOCASE, i.id LIMIT ?",
         )
@@ -233,6 +285,15 @@ impl Database {
         .bind(id.to_string())
         .execute(&mut *transaction)
         .await?;
+        // A manually changed runtime can no longer claim the source pack's exact compatibility.
+        sqlx::query("DELETE FROM instance_modpacks WHERE instance_id = ?")
+            .bind(id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("DELETE FROM instance_mods WHERE instance_id = ?")
+            .bind(id.to_string())
+            .execute(&mut *transaction)
+            .await?;
         transaction.commit().await?;
         self.get_instance(id).await
     }
@@ -352,6 +413,22 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
     let revision: i64 = row.try_get("revision")?;
     let memory_mb: i64 = row.try_get("memory_mb")?;
     let favorite: i64 = row.try_get("favorite")?;
+    let modpack_provider: Option<String> = row.try_get("modpack_provider")?;
+    let modpack_source = modpack_provider
+        .map(|provider| -> Result<ModpackSourceRecord, StorageError> {
+            Ok(ModpackSourceRecord {
+                provider: Provider::from_str(&provider)
+                    .map_err(|_| invalid_value("instance_modpacks.provider", provider))?,
+                project_id: row.try_get("modpack_project_id")?,
+                version_id: row.try_get("modpack_version_id")?,
+                selected_optional: serde_json::from_str(
+                    &row.try_get::<String, _>("selected_optional_json")?,
+                )?,
+                display_name: row.try_get("modpack_display_name")?,
+                icon_url: row.try_get("modpack_icon_url")?,
+            })
+        })
+        .transpose()?;
 
     Ok(InstanceRecord {
         id: InstanceId::from_uuid(id),
@@ -374,6 +451,7 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
         })?,
         setup_state: InstanceSetupState::try_from(setup_state_value.as_str())
             .map_err(|_| invalid_value("instance_configuration.setup_state", setup_state_value))?,
+        modpack_source,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
@@ -393,9 +471,10 @@ fn parse_uuid(value: String, field: &'static str) -> Result<Uuid, StorageError> 
 
 #[cfg(test)]
 mod tests {
-    use super::NewInstance;
+    use super::{NewInstance, NewModpackSource};
     use crate::{Database, StorageError};
     use slate_domain::{InstanceMode, InstanceName, LoaderFamily, ManagementMode};
+    use slate_modpack_api_contracts::Provider;
 
     fn vanilla(
         root_id: slate_domain::StorageRootId,
@@ -410,6 +489,7 @@ mod tests {
             loader_kind: LoaderFamily::Vanilla,
             loader_version: None,
             memory_mb: 4096,
+            modpack_source: None,
         })
     }
 
@@ -457,6 +537,44 @@ mod tests {
             database.get_instance(created.id).await,
             Err(StorageError::InstanceNotFound)
         ));
+        database.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn modpack_source_roundtrips_and_detaches_after_runtime_change()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let mut instance = vanilla(root, "Pack")?;
+        instance.mode = InstanceMode::Modded;
+        instance.loader_kind = LoaderFamily::Fabric;
+        instance.loader_version = Some("0.18.4".to_owned());
+        instance.modpack_source = Some(NewModpackSource {
+            provider: Provider::Modrinth,
+            project_id: "pack-id".to_owned(),
+            version_id: "version-id".to_owned(),
+            selected_optional: vec!["optional-shaders".to_owned()],
+            display_name: "Example Pack".to_owned(),
+            icon_url: Some("https://cdn.modrinth.com/icon.png".to_owned()),
+        });
+        let created = database.create_instance(instance).await?;
+        let source = created.modpack_source.ok_or("missing source")?;
+        assert_eq!(source.provider, Provider::Modrinth);
+        assert_eq!(source.selected_optional, ["optional-shaders"]);
+
+        let updated = database
+            .update_instance_configuration(
+                created.id,
+                "1.21.1",
+                LoaderFamily::Vanilla,
+                None,
+                4096,
+                created.revision,
+            )
+            .await?;
+        assert!(updated.modpack_source.is_none());
         database.close().await;
         Ok(())
     }

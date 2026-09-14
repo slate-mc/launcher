@@ -87,6 +87,8 @@ pub enum StorageError {
     Database(#[from] sqlx::Error),
     #[error("failed to format a UTC timestamp")]
     Timestamp(#[from] time::error::Format),
+    #[error("stored JSON is invalid")]
+    Json(#[from] serde_json::Error),
     #[error("stored UUID in {field} is invalid")]
     InvalidStoredId {
         field: &'static str,

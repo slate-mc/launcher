@@ -8,15 +8,16 @@ use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, AuthCancelRequest, AuthFlowStateDto,
     AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary, CreateInstanceRequest,
     GameSessionStateDto, GameSessionSummary, InstallInstanceRequest, InstallJobStateDto,
-    InstallJobSummary, InstanceModeDto, InstanceSummary, JavaRuntimeSummary, LaunchInstanceRequest,
-    LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
-    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
-    MinecraftVersionOption, ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto,
-    ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto,
-    RenameInstanceRequest, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
-    SetDefaultAccountRequest, SetFavoriteRequest, StopGameSessionRequest,
-    SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
-    UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
+    InstallJobSummary, InstallModpackRequest, InstanceModeDto, InstanceSummary, JavaRuntimeSummary,
+    LaunchInstanceRequest, LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest,
+    MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
+    MinecraftVersionCatalog, MinecraftVersionOption, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackVersionRequest,
+    ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto, RenameInstanceRequest,
+    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest,
+    SetFavoriteRequest, StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto,
+    TrashInstanceRequest, UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest,
+    UpdateInstanceConfigurationRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, ManagementMode, RequestId, RevisionId,
@@ -33,7 +34,8 @@ use slate_minecraft::{
     RuleContext,
 };
 use slate_modpack_api_contracts::{
-    Modpack, ModpackVersion, ProvidersResponse, SearchResponse, VersionPage,
+    Architecture as ModpackArchitecture, InstallPlan, InstallPlanRequest, LoaderKind, Modpack,
+    ModpackVersion, Platform as ModpackPlatform, ProvidersResponse, SearchResponse, VersionPage,
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
 use slate_platform::{AppPaths, detect_java_runtime, probe_java_executable};
@@ -42,7 +44,8 @@ use slate_process::{
 };
 use slate_storage::{
     AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, Database, InstallJobRecord,
-    InstalledRuntime, JobState, NewInstance, ReduceMotionPreference, StorageError, ThemePreference,
+    InstalledRuntime, InstanceRecord, JobState, NewInstance, NewModpackSource,
+    ReduceMotionPreference, StorageError, ThemePreference,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
@@ -258,6 +261,7 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         CapabilitySummary::available("minecraft.launch"),
         CapabilitySummary::available("minecraft.session_logs"),
         CapabilitySummary::available("content.modpacks"),
+        CapabilitySummary::available("content.modpacks.install"),
         if credential_vault_ready {
             CapabilitySummary::available("minecraft.account")
         } else {
@@ -703,6 +707,7 @@ async fn instance_create(
             loader_kind: request.loader_kind.into(),
             loader_version,
             memory_mb: request.memory_mb,
+            modpack_source: None,
         })
         .await
         .map_err(|error| map_storage_error(error, "slate could not create the instance."))?;
@@ -835,6 +840,21 @@ async fn instance_install(
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let plan = if let Some(source) = &instance.modpack_source {
+        Some(fetch_instance_modpack_plan(state.inner(), source).await?)
+    } else {
+        None
+    };
+    queue_instance_install(state.inner(), instance, request.expected_revision, plan).await
+}
+
+async fn queue_instance_install(
+    state: &DesktopState,
+    instance: InstanceRecord,
+    expected_revision: u64,
+    modpack_plan: Option<InstallPlan>,
+) -> Result<InstallJobSummary, AppError> {
+    let instance_id = instance.id;
     if state
         .processes
         .active_for_instance(instance_id)
@@ -859,11 +879,11 @@ async fn instance_install(
         .map_err(|error| map_storage_error(error, "slate could not load download settings."))?;
     let pending = state
         .database
-        .begin_instance_install(instance_id, request.expected_revision, RequestId::new())
+        .begin_instance_install(instance_id, expected_revision, RequestId::new())
         .await
         .map_err(|error| map_storage_error(error, "slate could not queue the installation."))?;
     let response = install_job_summary(pending.job.clone());
-    let task_state = state.inner().clone();
+    let task_state = state.clone();
     tauri::async_runtime::spawn(async move {
         let (progress_tx, mut progress_rx) =
             tokio::sync::mpsc::unbounded_channel::<InstallProgress>();
@@ -890,7 +910,7 @@ async fn instance_install(
                 minecraft_version: instance.minecraft_version,
                 loader_kind: instance.loader_kind,
                 loader_version: instance.loader_version,
-                modpack_plan: None,
+                modpack_plan,
                 download_concurrency: preferences.download_concurrency,
                 paths: task_state.paths.clone(),
             },
@@ -955,6 +975,199 @@ async fn instance_install(
         }
     });
     Ok(response)
+}
+
+async fn fetch_instance_modpack_plan(
+    state: &DesktopState,
+    source: &slate_storage::ModpackSourceRecord,
+) -> Result<InstallPlan, AppError> {
+    state
+        .modpacks
+        .install_plan(
+            source.provider,
+            &source.project_id,
+            &source.version_id,
+            &InstallPlanRequest {
+                platform: current_modpack_platform(),
+                arch: current_modpack_architecture()?,
+                include_optional: source.selected_optional.clone(),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)
+}
+
+#[tauri::command]
+async fn modpack_install(
+    state: tauri::State<'_, DesktopState>,
+    request: InstallModpackRequest,
+) -> Result<ModpackInstallStarted, AppError> {
+    refresh_exited_sessions(state.inner()).await;
+    if request.include_optional.len() > 1_000 {
+        return Err(AppError::new(
+            "modpack.too_many_options",
+            "Too many optional files were selected.",
+        ));
+    }
+    let name = parse_instance_name(&request.instance_name).map_err(instance_name_app_error)?;
+    let project = state
+        .modpacks
+        .project(request.provider, &request.project_id)
+        .await
+        .map_err(modpack_api_error)?;
+    let version = state
+        .modpacks
+        .version(request.provider, &request.project_id, &request.version_id)
+        .await
+        .map_err(modpack_api_error)?;
+    let plan = state
+        .modpacks
+        .install_plan(
+            request.provider,
+            &request.project_id,
+            &request.version_id,
+            &InstallPlanRequest {
+                platform: current_modpack_platform(),
+                arch: current_modpack_architecture()?,
+                include_optional: request.include_optional.clone(),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)?;
+    validate_resolved_modpack(&request, &version, &plan)?;
+
+    let loader_kind = launcher_loader_kind(plan.runtime.loader.kind)?;
+    let loader_version = validate_selected_loader_version(
+        &plan.runtime.minecraft,
+        loader_kind,
+        plan.runtime.loader.version.as_deref(),
+    )
+    .await?;
+    let memory_mb = plan.runtime.memory.recommended_mb.clamp(1_024, 32_768);
+    validate_instance_configuration(
+        InstanceModeDto::Modded,
+        &plan.runtime.minecraft,
+        loader_kind,
+        loader_version.as_deref(),
+        memory_mb,
+    )
+    .map_err(configuration_app_error)?;
+
+    let record = state
+        .database
+        .create_instance(NewInstance {
+            name,
+            mode: slate_domain::InstanceMode::Modded,
+            management_mode: ManagementMode::Local,
+            root_id: state.storage_root_id,
+            minecraft_version: plan.runtime.minecraft.clone(),
+            loader_kind: loader_kind.into(),
+            loader_version,
+            memory_mb,
+            modpack_source: Some(NewModpackSource {
+                provider: request.provider,
+                project_id: request.project_id,
+                version_id: request.version_id,
+                selected_optional: request.include_optional,
+                display_name: project.name,
+                icon_url: project.icon_url,
+            }),
+        })
+        .await
+        .map_err(|error| {
+            map_storage_error(error, "slate could not create the modpack instance.")
+        })?;
+    if std::fs::create_dir_all(state.paths.instance(record.id)).is_err() {
+        let _ = state
+            .database
+            .trash_instance(record.id, record.revision)
+            .await;
+        return Err(AppError::new(
+            "local.instance_directory_unavailable",
+            "slate could not create the managed instance directory. The incomplete record was moved to trash.",
+        ));
+    }
+    let job =
+        match queue_instance_install(state.inner(), record.clone(), record.revision, Some(plan))
+            .await
+        {
+            Ok(job) => job,
+            Err(error) => {
+                let _ = state
+                    .database
+                    .trash_instance(record.id, record.revision)
+                    .await;
+                return Err(error);
+            }
+        };
+    let installed_record = state
+        .database
+        .get_instance(record.id)
+        .await
+        .map_err(|error| {
+            map_storage_error(error, "slate could not reload the modpack instance.")
+        })?;
+    Ok(ModpackInstallStarted {
+        instance: instance_summary(installed_record),
+        job,
+    })
+}
+
+fn validate_resolved_modpack(
+    request: &InstallModpackRequest,
+    version: &ModpackVersion,
+    plan: &InstallPlan,
+) -> Result<(), AppError> {
+    if version.provider != request.provider
+        || version.project_id != request.project_id
+        || version.id != request.version_id
+        || plan.instance.provider != request.provider
+        || plan.instance.project_id != request.project_id
+        || plan.instance.version_id != request.version_id
+        || version.minecraft.version != plan.runtime.minecraft
+        || version.loader != plan.runtime.loader
+    {
+        return Err(AppError::new(
+            "modpack.resolution_mismatch",
+            "The provider returned inconsistent modpack metadata. Nothing was installed.",
+        ));
+    }
+    Ok(())
+}
+
+fn launcher_loader_kind(loader: LoaderKind) -> Result<LoaderKindDto, AppError> {
+    match loader {
+        LoaderKind::Vanilla => Ok(LoaderKindDto::Vanilla),
+        LoaderKind::Fabric => Ok(LoaderKindDto::Fabric),
+        LoaderKind::NeoForge => Ok(LoaderKindDto::NeoForge),
+        LoaderKind::Forge | LoaderKind::Quilt => Err(AppError::new(
+            "modpack.loader_not_supported",
+            "This pack uses a loader that slate cannot install yet.",
+        )),
+    }
+}
+
+const fn current_modpack_platform() -> ModpackPlatform {
+    if cfg!(target_os = "windows") {
+        ModpackPlatform::Windows
+    } else if cfg!(target_os = "macos") {
+        ModpackPlatform::Macos
+    } else {
+        ModpackPlatform::Linux
+    }
+}
+
+fn current_modpack_architecture() -> Result<ModpackArchitecture, AppError> {
+    if cfg!(target_arch = "x86_64") {
+        Ok(ModpackArchitecture::X86_64)
+    } else if cfg!(target_arch = "aarch64") {
+        Ok(ModpackArchitecture::Aarch64)
+    } else {
+        Err(AppError::new(
+            "modpack.unsupported_architecture",
+            "Modpack installation currently supports x86-64 and ARM64 systems.",
+        ))
+    }
 }
 
 #[tauri::command]
@@ -1363,6 +1576,13 @@ fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
         loader_version: record.loader_version,
         memory_mb: record.memory_mb,
         setup_state: record.setup_state.into(),
+        modpack_source: record.modpack_source.map(|source| ModpackSourceSummary {
+            provider: source.provider,
+            project_id: source.project_id,
+            version_id: source.version_id,
+            display_name: source.display_name,
+            icon_url: source.icon_url,
+        }),
         created_at: record.created_at,
         updated_at: record.updated_at,
     }
@@ -2070,6 +2290,7 @@ fn main() {
             modpack_get,
             modpack_versions_list,
             modpack_version_get,
+            modpack_install,
         ])
         .run(tauri::generate_context!());
 

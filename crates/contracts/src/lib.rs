@@ -23,11 +23,13 @@ pub use catalog::{
 };
 pub use error::{AppError, FieldError};
 pub use events::EventEnvelope;
-pub use install::{InstallInstanceRequest, InstallJobStateDto, InstallJobSummary};
+pub use install::{
+    InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, ModpackInstallStarted,
+};
 pub use instance::{
     CreateInstanceRequest, InstanceModeDto, InstanceSetupStateDto, InstanceSummary, LoaderKindDto,
-    ManagementModeDto, RenameInstanceRequest, SetFavoriteRequest, TrashInstanceRequest,
-    UpdateInstanceConfigurationRequest,
+    ManagementModeDto, ModpackSourceSummary, RenameInstanceRequest, SetFavoriteRequest,
+    TrashInstanceRequest, UpdateInstanceConfigurationRequest,
 };
 pub use launch::{
     GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,
@@ -35,8 +37,8 @@ pub use launch::{
     SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
 };
 pub use modpack::{
-    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackVersionRequest,
-    ModpackVersionsRequest,
+    InstallModpackRequest, ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto,
+    ModpackVersionRequest, ModpackVersionsRequest,
 };
 pub use schema::schema_documents;
 pub use settings::{
@@ -45,7 +47,7 @@ pub use settings::{
 pub use system::{JavaRuntimeSummary, PreflightSummary};
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 3;
+pub const DATABASE_SCHEMA_VERSION: u32 = 4;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

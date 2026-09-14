@@ -1,6 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use slate_domain::{InstanceMode, InstanceSetupState, LoaderFamily, ManagementMode};
+use slate_modpack_api_contracts::Provider;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -110,8 +111,21 @@ pub struct InstanceSummary {
     pub loader_version: Option<String>,
     pub memory_mb: u32,
     pub setup_state: InstanceSetupStateDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modpack_source: Option<ModpackSourceSummary>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackSourceSummary {
+    pub provider: Provider,
+    pub project_id: String,
+    pub version_id: String,
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

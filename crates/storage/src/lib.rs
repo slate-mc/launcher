@@ -12,6 +12,6 @@ pub use database::{Database, StorageError};
 pub use installations::{
     InstallJobRecord, InstalledRevisionRecord, InstalledRuntime, JobState, PendingInstall,
 };
-pub use instances::{InstanceRecord, NewInstance};
+pub use instances::{InstanceRecord, ModpackSourceRecord, NewInstance, NewModpackSource};
 pub use servers::{NewSavedServer, SavedServerRecord};
 pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference};

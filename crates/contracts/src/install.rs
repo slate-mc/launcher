@@ -1,3 +1,4 @@
+use crate::InstanceSummary;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -34,4 +35,11 @@ pub struct InstallJobSummary {
     pub total_items: Option<u64>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackInstallStarted {
+    pub instance: InstanceSummary,
+    pub job: InstallJobSummary,
 }
