@@ -1,9 +1,11 @@
 //! Transactional Minecraft installation and managed Java acquisition for slate.
 
 mod download;
+mod modpack;
 mod runtime;
 
 pub use download::{DownloadError, DownloadProgress, DownloadSummary, Downloader};
+pub use modpack::ContentInstallError;
 pub use runtime::{ManagedJavaRuntime, RuntimeInstallError, ensure_managed_java};
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,7 @@ use slate_minecraft::{
     MojangMetadataClient, NativeExtraction, OperatingSystem, ResolvedVersion, RuleContext,
     VersionMetadata,
 };
+use slate_modpack_api_contracts::InstallPlan;
 use slate_platform::{AppPaths, JavaArchitecture, ManagedRelativePath};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
@@ -37,6 +40,7 @@ pub struct InstallRequest {
     pub minecraft_version: String,
     pub loader_kind: LoaderFamily,
     pub loader_version: Option<String>,
+    pub modpack_plan: Option<InstallPlan>,
     pub download_concurrency: u8,
     pub paths: AppPaths,
 }
@@ -60,6 +64,7 @@ pub enum InstallPhase {
     Loader,
     LaunchFiles,
     Natives,
+    Content,
     Verification,
     Commit,
 }
@@ -75,6 +80,7 @@ impl InstallPhase {
             Self::Loader => "loader",
             Self::LaunchFiles => "launch-files",
             Self::Natives => "natives",
+            Self::Content => "content",
             Self::Verification => "verification",
             Self::Commit => "commit",
         }
@@ -106,6 +112,7 @@ pub struct InstalledRevision {
     pub metadata_layers: Vec<VersionMetadata>,
     pub runtime: ManagedJavaRuntime,
     pub launch_artifacts: Vec<InstalledArtifactDigest>,
+    pub content_artifacts: Vec<InstalledArtifactDigest>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -128,6 +135,8 @@ struct InstalledRevisionManifest {
     metadata_layers: Vec<VersionMetadata>,
     runtime: ManagedJavaRuntime,
     launch_artifacts: Vec<InstalledArtifactDigest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    content_artifacts: Vec<InstalledArtifactDigest>,
 }
 
 pub async fn install(request: InstallRequest) -> Result<InstallOutcome, InstallError> {
@@ -181,6 +190,9 @@ where
 
     let base_resolved = ResolvedVersion::resolve(vec![base.clone()])?;
     let base_install = LaunchPlanner::prepare_install(&base_resolved, &layout, &rules)?;
+    if let Some(plan) = &request.modpack_plan {
+        modpack::validate_plan_compatibility(&request, plan, base_install.required_java_major)?;
+    }
     let downloader = Downloader::new(request.download_concurrency)?;
     let mut summary = download_install_phase(
         &downloader,
@@ -294,6 +306,25 @@ where
         "Extracting native libraries",
     ));
     extract_natives(full_install.native_extractions).await?;
+    let content_artifacts = if let Some(plan) = &request.modpack_plan {
+        modpack::install_plan_content(
+            plan,
+            &layout.game_directory,
+            &revision_directory,
+            request.paths.storage_root(),
+            |completed, total, message| {
+                on_progress(InstallProgress {
+                    phase: InstallPhase::Content,
+                    message,
+                    completed_items: Some(completed),
+                    total_items: Some(total),
+                });
+            },
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
     on_progress(InstallProgress::indeterminate(
         InstallPhase::Verification,
         "Creating the verified launch-file index",
@@ -315,6 +346,7 @@ where
         metadata_layers: layers,
         runtime: runtime.clone(),
         launch_artifacts,
+        content_artifacts,
     };
     let manifest_bytes = serde_json::to_vec_pretty(&installed_manifest)?;
     let manifest_digest = digest_hex(&Sha256::digest(&manifest_bytes));
@@ -390,6 +422,7 @@ pub async fn load_installed_revision(
         metadata_layers: manifest.metadata_layers,
         runtime: manifest.runtime,
         launch_artifacts: manifest.launch_artifacts,
+        content_artifacts: manifest.content_artifacts,
     })
 }
 
@@ -873,6 +906,8 @@ pub enum InstallError {
     #[error(transparent)]
     Runtime(#[from] RuntimeInstallError),
     #[error(transparent)]
+    Content(#[from] ContentInstallError),
+    #[error(transparent)]
     Mojang(#[from] slate_minecraft::MetadataFetchError),
     #[error(transparent)]
     Fabric(#[from] slate_loaders::FabricError),
@@ -914,6 +949,7 @@ mod tests {
             minecraft_version: "1.21.1".to_owned(),
             loader_kind: LoaderFamily::Fabric,
             loader_version: None,
+            modpack_plan: None,
             download_concurrency: 4,
             paths: AppPaths::from_roots(
                 PathBuf::from("C:/slate"),

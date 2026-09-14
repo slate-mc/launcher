@@ -890,6 +890,7 @@ async fn instance_install(
                 minecraft_version: instance.minecraft_version,
                 loader_kind: instance.loader_kind,
                 loader_version: instance.loader_version,
+                modpack_plan: None,
                 download_concurrency: preferences.download_concurrency,
                 paths: task_state.paths.clone(),
             },

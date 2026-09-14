@@ -71,6 +71,7 @@ async fn verify_install(
         minecraft_version: minecraft_version.to_owned(),
         loader_kind,
         loader_version,
+        modpack_plan: None,
         download_concurrency: 8,
         paths: paths.clone(),
     })
