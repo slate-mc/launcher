@@ -24,6 +24,16 @@ pub(super) async fn preferences_update(
         )
         .with_field_error("downloadConcurrency", "Choose a value from 1 through 8."));
     }
+    if request.download_bandwidth_limit_mib > 1024 {
+        return Err(AppError::new(
+            "validation.download_bandwidth",
+            "Choose a download speed limit up to 1024 MB/s.",
+        )
+        .with_field_error(
+            "downloadBandwidthLimitMib",
+            "Choose Unlimited or a value up to 1024 MB/s.",
+        ));
+    }
     if request.trash_retention_days != 0 && !(7..=365).contains(&request.trash_retention_days) {
         return Err(AppError::new(
             "validation.trash_retention",
@@ -44,6 +54,7 @@ pub(super) async fn preferences_update(
                 ThemePreferenceDto::System => ThemePreference::System,
             },
             download_concurrency: request.download_concurrency,
+            download_bandwidth_limit_mib: request.download_bandwidth_limit_mib,
             telemetry_enabled: request.telemetry_enabled,
             reduce_motion: match request.reduce_motion {
                 ReduceMotionPreferenceDto::System => ReduceMotionPreference::System,

@@ -1,4 +1,4 @@
-use super::{InstallRequest, InstalledArtifactDigest};
+use super::{InstallRequest, InstalledArtifactDigest, download::BandwidthThrottle};
 use futures_util::{StreamExt, TryStreamExt, stream};
 use reqwest::{Client, StatusCode};
 use sha1::Sha1;
@@ -85,6 +85,7 @@ pub(super) async fn install_plan_content<F>(
     revision_directory: &Path,
     storage_root: &Path,
     download_concurrency: u8,
+    download_bandwidth_limit_mib: u32,
     on_progress: F,
 ) -> Result<Vec<InstalledArtifactDigest>, ContentInstallError>
 where
@@ -104,6 +105,7 @@ where
         .user_agent("slate-launcher/0.1 (+https://slatelauncher.org)")
         .build()?;
     let total = u64::try_from(plan.downloads.len()).unwrap_or(u64::MAX);
+    let throttle = BandwidthThrottle::from_mebibytes(download_bandwidth_limit_mib)?;
     on_progress(0, total, "Preparing modpack content".to_owned());
     let completed = AtomicU64::new(0);
     let staged_downloads = stream::iter(plan.downloads.iter().cloned())
@@ -112,6 +114,7 @@ where
             let staging = staging.clone();
             let completed = &completed;
             let on_progress = &on_progress;
+            let throttle = throttle.clone();
             async move {
                 let relative = validate_relative_path(&download.destination, true)?;
                 let destination = staging.join(&relative);
@@ -128,7 +131,7 @@ where
                         format_download_size(download.size)
                     ),
                 );
-                download_verified(&client, &download, &destination).await?;
+                download_verified(&client, &download, &destination, throttle.as_ref()).await?;
                 let now_completed = completed.fetch_add(1, Ordering::Relaxed) + 1;
                 on_progress(
                     now_completed,
@@ -312,13 +315,23 @@ async fn download_verified(
     client: &Client,
     download: &InstallPlanDownload,
     destination: &Path,
+    throttle: Option<&BandwidthThrottle>,
 ) -> Result<(), ContentInstallError> {
     let partial = destination.with_extension(format!("partial-{}", Uuid::new_v4()));
     let mut last_error = None;
     for source in &download.sources {
         for attempt in 0..3_u32 {
             let _ = tokio::fs::remove_file(&partial).await;
-            match download_once(client, source, &partial, download.size, &download.hashes).await {
+            match download_once(
+                client,
+                source,
+                &partial,
+                download.size,
+                &download.hashes,
+                throttle,
+            )
+            .await
+            {
                 Ok(()) => {
                     tokio::fs::rename(&partial, destination).await?;
                     return Ok(());
@@ -342,6 +355,7 @@ async fn download_once(
     destination: &Path,
     expected_size: u64,
     hashes: &Hashes,
+    throttle: Option<&BandwidthThrottle>,
 ) -> Result<(), ContentInstallError> {
     let (raw_url, proxy) = match source {
         DownloadSource::Direct { url } => (url, false),
@@ -391,6 +405,9 @@ async fn download_once(
         sha1.update(&chunk);
         sha256.update(&chunk);
         sha512.update(&chunk);
+        if let Some(throttle) = throttle {
+            throttle.acquire(chunk.len()).await;
+        }
         tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
     }
     tokio::io::AsyncWriteExt::flush(&mut file).await?;
@@ -735,6 +752,8 @@ pub enum ContentInstallError {
     Io(#[from] std::io::Error),
     #[error("content installation worker failed")]
     Worker(#[from] tokio::task::JoinError),
+    #[error("content download settings are invalid")]
+    DownloadSettings(#[from] super::download::DownloadError),
 }
 
 #[cfg(test)]

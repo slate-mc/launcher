@@ -239,6 +239,7 @@ export const createInstanceSchema = z
 export const preferencesSchema = z.object({
   theme: z.enum(["dark", "light", "system"]),
   downloadConcurrency: z.number().int().min(1).max(8),
+  downloadBandwidthLimitMib: z.number().int().min(0).max(1024),
   telemetryEnabled: z.boolean(),
   reduceMotion: z.enum(["system", "on", "off"]),
   trashRetentionDays: z

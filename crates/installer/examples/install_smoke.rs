@@ -73,6 +73,7 @@ async fn verify_install(
         loader_version,
         modpack_plan: None,
         download_concurrency: 8,
+        download_bandwidth_limit_mib: 0,
         paths: paths.clone(),
     })
     .await?;

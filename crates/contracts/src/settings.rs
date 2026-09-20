@@ -22,6 +22,7 @@ pub enum ReduceMotionPreferenceDto {
 pub struct AppPreferencesDto {
     pub theme: ThemePreferenceDto,
     pub download_concurrency: u8,
+    pub download_bandwidth_limit_mib: u32,
     pub telemetry_enabled: bool,
     pub reduce_motion: ReduceMotionPreferenceDto,
     pub trash_retention_days: u16,

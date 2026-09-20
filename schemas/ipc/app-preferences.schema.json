@@ -3,6 +3,11 @@
   "title": "AppPreferencesDto",
   "type": "object",
   "properties": {
+    "downloadBandwidthLimitMib": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
     "downloadConcurrency": {
       "type": "integer",
       "format": "uint8",
@@ -28,6 +33,7 @@
   "required": [
     "theme",
     "downloadConcurrency",
+    "downloadBandwidthLimitMib",
     "telemetryEnabled",
     "reduceMotion",
     "trashRetentionDays"

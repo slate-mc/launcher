@@ -17,6 +17,7 @@ fn validates_loader_version_shape() {
         loader_version: None,
         modpack_plan: None,
         download_concurrency: 4,
+        download_bandwidth_limit_mib: 0,
         paths: AppPaths::from_roots(PathBuf::from("C:/slate"), PathBuf::from("C:/slate/storage")),
     };
     assert!(matches!(

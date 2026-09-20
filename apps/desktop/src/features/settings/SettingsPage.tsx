@@ -1,8 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CircleAlert, Database, HardDrive, Save, ShieldCheck } from "lucide-react";
+import {
+  Check,
+  CircleAlert,
+  Database,
+  HardDrive,
+  Save,
+  ShieldCheck,
+} from "lucide-react";
 import { useState } from "react";
-import { InlineNotice, PageHeader, StatusPill } from "../../components/PageScaffold";
-import { getPreferences, getPreflight, updatePreferences } from "../../lib/bridge";
+import {
+  InlineNotice,
+  PageHeader,
+  StatusPill,
+} from "../../components/PageScaffold";
+import {
+  getPreferences,
+  getPreflight,
+  updatePreferences,
+} from "../../lib/bridge";
 import type { AppPreferences } from "../../types/launcher";
 import { SettingsNavigation } from "./SettingsNavigation";
 
@@ -37,8 +52,9 @@ export function SettingsPage() {
         <aside className="grid content-start gap-5">
           <PreflightPanel query={preflightQuery} />
           <InlineNotice title="Privacy default">
-            Optional telemetry stays off unless you explicitly enable it. Account and launch
-            capabilities are independent from local library management.
+            Optional telemetry stays off unless you explicitly enable it.
+            Account and launch capabilities are independent from local library
+            management.
           </InlineNotice>
         </aside>
       </div>
@@ -132,6 +148,25 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
             ))}
           </select>
         </SettingRow>
+        <SettingRow
+          title="Download speed"
+          description="Limit slate’s combined download speed when installing games, modpacks, and mods."
+        >
+          <select
+            value={values.downloadBandwidthLimitMib}
+            className={selectClass}
+            onChange={(event) =>
+              update("downloadBandwidthLimitMib", Number(event.target.value))
+            }
+          >
+            <option value={0}>No limit</option>
+            {[5, 10, 25, 50, 100, 250, 500].map((value) => (
+              <option value={value} key={value}>
+                {value} MB/s
+              </option>
+            ))}
+          </select>
+        </SettingRow>
       </div>
 
       <div className="mt-7 flex items-center justify-between border-t border-app-separator/55 pt-5">
@@ -151,7 +186,11 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
           disabled={mutation.isPending || !dirty}
           onClick={() => mutation.mutate(values)}
         >
-          {saved ? <Check size={16} aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
+          {saved ? (
+            <Check size={16} aria-hidden="true" />
+          ) : (
+            <Save size={16} aria-hidden="true" />
+          )}
           {mutation.isPending ? "Saving…" : "Save preferences"}
         </button>
       </div>
@@ -165,12 +204,15 @@ function PreflightPanel({
   query: ReturnType<typeof useQuery<Awaited<ReturnType<typeof getPreflight>>>>;
 }) {
   if (query.isPending) {
-    return <div className="h-[280px] animate-pulse rounded-control bg-app-surface" />;
+    return (
+      <div className="h-[280px] animate-pulse rounded-control bg-app-surface" />
+    );
   }
   if (query.isError) {
     return (
       <InlineNotice tone="danger" title="System check unavailable">
-        slate could not check this device. Try again after restarting the launcher.
+        slate could not check this device. Try again after restarting the
+        launcher.
       </InlineNotice>
     );
   }
@@ -240,7 +282,9 @@ function CheckRow({
     <div className="flex min-h-11 items-center gap-3 border-b border-app-separator/45 py-2 last:border-0">
       <Icon size={16} className="text-app-muted" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <strong className="block text-xs font-bold text-app-text">{label}</strong>
+        <strong className="block text-xs font-bold text-app-text">
+          {label}
+        </strong>
         {detail ? (
           <small className="block overflow-hidden text-[10px] text-app-muted text-ellipsis whitespace-nowrap">
             {detail}
@@ -248,9 +292,19 @@ function CheckRow({
         ) : null}
       </span>
       <StatusPill
-        tone={state === "ready" ? "positive" : state === "optional" ? "neutral" : "warning"}
+        tone={
+          state === "ready"
+            ? "positive"
+            : state === "optional"
+              ? "neutral"
+              : "warning"
+        }
       >
-        {state === "ready" ? "Ready" : state === "optional" ? "Optional" : "Attention"}
+        {state === "ready"
+          ? "Ready"
+          : state === "optional"
+            ? "Optional"
+            : "Attention"}
       </StatusPill>
     </div>
   );
@@ -285,6 +339,7 @@ function samePreferences(left: AppPreferences, right: AppPreferences) {
   return (
     left.theme === right.theme &&
     left.downloadConcurrency === right.downloadConcurrency &&
+    left.downloadBandwidthLimitMib === right.downloadBandwidthLimitMib &&
     left.telemetryEnabled === right.telemetryEnabled &&
     left.reduceMotion === right.reduceMotion &&
     left.trashRetentionDays === right.trashRetentionDays

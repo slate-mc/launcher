@@ -206,6 +206,7 @@ pub(super) fn preferences_dto(value: AppPreferences) -> AppPreferencesDto {
             ThemePreference::System => ThemePreferenceDto::System,
         },
         download_concurrency: value.download_concurrency,
+        download_bandwidth_limit_mib: value.download_bandwidth_limit_mib,
         telemetry_enabled: value.telemetry_enabled,
         reduce_motion: match value.reduce_motion {
             ReduceMotionPreference::System => ReduceMotionPreferenceDto::System,

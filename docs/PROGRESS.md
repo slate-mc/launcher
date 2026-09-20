@@ -16,7 +16,8 @@ Last updated: September 20, 2026
   and live/retained Minecraft logs.
 - Durable installation records with detailed bounded progress, parallel downloads, verified shared
   artifacts, restart recovery for interrupted jobs, safe user cancellation, operation-aware retry
-  from Downloads, and sanitized user-facing failure messages.
+  from Downloads, an aggregate download-speed limit covering base-game and content files, and
+  sanitized user-facing failure messages.
 - Instance library, favorites, profile text/tags/notes, icon/banner selection and positioning,
   per-instance account/window/language/quick-play/performance/Java settings, common Minecraft game
   options, folder shortcuts, relocation, duplication, portable slate import/export, snapshots,
@@ -61,7 +62,7 @@ Verified on Windows on September 20, 2026:
 - 14 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 126 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 128 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -72,8 +73,8 @@ Verified on Windows on September 20, 2026:
 2. **Import coverage:** slate portable archives and local mod JARs work, but importing
    CurseForge/Modrinth packs and importing from other launchers are not complete.
 3. **Download controls:** installation progress, restart recovery, safe user cancellation, and
-   operation-aware retry from Downloads work, but queue ordering, pause/resume, and bandwidth
-   controls are missing.
+   operation-aware retry from Downloads and an aggregate bandwidth limit work, but queue ordering
+   and pause/resume are missing.
 4. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
    validated local ZIP import and can be inventoried and managed after installation. Provider
    browsing, updates, and ordering remain incomplete.

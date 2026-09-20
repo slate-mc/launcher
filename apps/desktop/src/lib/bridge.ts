@@ -1077,6 +1077,7 @@ function defaultPreferences(): AppPreferences {
   return {
     theme: "dark",
     downloadConcurrency: 4,
+    downloadBandwidthLimitMib: 0,
     telemetryEnabled: false,
     reduceMotion: "system",
     trashRetentionDays: 30,

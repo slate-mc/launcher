@@ -43,6 +43,7 @@ pub struct InstallRequest {
     pub loader_version: Option<String>,
     pub modpack_plan: Option<InstallPlan>,
     pub download_concurrency: u8,
+    pub download_bandwidth_limit_mib: u32,
     pub paths: AppPaths,
 }
 
@@ -57,6 +58,7 @@ pub struct ContentUpdateRequest {
     pub loader_version: Option<String>,
     pub plan: InstallPlan,
     pub download_concurrency: u8,
+    pub download_bandwidth_limit_mib: u32,
     pub paths: AppPaths,
 }
 
@@ -209,7 +211,10 @@ where
     if let Some(plan) = &request.modpack_plan {
         modpack::validate_plan_compatibility(&request, plan, base_install.required_java_major)?;
     }
-    let downloader = Downloader::new(request.download_concurrency)?;
+    let downloader = Downloader::with_bandwidth_limit(
+        request.download_concurrency,
+        request.download_bandwidth_limit_mib,
+    )?;
     let mut summary = download_install_phase(
         &downloader,
         base_install.required_artifacts,
@@ -329,6 +334,7 @@ where
             &revision_directory,
             request.paths.storage_root(),
             request.download_concurrency,
+            request.download_bandwidth_limit_mib,
             |completed, total, message| {
                 on_progress(InstallProgress {
                     phase: InstallPhase::Content,
@@ -443,6 +449,7 @@ where
         &revision_directory,
         request.paths.storage_root(),
         request.download_concurrency,
+        request.download_bandwidth_limit_mib,
         |completed, total, message| {
             on_progress(InstallProgress {
                 phase: InstallPhase::Content,

@@ -5,6 +5,7 @@ use slate_minecraft::{
     ArtifactRequirement, ExpectedHash, HashAlgorithm, VerificationError, verify_artifact,
 };
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use url::Url;
 use uuid::Uuid;
@@ -12,6 +13,7 @@ use uuid::Uuid;
 const MAX_UNDECLARED_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_HASH_SIDECAR_BYTES: usize = 512;
 const MAX_DOWNLOAD_ATTEMPTS: u8 = 3;
+const MAX_BANDWIDTH_LIMIT_MIB: u32 = 1024;
 const ARTIFACT_HOSTS: [&str; 11] = [
     "launcher.mojang.com",
     "launchermeta.mojang.com",
@@ -30,6 +32,47 @@ const ARTIFACT_HOSTS: [&str; 11] = [
 pub struct Downloader {
     client: Client,
     concurrency: usize,
+    throttle: Option<BandwidthThrottle>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct BandwidthThrottle {
+    bytes_per_second: u64,
+    next_available: Arc<tokio::sync::Mutex<std::time::Instant>>,
+}
+
+impl BandwidthThrottle {
+    pub(super) fn from_mebibytes(limit_mib: u32) -> Result<Option<Self>, DownloadError> {
+        if limit_mib > MAX_BANDWIDTH_LIMIT_MIB {
+            return Err(DownloadError::InvalidBandwidthLimit(limit_mib));
+        }
+        if limit_mib == 0 {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            bytes_per_second: u64::from(limit_mib) * 1024 * 1024,
+            next_available: Arc::new(tokio::sync::Mutex::new(std::time::Instant::now())),
+        }))
+    }
+
+    pub(super) async fn acquire(&self, bytes: usize) {
+        if bytes == 0 {
+            return;
+        }
+        let wait = {
+            let mut next_available = self.next_available.lock().await;
+            let now = std::time::Instant::now();
+            let scheduled = (*next_available).max(now);
+            let wait = scheduled.saturating_duration_since(now);
+            let allocation =
+                std::time::Duration::from_secs_f64(bytes as f64 / self.bytes_per_second as f64);
+            *next_available = scheduled + allocation;
+            wait
+        };
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -48,6 +91,13 @@ pub struct DownloadProgress {
 
 impl Downloader {
     pub fn new(concurrency: u8) -> Result<Self, DownloadError> {
+        Self::with_bandwidth_limit(concurrency, 0)
+    }
+
+    pub fn with_bandwidth_limit(
+        concurrency: u8,
+        bandwidth_limit_mib: u32,
+    ) -> Result<Self, DownloadError> {
         if !(1..=8).contains(&concurrency) {
             return Err(DownloadError::InvalidConcurrency(concurrency));
         }
@@ -63,6 +113,7 @@ impl Downloader {
         Ok(Self {
             client,
             concurrency: usize::from(concurrency),
+            throttle: BandwidthThrottle::from_mebibytes(bandwidth_limit_mib)?,
         })
     }
 
@@ -189,6 +240,9 @@ impl Downloader {
             if downloaded > maximum {
                 return Err(DownloadError::ResponseTooLarge { maximum });
             }
+            if let Some(throttle) = &self.throttle {
+                throttle.acquire(chunk.len()).await;
+            }
             file.write_all(&chunk).await?;
         }
         file.flush().await?;
@@ -303,6 +357,8 @@ enum DownloadDisposition {
 pub enum DownloadError {
     #[error("download concurrency must be between 1 and 8, got {0}")]
     InvalidConcurrency(u8),
+    #[error("download bandwidth limit must be between 0 and 1024 MiB/s, got {0}")]
+    InvalidBandwidthLimit(u32),
     #[error("artifact URL is outside slate's HTTPS origin allowlist: {0}")]
     UntrustedArtifactOrigin(Url),
     #[error("artifact does not have trusted integrity metadata")]
@@ -330,7 +386,8 @@ pub enum DownloadError {
 #[cfg(test)]
 mod tests {
     use super::{
-        DownloadError, partial_path, retry_delay, should_report_progress, validate_artifact_url,
+        BandwidthThrottle, DownloadError, partial_path, retry_delay, should_report_progress,
+        validate_artifact_url,
     };
     use std::path::Path;
     use url::Url;
@@ -380,5 +437,31 @@ mod tests {
         assert!((100..=102).contains(&updates));
         assert!(should_report_progress(1, 5_000));
         assert!(should_report_progress(5_000, 5_000));
+    }
+
+    #[test]
+    fn bandwidth_limit_is_optional_and_bounded() -> Result<(), DownloadError> {
+        assert!(BandwidthThrottle::from_mebibytes(0)?.is_none());
+        let Some(limited) = BandwidthThrottle::from_mebibytes(25)? else {
+            return Err(DownloadError::InvalidBandwidthLimit(25));
+        };
+        assert_eq!(limited.bytes_per_second, 25 * 1024 * 1024);
+        assert!(matches!(
+            BandwidthThrottle::from_mebibytes(1025),
+            Err(DownloadError::InvalidBandwidthLimit(1025))
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn bandwidth_limit_is_shared_across_download_tasks() -> Result<(), DownloadError> {
+        let Some(throttle) = BandwidthThrottle::from_mebibytes(8)? else {
+            return Err(DownloadError::InvalidBandwidthLimit(8));
+        };
+        throttle.acquire(1024 * 1024).await;
+        let started = std::time::Instant::now();
+        throttle.clone().acquire(1024 * 1024).await;
+        assert!(started.elapsed() >= std::time::Duration::from_millis(100));
+        Ok(())
     }
 }
