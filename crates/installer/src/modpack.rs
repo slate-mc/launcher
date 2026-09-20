@@ -1,4 +1,5 @@
 use super::{InstallRequest, InstalledArtifactDigest};
+use futures_util::{StreamExt, TryStreamExt, stream};
 use reqwest::{Client, StatusCode};
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
@@ -9,6 +10,7 @@ use slate_modpack_api_contracts::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
@@ -66,6 +68,7 @@ pub(super) async fn install_plan_content<F>(
     game_directory: &Path,
     revision_directory: &Path,
     storage_root: &Path,
+    download_concurrency: u8,
     on_progress: F,
 ) -> Result<Vec<InstalledArtifactDigest>, ContentInstallError>
 where
@@ -84,23 +87,44 @@ where
         .redirect(reqwest::redirect::Policy::none())
         .user_agent("slate-launcher/0.1 (+https://slatelauncher.org)")
         .build()?;
-    let mut staged_downloads = BTreeMap::new();
     let total = u64::try_from(plan.downloads.len()).unwrap_or(u64::MAX);
     on_progress(0, total, "Preparing modpack content".to_owned());
-    for (index, download) in plan.downloads.iter().enumerate() {
-        let relative = validate_relative_path(&download.destination, true)?;
-        let destination = staging.join(&relative);
-        if let Some(parent) = destination.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        download_verified(&client, download, &destination).await?;
-        staged_downloads.insert(download.id.clone(), destination);
-        on_progress(
-            u64::try_from(index + 1).unwrap_or(u64::MAX),
-            total,
-            format!("Downloaded {} of {total} content files", index + 1),
-        );
-    }
+    let completed = AtomicU64::new(0);
+    let staged_downloads = stream::iter(plan.downloads.iter().cloned())
+        .map(|download| {
+            let client = client.clone();
+            let staging = staging.clone();
+            let completed = &completed;
+            let on_progress = &on_progress;
+            async move {
+                let relative = validate_relative_path(&download.destination, true)?;
+                let destination = staging.join(&relative);
+                if let Some(parent) = destination.parent() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+                let label = content_download_label(&download);
+                let already_completed = completed.load(Ordering::Relaxed);
+                on_progress(
+                    already_completed,
+                    total,
+                    format!(
+                        "Downloading {label} · {} · {already_completed} of {total} verified",
+                        format_download_size(download.size)
+                    ),
+                );
+                download_verified(&client, &download, &destination).await?;
+                let now_completed = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                on_progress(
+                    now_completed,
+                    total,
+                    format!("Verified {label} · {now_completed} of {total} files"),
+                );
+                Ok::<_, ContentInstallError>((download.id.clone(), destination))
+            }
+        })
+        .buffer_unordered(usize::from(download_concurrency.max(1)))
+        .try_collect::<BTreeMap<_, _>>()
+        .await?;
 
     for action in &plan.extract {
         let archive = staged_downloads
@@ -150,6 +174,37 @@ where
     remove_managed_path(&staging).await?;
     remove_managed_path(&backup).await?;
     Ok(artifacts)
+}
+
+fn content_download_label(download: &InstallPlanDownload) -> String {
+    let name = download
+        .destination
+        .rsplit('/')
+        .next()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(download.id.as_str());
+    if name.ends_with(".archive") {
+        "pack overrides".to_owned()
+    } else {
+        name.chars().take(96).collect()
+    }
+}
+
+fn format_download_size(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    if bytes == 0 {
+        "size pending".to_owned()
+    } else if bytes < 1024 {
+        format!("{bytes} B")
+    } else if (bytes as f64) < MIB {
+        format!("{:.1} KB", bytes as f64 / KIB)
+    } else if (bytes as f64) < GIB {
+        format!("{:.1} MB", bytes as f64 / MIB)
+    } else {
+        format!("{:.2} GB", bytes as f64 / GIB)
+    }
 }
 
 fn validate_plan_shape(plan: &InstallPlan) -> Result<(), ContentInstallError> {
@@ -649,8 +704,10 @@ pub enum ContentInstallError {
 #[cfg(test)]
 mod tests {
     use super::{
-        ContentInstallError, validate_archive_prefix, validate_download_url, validate_relative_path,
+        ContentInstallError, content_download_label, format_download_size, validate_archive_prefix,
+        validate_download_url, validate_relative_path,
     };
+    use slate_modpack_api_contracts::{DownloadSource, Hashes, InstallPlanDownload};
 
     #[test]
     fn paths_cannot_escape_or_use_reserved_storage() {
@@ -683,5 +740,25 @@ mod tests {
         );
         assert!(validate_download_url("https://evil.example/a.jar", false).is_err());
         assert!(validate_download_url("http://cdn.modrinth.com/a.jar", false).is_err());
+    }
+
+    #[test]
+    fn progress_messages_use_bounded_human_file_details() {
+        let download = InstallPlanDownload {
+            id: "curseforge:pack:file".to_owned(),
+            destination: "mods/architectury-13.0.11-neoforge.jar".to_owned(),
+            size: 584_734,
+            hashes: Hashes::default(),
+            sources: vec![DownloadSource::Direct {
+                url: "https://cdn.modrinth.com/example.jar".to_owned(),
+            }],
+            required: true,
+        };
+
+        assert_eq!(
+            content_download_label(&download),
+            "architectury-13.0.11-neoforge.jar"
+        );
+        assert_eq!(format_download_size(download.size), "571.0 KB");
     }
 }

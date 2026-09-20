@@ -18,7 +18,9 @@ use slate_minecraft::{
     VersionMetadata,
 };
 use slate_modpack_api_contracts::InstallPlan;
-use slate_platform::{AppPaths, JavaArchitecture, ManagedRelativePath};
+use slate_platform::{
+    AppPaths, JavaArchitecture, ManagedRelativePath, restricted_child_environment,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -312,6 +314,7 @@ where
             &layout.game_directory,
             &revision_directory,
             request.paths.storage_root(),
+            request.download_concurrency,
             |completed, total, message| {
                 on_progress(InstallProgress {
                     phase: InstallPhase::Content,
@@ -573,17 +576,7 @@ fn restrict_installer_environment(
     runtime: &ManagedJavaRuntime,
 ) {
     command.env_clear();
-    for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "USERPROFILE", "LANG"] {
-        if let Some(value) = std::env::var_os(name) {
-            command.env(name, value);
-        }
-    }
-    if let Some(java_home) = runtime.executable.parent().and_then(Path::parent) {
-        command.env("JAVA_HOME", java_home);
-        if let Some(bin) = runtime.executable.parent() {
-            command.env("PATH", bin);
-        }
-    }
+    command.envs(restricted_child_environment(Some(&runtime.executable)));
 }
 
 async fn ensure_launcher_profile_file(minecraft_root: &Path) -> Result<(), InstallError> {

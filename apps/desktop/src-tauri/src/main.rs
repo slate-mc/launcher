@@ -40,7 +40,9 @@ use slate_modpack_api_contracts::{
     SearchResponse, VersionPage,
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
-use slate_platform::{AppPaths, detect_java_runtime, probe_java_executable};
+use slate_platform::{
+    AppPaths, detect_java_runtime, probe_java_executable, restricted_child_environment,
+};
 use slate_process::{
     ActiveProcess, LogChunk, LogChunkKind, ProcessState, ProcessSupervisor, SessionLogTail,
 };
@@ -49,7 +51,7 @@ use slate_storage::{
     InstallJobRecord, InstalledRuntime, InstanceModRecord, InstanceRecord, JobState, NewInstance,
     NewInstanceMod, NewModpackSource, ReduceMotionPreference, StorageError, ThemePreference,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -1527,15 +1529,10 @@ async fn instance_launch(
         architecture,
     )
     .map_err(|_| AppError::new("local.runtime_invalid", "The managed runtime is invalid."))?;
-    let mut environment = BTreeMap::new();
-    for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "LANG"] {
-        if let Some(value) = std::env::var_os(name) {
-            environment.insert(
-                name.to_owned(),
-                EnvironmentValue::public(value.to_string_lossy().into_owned()),
-            );
-        }
-    }
+    let environment = restricted_child_environment(Some(&runtime.executable))
+        .into_iter()
+        .map(|(name, value)| (name, EnvironmentValue::public(value)))
+        .collect();
     let preparation = LaunchPlanner::prepare(
         &resolved,
         LaunchRequest {

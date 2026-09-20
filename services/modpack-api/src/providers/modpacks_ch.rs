@@ -1,7 +1,6 @@
 use super::{MissingResource, ProviderError, ResolvedMod};
 use crate::domain::{SearchPage, SearchRequest, SearchSort, VersionQuery, normalize_install_path};
 use crate::upstream::{CachePolicy, UpstreamClient, UpstreamError};
-use futures_util::stream::{self, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::Value;
 use slate_modpack_api_contracts::{
@@ -413,34 +412,13 @@ impl ModpacksChProvider {
             .map_err(|error| map_upstream_error(error, MissingResource::Project))?;
         ensure_success(response.status.as_deref())?;
 
-        let candidates = response
+        response
             .versions
             .into_iter()
             .filter(|version| summary_matches(version, &request))
             .take(request.limit)
-            .collect::<Vec<_>>();
-        stream::iter(candidates)
-            .map(|candidate| {
-                let adapter = self.clone();
-                let project_id = project_id.to_owned();
-                async move {
-                    adapter
-                        .get_version(&project_id, &candidate.id.to_string_value())
-                        .await
-                        .map(|version| ModpackVersionSummary {
-                            id: version.id,
-                            name: version.name,
-                            release_type: version.release_type,
-                            minecraft_version: version.minecraft.version,
-                            loader: version.loader,
-                            published_at: version.published_at,
-                            changelog: version.changelog,
-                        })
-                }
-            })
-            .buffer_unordered(8)
-            .try_collect()
-            .await
+            .map(map_version_summary)
+            .collect()
     }
 
     pub async fn get_version(
@@ -767,6 +745,27 @@ fn summary_matches(version: &UpstreamVersionSummary, request: &VersionQuery) -> 
         return false;
     }
     true
+}
+
+fn map_version_summary(
+    version: UpstreamVersionSummary,
+) -> Result<ModpackVersionSummary, ProviderError> {
+    let minecraft_version = version
+        .targets
+        .iter()
+        .find(|target| target.kind == "game" || target.name.eq_ignore_ascii_case("minecraft"))
+        .map(|target| target.version.clone())
+        .ok_or(ProviderError::InvalidResponse)?;
+    let loader = loader_from_targets(&version.targets)?;
+    Ok(ModpackVersionSummary {
+        id: version.id.to_string_value(),
+        name: bounded_text(&version.name, 160),
+        release_type: release_type(&version.release_type),
+        minecraft_version,
+        loader,
+        published_at: timestamp(version.updated),
+        changelog: None,
+    })
 }
 
 fn search_item_matches(item: &ModpackSummary, request: &SearchRequest) -> bool {
@@ -1371,4 +1370,43 @@ struct UpstreamTags {
     status: Option<String>,
     #[serde(default)]
     tags: Vec<UpstreamTag>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        FlexibleId, ProviderError, UpstreamTarget, UpstreamVersionSummary, map_version_summary,
+    };
+    use slate_modpack_api_contracts::{LoaderKind, ReleaseType};
+
+    #[test]
+    fn version_lists_are_mapped_without_resolving_full_manifests() -> Result<(), ProviderError> {
+        let summary = map_version_summary(UpstreamVersionSummary {
+            id: FlexibleId::Unsigned(8_764_211),
+            name: "All the Mods 10-8.1".to_owned(),
+            release_type: "release".to_owned(),
+            updated: 1_788_034_505,
+            targets: vec![
+                UpstreamTarget {
+                    name: "minecraft".to_owned(),
+                    version: "1.21.1".to_owned(),
+                    kind: "game".to_owned(),
+                },
+                UpstreamTarget {
+                    name: "neoforge".to_owned(),
+                    version: "neoforge".to_owned(),
+                    kind: "modloader".to_owned(),
+                },
+            ],
+            private: Some(false),
+        })?;
+
+        assert_eq!(summary.id, "8764211");
+        assert_eq!(summary.minecraft_version, "1.21.1");
+        assert_eq!(summary.loader.kind, LoaderKind::NeoForge);
+        assert_eq!(summary.loader.version, None);
+        assert_eq!(summary.release_type, ReleaseType::Release);
+        assert_eq!(summary.changelog, None);
+        Ok(())
+    }
 }

@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
-  Box,
   Check,
   ChevronDown,
   CircleAlert,
@@ -29,6 +28,7 @@ import {
   previewUpdates,
 } from "../../lib/bridge";
 import { cn } from "../../lib/cn";
+import { ContentArtwork } from "../../components/ContentArtwork";
 import { MinecraftHead } from "../../components/MinecraftHead";
 import type {
   LauncherInstance,
@@ -177,9 +177,11 @@ export function HomePage() {
         className="relative isolate min-h-[360px] overflow-hidden border-b border-app-separator/55 bg-[#18221d]"
         aria-labelledby="continue-heading"
       >
-        <div
-          className="hero-landscape absolute inset-0 -z-30 bg-cover bg-center opacity-[.86]"
-          aria-hidden="true"
+        <ContentArtwork
+          name={`${selected.name} landscape`}
+          stableKey={selected.id}
+          eager
+          className="absolute inset-0 -z-30 size-full rounded-none opacity-[.86]"
         />
         <div className="hero-shade absolute inset-0 -z-20" aria-hidden="true" />
         <div className="absolute top-[72px] left-8 max-w-[520px]">
@@ -554,23 +556,16 @@ function InstanceArtwork({
   instance: LauncherInstance;
   compact?: boolean;
 }) {
-  const toneClasses = {
-    meadow: "bg-[#315943] text-[#c9f0d9]",
-    workshop: "bg-[#5c5030] text-[#ead79e]",
-    vanilla: "bg-[#3c5146] text-[#d7e7dc]",
-    nether: "bg-[#5a2b2a] text-[#f3aaa1]",
-  };
   return (
-    <span
+    <ContentArtwork
+      src={instance.modpackSource?.iconUrl}
+      name={instance.name}
+      stableKey={instance.id}
       className={cn(
-        "inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-app-raised text-app-text",
+        "size-11 rounded-lg border border-app-separator/70",
         compact && "h-14 w-[58px] rounded-[7px] max-[1180px]:w-12",
-        toneClasses[instance.artworkTone ?? "vanilla"],
       )}
-      aria-hidden="true"
-    >
-      <Box size={compact ? 20 : 22} strokeWidth={1.7} />
-    </span>
+    />
   );
 }
 

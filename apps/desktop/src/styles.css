@@ -139,10 +139,6 @@
   }
 }
 
-.hero-landscape {
-  background-image: url("/brand/hero-landscape.svg");
-}
-
 .hero-shade {
   background:
     linear-gradient(

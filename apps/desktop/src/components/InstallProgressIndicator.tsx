@@ -46,6 +46,13 @@ export function InstallProgressIndicator({
           <span className="install-progress-indeterminate absolute inset-y-0 w-1/3 rounded-full bg-app-accent" />
         )}
       </div>
+      <p
+        className="mt-2 mb-0 truncate text-[11px] text-app-secondary"
+        title={job.message}
+        aria-live="polite"
+      >
+        {job.message}
+      </p>
     </div>
   );
 }

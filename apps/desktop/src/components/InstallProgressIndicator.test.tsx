@@ -24,6 +24,7 @@ describe("InstallProgressIndicator", () => {
 
     expect(screen.getByText("Game assets")).toBeInTheDocument();
     expect(screen.getByText("25 / 100 files")).toBeInTheDocument();
+    expect(screen.getByText("Checking game assets")).toBeVisible();
     const progress = screen.getByRole("progressbar", {
       name: "Checking game assets",
     });
@@ -48,6 +49,9 @@ describe("InstallProgressIndicator", () => {
     );
 
     expect(screen.getByText("Working")).toBeInTheDocument();
+    expect(
+      screen.getByText("Running the NeoForge client installer"),
+    ).toBeVisible();
     const progress = screen.getByRole("progressbar", {
       name: "Running the NeoForge client installer",
     });

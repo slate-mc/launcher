@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { ComboBox } from "../../components/ComboBox";
+import { ContentArtwork } from "../../components/ContentArtwork";
 import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import { SessionLogPanel } from "../../components/SessionLogPanel";
 import {
@@ -153,9 +154,12 @@ function InstanceHeader({
         All instances
       </Link>
       <div className="flex items-center gap-4">
-        <span className="inline-flex size-14 items-center justify-center rounded-control border border-app-separator bg-app-raised text-app-accent">
-          <Box size={26} aria-hidden="true" />
-        </span>
+        <ContentArtwork
+          src={instance.modpackSource?.iconUrl}
+          name={instance.name}
+          stableKey={instance.id}
+          className="size-14 rounded-control border border-app-separator"
+        />
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             <h1 className="m-0 overflow-hidden text-[28px]/[34px] font-bold tracking-[-.035em] text-ellipsis whitespace-nowrap">
@@ -713,7 +717,8 @@ function Content({ instance }: { instance: LauncherInstance }) {
     enabled: Boolean(installJobId),
     refetchInterval: (jobs) => {
       const tracked = jobs.state.data?.find((job) => job.id === installJobId);
-      return tracked && ["succeeded", "failed", "cancelled"].includes(tracked.state)
+      return tracked &&
+        ["succeeded", "failed", "cancelled"].includes(tracked.state)
         ? false
         : 750;
     },
@@ -752,20 +757,29 @@ function Content({ instance }: { instance: LauncherInstance }) {
   });
 
   useEffect(() => {
-    if (!installJob || !["succeeded", "failed", "cancelled"].includes(installJob.state)) {
+    if (
+      !installJob ||
+      !["succeeded", "failed", "cancelled"].includes(installJob.state)
+    ) {
       return;
     }
     void Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["instance-mods", instance.id] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-mods", instance.id],
+      }),
       queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
       queryClient.invalidateQueries({ queryKey: ["instances"] }),
     ]);
   }, [installJob, instance.id, queryClient]);
 
   const completionNotice =
-    installJob && ["succeeded", "failed", "cancelled"].includes(installJob.state)
+    installJob &&
+    ["succeeded", "failed", "cancelled"].includes(installJob.state)
       ? {
-          tone: installJob.state === "succeeded" ? ("positive" as const) : ("danger" as const),
+          tone:
+            installJob.state === "succeeded"
+              ? ("positive" as const)
+              : ("danger" as const),
           title:
             installJob.state === "succeeded"
               ? "Mod installed"
@@ -848,7 +862,8 @@ function Content({ instance }: { instance: LauncherInstance }) {
         {isVanilla ? (
           <div className="p-5">
             <InlineNotice tone="neutral" title="This is a Vanilla instance">
-              Change the instance to Fabric or NeoForge in Settings before adding loader mods.
+              Change the instance to Fabric or NeoForge in Settings before
+              adding loader mods.
             </InlineNotice>
           </div>
         ) : null}
@@ -865,7 +880,9 @@ function Content({ instance }: { instance: LauncherInstance }) {
           <div className="border-b border-app-separator/55 px-5 py-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="m-0 text-xs font-bold text-app-text">Installing content</p>
+                <p className="m-0 text-xs font-bold text-app-text">
+                  Installing content
+                </p>
                 <p className="mt-1 mb-0 text-[11px] text-app-secondary">
                   {installJob.message}
                 </p>
@@ -884,13 +901,18 @@ function Content({ instance }: { instance: LauncherInstance }) {
           <div className="border-b border-app-separator/55">
             <div className="border-b border-app-separator/45 bg-app-bg/35 px-5 py-4">
               <div className="mb-4 flex items-start gap-3">
-                <ShieldCheck size={18} className="mt-0.5 text-app-accent" aria-hidden="true" />
+                <ShieldCheck
+                  size={18}
+                  className="mt-0.5 text-app-accent"
+                  aria-hidden="true"
+                />
                 <div>
                   <p className="m-0 text-xs font-bold text-app-text">
                     Compatibility locked to this instance
                   </p>
                   <p className="mt-1 mb-0 font-mono text-[10px] text-app-secondary">
-                    Minecraft {instance.minecraftVersion} · {loaderLabel(instance.loaderKind)} {instance.loaderVersion}
+                    Minecraft {instance.minecraftVersion} ·{" "}
+                    {loaderLabel(instance.loaderKind)} {instance.loaderVersion}
                   </p>
                 </div>
               </div>
@@ -954,8 +976,12 @@ function Content({ instance }: { instance: LauncherInstance }) {
 
             {unavailableProviders.length > 0 ? (
               <div className="px-5 pt-4">
-                <InlineNotice tone="warning" title="Some providers did not respond">
-                  Results from {unavailableProviders.join(", ")} are temporarily unavailable.
+                <InlineNotice
+                  tone="warning"
+                  title="Some providers did not respond"
+                >
+                  Results from {unavailableProviders.join(", ")} are temporarily
+                  unavailable.
                 </InlineNotice>
               </div>
             ) : null}
@@ -964,14 +990,22 @@ function Content({ instance }: { instance: LauncherInstance }) {
               <ModResultSkeletons />
             ) : searchQuery.isError ? (
               <div className="p-5">
-                <InlineNotice tone="danger" title="Compatible mods could not be loaded">
+                <InlineNotice
+                  tone="danger"
+                  title="Compatible mods could not be loaded"
+                >
                   {contentErrorMessage(searchQuery.error)}
                 </InlineNotice>
               </div>
             ) : searchQuery.data?.items.length ? (
-              <div className="divide-y divide-app-separator/45 px-5" aria-busy={searchQuery.isFetching}>
+              <div
+                className="divide-y divide-app-separator/45 px-5"
+                aria-busy={searchQuery.isFetching}
+              >
                 {searchQuery.data.items.map((item) => {
-                  const installedAlready = installedIds.has(`${item.provider}:${item.id}`);
+                  const installedAlready = installedIds.has(
+                    `${item.provider}:${item.id}`,
+                  );
                   return (
                     <ModSearchResult
                       key={`${item.provider}:${item.id}`}
@@ -1003,10 +1037,14 @@ function Content({ instance }: { instance: LauncherInstance }) {
                 >
                   <ChevronLeft size={14} aria-hidden="true" /> Previous
                 </button>
-                <span className="font-mono text-[10px] text-app-muted">Page {page}</span>
+                <span className="font-mono text-[10px] text-app-muted">
+                  Page {page}
+                </span>
                 <button
                   type="button"
-                  disabled={!searchQuery.data.has_more || searchQuery.isFetching}
+                  disabled={
+                    !searchQuery.data.has_more || searchQuery.isFetching
+                  }
                   className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary disabled:opacity-40"
                   onClick={() => setPage((current) => current + 1)}
                 >
@@ -1021,14 +1059,20 @@ function Content({ instance }: { instance: LauncherInstance }) {
           <InstalledModSkeletons />
         ) : installedQuery.isError ? (
           <div className="p-5">
-            <InlineNotice tone="danger" title="Installed mods could not be loaded">
+            <InlineNotice
+              tone="danger"
+              title="Installed mods could not be loaded"
+            >
               Reload this page to try again.
             </InlineNotice>
           </div>
         ) : installed.length ? (
           <div className="divide-y divide-app-separator/45 px-5">
             {installed.map((item) => (
-              <InstalledModRow key={`${item.provider}:${item.projectId}`} item={item} />
+              <InstalledModRow
+                key={`${item.provider}:${item.projectId}`}
+                item={item}
+              />
             ))}
           </div>
         ) : !browserOpen && !isVanilla ? (
@@ -1058,7 +1102,9 @@ function ModSearchResult({
       <ContentImage src={item.icon_url} name={item.name} />
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <h3 className="m-0 truncate text-[13px] font-bold text-app-text">{item.name}</h3>
+          <h3 className="m-0 truncate text-[13px] font-bold text-app-text">
+            {item.name}
+          </h3>
           <span className="rounded-full border border-app-separator px-2 py-0.5 font-mono text-[9px] text-app-muted">
             {modProviderName(item.provider)}
           </span>
@@ -1087,7 +1133,10 @@ function InstalledModRow({ item }: { item: InstanceMod }) {
     <article className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3.5">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="size-1.5 rounded-full bg-app-accent" aria-hidden="true" />
+          <span
+            className="size-1.5 rounded-full bg-app-accent"
+            aria-hidden="true"
+          />
           <h3 className="m-0 truncate text-[13px] font-bold text-app-text">
             {item.displayName}
           </h3>
@@ -1100,7 +1149,9 @@ function InstalledModRow({ item }: { item: InstanceMod }) {
         </p>
       </div>
       <div className="text-right">
-        <p className="m-0 font-mono text-[9px] text-app-secondary">{item.versionId}</p>
+        <p className="m-0 font-mono text-[9px] text-app-secondary">
+          {item.versionId}
+        </p>
         <p className="mt-1 mb-0 text-[10px] text-app-muted">
           Installed {formatDate(item.installedAt)}
         </p>
@@ -1145,24 +1196,22 @@ function ContentSelect({
 }
 
 function ContentImage({ src, name }: { src?: string | null; name: string }) {
-  return src ? (
-    <img
+  return (
+    <ContentArtwork
       src={src}
-      alt=""
-      className="size-11 rounded-control border border-app-separator object-cover"
-      loading="lazy"
-      referrerPolicy="no-referrer"
+      name={name}
+      stableKey={name}
+      className="size-11 rounded-control border border-app-separator"
     />
-  ) : (
-    <span className="inline-flex size-11 items-center justify-center rounded-control border border-app-separator bg-app-raised font-mono text-xs font-bold text-app-accent">
-      {name.slice(0, 1).toUpperCase()}
-    </span>
   );
 }
 
 function ModResultSkeletons() {
   return (
-    <div className="divide-y divide-app-separator/45 px-5" aria-label="Loading compatible mods">
+    <div
+      className="divide-y divide-app-separator/45 px-5"
+      aria-label="Loading compatible mods"
+    >
       {Array.from({ length: 5 }, (_, index) => (
         <div key={index} className="grid grid-cols-[44px_1fr] gap-3 py-3.5">
           <span className="size-11 animate-pulse rounded-control bg-app-raised" />
@@ -1180,7 +1229,10 @@ function InstalledModSkeletons() {
   return (
     <div className="space-y-3 p-5" aria-label="Loading installed mods">
       {Array.from({ length: 3 }, (_, index) => (
-        <span key={index} className="block h-11 animate-pulse rounded-control bg-app-raised" />
+        <span
+          key={index}
+          className="block h-11 animate-pulse rounded-control bg-app-raised"
+        />
       ))}
     </div>
   );
@@ -1193,7 +1245,9 @@ function modProviderName(provider: Provider) {
 }
 
 function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { notation: "compact" }).format(value);
+  return new Intl.NumberFormat(undefined, { notation: "compact" }).format(
+    value,
+  );
 }
 
 function contentErrorMessage(error: unknown) {

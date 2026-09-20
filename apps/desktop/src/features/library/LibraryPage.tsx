@@ -1,15 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-  Box,
-  ChevronRight,
-  Plus,
-  RotateCcw,
-  Search,
-  Star,
-} from "lucide-react";
+import { ChevronRight, Plus, RotateCcw, Search, Star } from "lucide-react";
 import { useMemo, useState } from "react";
-import { EmptyState, PageHeader, StatusPill } from "../../components/PageScaffold";
+import { ContentArtwork } from "../../components/ContentArtwork";
+import {
+  EmptyState,
+  PageHeader,
+  StatusPill,
+} from "../../components/PageScaffold";
 import { listInstances, setInstanceFavorite } from "../../lib/bridge";
 import {
   formatDate,
@@ -134,7 +132,11 @@ export function LibraryPage() {
           />
         ) : instances.length === 0 ? (
           <EmptyState
-            title={search || loader !== "all" ? "No matching instances" : "No instances yet"}
+            title={
+              search || loader !== "all"
+                ? "No matching instances"
+                : "No instances yet"
+            }
             description={
               search || loader !== "all"
                 ? "Clear the search or choose another loader filter."
@@ -182,9 +184,12 @@ export function LibraryPage() {
                   params={{ instanceId: instance.id }}
                   className="flex min-w-0 items-center gap-3 text-app-text no-underline"
                 >
-                  <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-app-raised text-app-accent">
-                    <Box size={20} aria-hidden="true" />
-                  </span>
+                  <ContentArtwork
+                    src={instance.modpackSource?.iconUrl}
+                    name={instance.name}
+                    stableKey={instance.id}
+                    className="size-10 rounded-lg border border-app-separator/70"
+                  />
                   <span className="min-w-0">
                     <strong className="block overflow-hidden text-[13px] font-bold text-ellipsis whitespace-nowrap">
                       {instance.name}
