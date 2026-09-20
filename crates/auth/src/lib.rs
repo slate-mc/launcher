@@ -4,12 +4,15 @@
 //! protocol details and OS credential-vault access while exposing only explicit
 //! secret-bearing Rust types to trusted native callers.
 
+mod wire;
+
+use wire::*;
+
 use base64::{
     Engine as _,
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
 };
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -614,158 +617,6 @@ fn credential_entry(credential_ref: &str) -> Result<keyring::Entry, CredentialEr
         .ok_or(CredentialError::InvalidReference)?;
     Uuid::parse_str(profile).map_err(|_| CredentialError::InvalidReference)?;
     Ok(keyring::Entry::new(CREDENTIAL_SERVICE, credential_ref)?)
-}
-
-struct OAuthToken {
-    access_token: SecretString,
-    refresh_token: Option<String>,
-}
-
-struct XboxToken {
-    token: SecretString,
-    user_hash: String,
-    xuid: Option<String>,
-}
-
-struct MinecraftAccessToken {
-    access_token: SecretString,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-struct XboxUserRequest<'a> {
-    relying_party: &'a str,
-    token_type: &'a str,
-    properties: XboxUserProperties,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-struct XboxUserProperties {
-    auth_method: &'static str,
-    site_name: &'static str,
-    rps_ticket: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-struct XstsRequest<'a> {
-    properties: XstsProperties<'a>,
-    relying_party: &'a str,
-    token_type: &'a str,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-struct XstsProperties<'a> {
-    sandbox_id: &'a str,
-    user_tokens: [&'a str; 1],
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct XboxTokenResponse {
-    token: String,
-    display_claims: XboxDisplayClaims,
-}
-
-#[derive(Deserialize)]
-struct XboxDisplayClaims {
-    xui: Vec<XboxUserClaim>,
-}
-
-#[derive(Deserialize)]
-struct XboxUserClaim {
-    #[serde(rename = "uhs")]
-    user_hash: String,
-    #[serde(rename = "xid")]
-    xuid: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct XstsError {
-    xerr: Option<u64>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct MinecraftLoginRequest {
-    identity_token: String,
-}
-
-#[derive(Deserialize)]
-struct MinecraftTokenResponse {
-    access_token: String,
-}
-
-#[derive(Deserialize)]
-struct MinecraftEntitlements {
-    items: Vec<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-struct MinecraftProfileResponse {
-    id: String,
-    name: String,
-    #[serde(default)]
-    skins: Vec<MinecraftSkin>,
-}
-
-#[derive(Deserialize)]
-struct MinecraftSkin {
-    url: String,
-}
-
-#[derive(Deserialize)]
-struct MinecraftSessionProfileResponse {
-    id: String,
-    name: String,
-    #[serde(default)]
-    properties: Vec<MinecraftSessionProperty>,
-}
-
-#[derive(Deserialize)]
-struct MinecraftSessionProperty {
-    name: String,
-    value: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MinecraftTexturesPayload {
-    profile_id: String,
-    profile_name: String,
-    textures: MinecraftTextures,
-}
-
-#[derive(Deserialize)]
-struct MinecraftTextures {
-    #[serde(rename = "SKIN")]
-    skin: Option<MinecraftTexture>,
-}
-
-#[derive(Deserialize)]
-struct MinecraftTexture {
-    url: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MinecraftServiceError {
-    #[serde(default)]
-    error_message: String,
-}
-
-#[derive(Deserialize)]
-struct OAuthTokenResponse {
-    access_token: String,
-    refresh_token: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct OAuthErrorResponse {
-    error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
