@@ -334,6 +334,9 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
       queryClient.invalidateQueries({
         queryKey: ["instance-mod-resolutions", instance.id],
       }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-mod-history", instance.id],
+      }),
       queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
       queryClient.invalidateQueries({ queryKey: ["instances"] }),
     ]);

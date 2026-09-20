@@ -8,23 +8,24 @@ use crate::{
     GetInstanceGameOptionsRequest, ImportInstanceRequest, ImportLocalContentFileRequest,
     ImportLocalModRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
     InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
-    InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary,
-    InstanceModVersionsRequest, InstanceModsRequest, InstanceSnapshotSummary,
-    InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest, LaunchInstanceRequest,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
-    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
-    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest, MoveInstallJobRequest,
-    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
-    PingServerRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
-    RemoveInstanceModRequest, RemoveSavedServerRequest, RestoreInstanceSnapshotRequest,
-    RestoreTrashedInstanceRequest, RetryInstallJobRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
-    SessionLogSubscription, SetInstallJobPausedRequest, SetInstanceContentFileEnabledRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
-    StopGameSessionRequest, StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
-    SupportReportExport, SupportReportPreview, UnsubscribeSessionLogRequest,
-    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
-    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    InstanceGameOptionsSummary, InstanceModHistoryRequest, InstanceModHistorySummary,
+    InstanceModResolution, InstanceModSummary, InstanceModVersionsRequest, InstanceModsRequest,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest,
+    LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
+    MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
+    MoveInstallJobRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
+    OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
+    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogSubscription, SetInstallJobPausedRequest,
+    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
+    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
+    UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -274,6 +275,14 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(slate_modpack_api_contracts::ModVersionList),
         ),
         (
+            "instance-mod-history-request",
+            schema_for!(InstanceModHistoryRequest),
+        ),
+        (
+            "instance-mod-history-list",
+            schema_for!(Vec<InstanceModHistorySummary>),
+        ),
+        (
             "update-instance-mod-request",
             schema_for!(UpdateInstanceModRequest),
         ),
@@ -355,7 +364,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 96);
+        assert_eq!(schemas.len(), 98);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

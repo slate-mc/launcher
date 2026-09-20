@@ -7,6 +7,7 @@ import {
   instanceArtworkAssetSchema,
   instanceContentFileListSchema,
   instanceGameOptionsSchema,
+  instanceModHistorySchema,
   instanceSnapshotListSchema,
   instanceSnapshotSchema,
   instanceModListSchema,
@@ -452,6 +453,17 @@ export async function listInstanceModVersions(input: {
   return modVersionListSchema.parse(
     await invoke("instance_mod_versions", { request: input }),
   ).items;
+}
+
+export async function listInstanceModHistory(input: {
+  instanceId: string;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+}) {
+  requireNativeContent();
+  return instanceModHistorySchema.parse(
+    await invoke("instance_mod_history", { request: input }),
+  );
 }
 
 export async function updateInstanceMod(input: {

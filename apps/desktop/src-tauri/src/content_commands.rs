@@ -190,6 +190,34 @@ pub(super) async fn instance_mod_versions(
 }
 
 #[tauri::command]
+pub(super) async fn instance_mod_history(
+    state: tauri::State<'_, DesktopState>,
+    request: InstanceModHistoryRequest,
+) -> Result<Vec<InstanceModHistorySummary>, AppError> {
+    validate_instance_mod_reference(Some(request.provider), Some(&request.project_id))?;
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    state
+        .database
+        .list_instance_mod_history(instance_id, request.provider, &request.project_id)
+        .await
+        .map(|items| {
+            items
+                .into_iter()
+                .map(|item| InstanceModHistorySummary {
+                    version_id: item.version_id,
+                    changed_at: item.changed_at,
+                })
+                .collect()
+        })
+        .map_err(|error| map_storage_error(error, "slate could not load mod history."))
+}
+
+#[tauri::command]
 pub(super) async fn instance_mod_import(
     app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,

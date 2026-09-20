@@ -70,9 +70,9 @@ Verified on Windows on September 20, 2026:
 ## F1 release blockers
 
 1. **Content updates:** modpack and per-mod update/downgrade work end to end with verified,
-   transactional file replacement. New individual-mod installs and version changes record and show
-   dependency/dependent relationships. Existing-pack relationship backfill and explicit per-mod
-   rollback remain incomplete.
+   transactional file replacement. Recent provider-backed versions can be restored from each mod's
+   version history, and new individual-mod installs record dependency/dependent relationships.
+   Existing-pack relationship backfill remains incomplete.
 2. **Import coverage:** slate portable archives and local mod JARs work, but importing
    CurseForge/Modrinth packs and importing from other launchers are not complete.
 3. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support

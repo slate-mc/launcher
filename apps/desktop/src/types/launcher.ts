@@ -617,6 +617,13 @@ export const modVersionListSchema = z.object({
   items: z.array(modVersionOptionSchema),
 });
 
+export const instanceModHistorySchema = z.array(
+  z.object({
+    versionId: z.string().min(1),
+    changedAt: z.string().min(1),
+  }),
+);
+
 export const instanceContentKindSchema = z.enum([
   "resourcePack",
   "shaderPack",
@@ -700,6 +707,9 @@ export type ModpackInstallStarted = z.infer<typeof modpackInstallStartedSchema>;
 export type ModpackUpdateSummary = z.infer<typeof modpackUpdateSummarySchema>;
 export type InstanceMod = z.infer<typeof instanceModSchema>;
 export type ModVersionOption = z.infer<typeof modVersionOptionSchema>;
+export type InstanceModHistory = z.infer<
+  typeof instanceModHistorySchema
+>[number];
 export type InstanceModResolution = z.infer<typeof instanceModResolutionSchema>;
 export type InstanceContentKind = z.infer<typeof instanceContentKindSchema>;
 export type InstanceContentFile = z.infer<typeof instanceContentFileSchema>;

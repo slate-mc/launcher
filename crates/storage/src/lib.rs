@@ -19,7 +19,8 @@ pub use installations::{
 };
 pub use instance_mods::{
     InstanceModDependency, InstanceModDependencyRecord, InstanceModEnabledChange,
-    InstanceModRecord, InstanceModTarget, NewInstanceMod, NewInstanceModDependencySet,
+    InstanceModHistoryRecord, InstanceModRecord, InstanceModTarget, NewInstanceMod,
+    NewInstanceModDependencySet,
 };
 pub use instance_settings::{
     InstanceSettingsRecord, InstanceWindowMode, JavaSelectionMode, LauncherBehavior, MemoryMode,

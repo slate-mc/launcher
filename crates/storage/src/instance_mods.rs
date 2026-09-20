@@ -53,6 +53,12 @@ pub struct InstanceModDependencyRecord {
     pub dependency_display_name: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstanceModHistoryRecord {
+    pub version_id: String,
+    pub changed_at: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InstanceModTarget<'a> {
     pub provider: Option<Provider>,
@@ -139,6 +145,31 @@ impl Database {
                     )?,
                     dependency_project_id: row.try_get("dependency_project_id")?,
                     dependency_display_name: row.try_get("dependency_display_name")?,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn list_instance_mod_history(
+        &self,
+        instance_id: InstanceId,
+        provider: Provider,
+        project_id: &str,
+    ) -> Result<Vec<InstanceModHistoryRecord>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT version_id, changed_at FROM instance_mod_history WHERE instance_id = ? \
+             AND provider = ? AND project_id = ? ORDER BY changed_at DESC, id DESC LIMIT 20",
+        )
+        .bind(instance_id.to_string())
+        .bind(provider.as_str())
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(InstanceModHistoryRecord {
+                    version_id: row.try_get("version_id")?,
+                    changed_at: row.try_get("changed_at")?,
                 })
             })
             .collect()
@@ -552,6 +583,11 @@ mod tests {
         assert_eq!(updated[0].file_path, "mods/sodium-2.jar.disabled");
         assert!(!updated[0].enabled);
         assert!(updated[0].pinned);
+        let history = database
+            .list_instance_mod_history(instance.id, Provider::Modrinth, "AANobbMI")
+            .await?;
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].version_id, "version");
         assert!(
             database
                 .list_instance_mod_dependencies(instance.id)

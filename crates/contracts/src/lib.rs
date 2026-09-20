@@ -54,7 +54,8 @@ pub use modpack::{
     ApplyModpackUpdateRequest, CheckModpackUpdateRequest, ImportLocalContentFileRequest,
     ImportLocalModRequest, InstallModRequest, InstallModSelection, InstallModpackRequest,
     InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
-    InstanceModOriginDto, InstanceModReferenceSummary, InstanceModResolution, InstanceModSummary,
+    InstanceModHistoryRequest, InstanceModHistorySummary, InstanceModOriginDto,
+    InstanceModReferenceSummary, InstanceModResolution, InstanceModSummary,
     InstanceModVersionsRequest, InstanceModsRequest, InstanceWorldsRequest, ModSearchRequest,
     ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackUpdateSummary,
     ModpackVersionRequest, ModpackVersionsRequest, RemoveInstanceContentFileRequest,
@@ -78,7 +79,7 @@ pub use system::{
 };
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 12;
+pub const DATABASE_SCHEMA_VERSION: u32 = 13;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

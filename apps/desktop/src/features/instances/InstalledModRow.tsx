@@ -8,13 +8,17 @@ import {
   PinOff,
   Power,
   RefreshCw,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { ComboBox } from "../../components/ComboBox";
 import { ContentArtwork } from "../../components/ContentArtwork";
 import { StatusPill } from "../../components/PageScaffold";
-import { listInstanceModVersions } from "../../lib/bridge";
+import {
+  listInstanceModHistory,
+  listInstanceModVersions,
+} from "../../lib/bridge";
 import { formatDate } from "../../lib/format";
 import type { InstanceMod } from "../../types/launcher";
 import {
@@ -77,6 +81,26 @@ export function InstalledModRow({
     enabled: versionOpen && Boolean(item.provider && item.projectId),
     staleTime: 5 * 60_000,
   });
+  const historyQuery = useQuery({
+    queryKey: [
+      "instance-mod-history",
+      instanceId,
+      item.provider,
+      item.projectId,
+    ],
+    queryFn: () => {
+      if (!item.provider || !item.projectId) {
+        throw new Error("This mod is not linked to a supported provider.");
+      }
+      return listInstanceModHistory({
+        instanceId,
+        provider: item.provider,
+        projectId: item.projectId,
+      });
+    },
+    enabled: versionOpen && Boolean(item.provider && item.projectId),
+    staleTime: 30_000,
+  });
   const versionOptions = (versionQuery.data ?? []).map((version, index) => ({
     value: version.id,
     label: version.name,
@@ -95,6 +119,13 @@ export function InstalledModRow({
     });
   }
   const activeVersionId = selectedVersionId || versionQuery.data?.[0]?.id || "";
+  const recentVersions = Array.from(
+    new Map(
+      (historyQuery.data ?? [])
+        .filter((history) => history.versionId !== item.versionId)
+        .map((history) => [history.versionId, history]),
+    ).values(),
+  ).slice(0, 5);
 
   return (
     <>
@@ -351,6 +382,57 @@ export function InstalledModRow({
                   Apply version
                 </button>
               </div>
+            </div>
+            <div className="mt-4 border-t border-app-separator/45 pt-3">
+              <p className="m-0 text-[9px] font-bold tracking-[.08em] text-app-muted uppercase">
+                Recent versions
+              </p>
+              {historyQuery.isPending ? (
+                <p className="mt-2 mb-0 text-[10px] text-app-muted">
+                  Loading version history…
+                </p>
+              ) : historyQuery.isError ? (
+                <p className="mt-2 mb-0 text-[10px] text-app-danger">
+                  {contentErrorMessage(historyQuery.error)}
+                </p>
+              ) : recentVersions.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {recentVersions.map((history) => {
+                    const versionName =
+                      versionQuery.data?.find(
+                        (version) => version.id === history.versionId,
+                      )?.name ?? history.versionId;
+                    return (
+                      <button
+                        key={history.versionId}
+                        type="button"
+                        className="inline-flex min-w-0 items-center gap-2 rounded-control border border-app-separator bg-app-bg px-3 py-2 text-left text-app-secondary hover:border-app-accent/45 hover:text-app-text disabled:opacity-45"
+                        disabled={disabled || pendingAction === "update"}
+                        onClick={() => onUpdate(history.versionId)}
+                        title={`Restore ${versionName}`}
+                      >
+                        <RotateCcw
+                          size={12}
+                          className="shrink-0 text-app-accent"
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0">
+                          <span className="block max-w-64 truncate text-[10px] font-bold">
+                            {versionName}
+                          </span>
+                          <span className="mt-0.5 block text-[8px] text-app-muted">
+                            Used until {formatDate(history.changedAt)}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-2 mb-0 text-[10px] text-app-muted">
+                  No earlier versions recorded yet.
+                </p>
+              )}
             </div>
           </td>
         </tr>

@@ -494,6 +494,44 @@ impl Database {
                 .ok_or(StorageError::RevisionNotFound)?;
         if let Some(replaced_mod_paths) = replaced_mod_paths {
             for file_path in replaced_mod_paths {
+                let replaced_mods = sqlx::query(
+                    "SELECT provider, project_id, version_id, display_name, file_path \
+                     FROM instance_mods WHERE instance_id = ? AND file_path = ?",
+                )
+                .bind(&instance_id)
+                .bind(file_path.trim())
+                .fetch_all(&mut *transaction)
+                .await?;
+                for replaced_mod in replaced_mods {
+                    let provider: String = replaced_mod.try_get("provider")?;
+                    let project_id: String = replaced_mod.try_get("project_id")?;
+                    sqlx::query(
+                        "INSERT INTO instance_mod_history \
+                         (id, instance_id, provider, project_id, version_id, display_name, \
+                          file_path, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(Uuid::new_v4().to_string())
+                    .bind(&instance_id)
+                    .bind(&provider)
+                    .bind(&project_id)
+                    .bind(replaced_mod.try_get::<String, _>("version_id")?)
+                    .bind(replaced_mod.try_get::<String, _>("display_name")?)
+                    .bind(replaced_mod.try_get::<String, _>("file_path")?)
+                    .bind(&now)
+                    .execute(&mut *transaction)
+                    .await?;
+                    sqlx::query(
+                        "DELETE FROM instance_mod_history WHERE id IN (\
+                         SELECT id FROM instance_mod_history WHERE instance_id = ? \
+                         AND provider = ? AND project_id = ? ORDER BY changed_at DESC, id DESC \
+                         LIMIT -1 OFFSET 20)",
+                    )
+                    .bind(&instance_id)
+                    .bind(provider)
+                    .bind(project_id)
+                    .execute(&mut *transaction)
+                    .await?;
+                }
                 sqlx::query(
                     "DELETE FROM instance_mod_dependencies WHERE instance_id = ? AND (\
                      EXISTS (SELECT 1 FROM instance_mods m WHERE m.instance_id = ? \
