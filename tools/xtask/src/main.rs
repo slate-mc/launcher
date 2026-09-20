@@ -86,7 +86,7 @@ mod tests {
     {
         let documents = generated_documents()?;
 
-        assert_eq!(documents.len(), 87);
+        assert_eq!(documents.len(), 88);
         assert!(documents.iter().all(|(_, bytes)| !bytes.is_empty()));
         Ok(())
     }

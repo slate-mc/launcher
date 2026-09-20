@@ -32,7 +32,8 @@ Last updated: September 20, 2026
   obsolete pack-file removal, preservation of user-added mods and atomic pack/loader version
   changes.
 - Instance content inventory for mods, resource packs, shader packs, and world data packs, including
-  pack-vs-user ownership, enable/disable behavior where supported, and recoverable removal.
+  pack-vs-user ownership, enable/disable behavior where supported, recoverable removal, and local
+  mod JAR import with loader validation, duplicate protection, snapshots, and rollback.
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
   formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
   authenticated quick join.
@@ -59,7 +60,7 @@ Verified on Windows on September 20, 2026:
 - 13 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 122 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 124 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -67,8 +68,8 @@ Verified on Windows on September 20, 2026:
 
 1. **Content updates:** modpack updates work end to end. Per-mod update, downgrade,
    dependency/dependent views, and rollback are not complete; pinning alone is not an updater.
-2. **Import coverage:** slate portable archives work, but importing CurseForge/Modrinth packs,
-   importing from other launchers, and adding a local JAR through a file picker are not complete.
+2. **Import coverage:** slate portable archives and local mod JARs work, but importing
+   CurseForge/Modrinth packs and importing from other launchers are not complete.
 3. **Download controls:** installation progress, restart recovery, safe user cancellation, and
    operation-aware retry from Downloads work, but queue ordering, pause/resume, and bandwidth
    controls are missing.

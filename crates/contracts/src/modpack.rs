@@ -126,6 +126,13 @@ pub struct InstanceModsRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportLocalModRequest {
+    pub instance_id: uuid::Uuid,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetInstanceModEnabledRequest {
     pub instance_id: uuid::Uuid,
     pub expected_revision: u64,

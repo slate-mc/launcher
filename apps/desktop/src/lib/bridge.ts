@@ -440,6 +440,16 @@ export async function listInstanceMods(
   );
 }
 
+export async function importLocalMod(input: {
+  instanceId: string;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_mod_import", { request: input }),
+  );
+}
+
 export async function listInstanceContentFiles(
   instanceId: string,
   kind: InstanceContentKind,

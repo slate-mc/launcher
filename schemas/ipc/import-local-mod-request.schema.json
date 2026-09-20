@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportLocalModRequest",
+  "type": "object",
+  "properties": {
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "instanceId",
+    "expectedRevision"
+  ]
+}

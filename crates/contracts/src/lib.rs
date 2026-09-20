@@ -50,13 +50,13 @@ pub use launch::{
     SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
 };
 pub use modpack::{
-    ApplyModpackUpdateRequest, CheckModpackUpdateRequest, InstallModRequest, InstallModSelection,
-    InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
-    InstanceContentKindDto, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
-    InstanceModsRequest, ModSearchRequest, ModpackProjectRequest, ModpackSearchRequest,
-    ModpackSortDto, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
-    RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
-    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    ApplyModpackUpdateRequest, CheckModpackUpdateRequest, ImportLocalModRequest, InstallModRequest,
+    InstallModSelection, InstallModpackRequest, InstanceContentFileSummary,
+    InstanceContentFilesRequest, InstanceContentKindDto, InstanceModOriginDto,
+    InstanceModResolution, InstanceModSummary, InstanceModsRequest, ModSearchRequest,
+    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackUpdateSummary,
+    ModpackVersionRequest, ModpackVersionsRequest, RemoveInstanceContentFileRequest,
+    RemoveInstanceModRequest, SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest,
 };
 pub use onboarding::OnboardingStateSummary;

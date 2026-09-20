@@ -117,6 +117,125 @@ pub(super) async fn instance_mods_list(
 }
 
 #[tauri::command]
+pub(super) async fn instance_mod_import(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    request: ImportLocalModRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    ensure_local_mod_import_target(&instance)?;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Add a mod JAR")
+            .add_filter("Minecraft mod", &["jar"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| local_mod_import_error(LocalModImportError::InvalidArchive))?;
+    let Some(source) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(instance_summary(instance));
+    };
+
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    ensure_local_mod_import_target(&instance)?;
+    let loader = instance.loader_kind;
+    let paths = paths_for_instance(state.inner(), &instance);
+    let paths_for_validation = paths.clone();
+    let source_for_validation = source.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), LocalModImportError> {
+        validate_local_mod_source(&source_for_validation, loader)?;
+        ensure_local_mod_not_installed(&paths_for_validation, instance_id, &source_for_validation)
+    })
+    .await
+    .map_err(|_| local_mod_import_error(LocalModImportError::InvalidArchive))?
+    .map_err(local_mod_import_error)?;
+    create_automatic_snapshot_if_enabled(state.inner(), &instance).await?;
+
+    let imported = tauri::async_runtime::spawn_blocking(move || {
+        import_local_mod(&paths, instance_id, loader, &source)
+    })
+    .await
+    .map_err(|_| local_mod_import_error(LocalModImportError::InvalidArchive))?
+    .map_err(local_mod_import_error)?;
+    if let Err(error) = state
+        .database
+        .advance_instance_revision(instance_id, request.expected_revision)
+        .await
+    {
+        rollback_imported_mod(imported).await?;
+        return Err(map_storage_error(
+            error,
+            "slate could not record the imported mod.",
+        ));
+    }
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map(instance_summary)
+        .map_err(|error| map_storage_error(error, "slate could not refresh the instance."))
+}
+
+fn ensure_local_mod_import_target(instance: &InstanceRecord) -> Result<(), AppError> {
+    if instance.loader_kind == LoaderFamily::Vanilla {
+        return Err(AppError::new(
+            "mod.loader_required",
+            "Choose Fabric or NeoForge before adding mod JARs.",
+        ));
+    }
+    if instance.setup_state != slate_domain::InstanceSetupState::Ready {
+        return Err(AppError::new(
+            "local.instance_not_ready",
+            "Finish installing or repair this instance before adding local mods.",
+        ));
+    }
+    Ok(())
+}
+
+fn local_mod_import_error(error: LocalModImportError) -> AppError {
+    match error {
+        LocalModImportError::AlreadyInstalled => AppError::new(
+            "mod.already_installed",
+            "A mod JAR with that file name is already installed.",
+        ),
+        LocalModImportError::WrongLoader => AppError::new(
+            "mod.wrong_loader",
+            "That JAR does not contain mod metadata for this instance's loader.",
+        ),
+        LocalModImportError::TooLarge => AppError::new(
+            "mod.file_too_large",
+            "That mod JAR is larger than the 1 GB import limit.",
+        ),
+        LocalModImportError::InvalidArchive => AppError::new(
+            "mod.invalid_jar",
+            "Choose a valid mod JAR for this instance's loader.",
+        ),
+        LocalModImportError::Io(_) => AppError::new(
+            "local.mod_import_failed",
+            "slate could not safely copy that mod JAR.",
+        ),
+    }
+}
+
+async fn rollback_imported_mod(imported: ImportedModFile) -> Result<(), AppError> {
+    let rollback = tauri::async_runtime::spawn_blocking(move || imported.rollback()).await;
+    if matches!(rollback, Ok(Ok(()))) {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "local.content_rollback_failed",
+            "slate could not remove the copied mod after the change failed. The instance needs attention.",
+        ))
+    }
+}
+
+#[tauri::command]
 pub(super) async fn instance_content_files_list(
     state: tauri::State<'_, DesktopState>,
     request: InstanceContentFilesRequest,
@@ -479,6 +598,12 @@ pub(super) async fn prepare_instance_content_change(
         return Err(AppError::new(
             "local.instance_changed",
             "That instance changed in another view. Reload it and try again.",
+        ));
+    }
+    if instance.setup_state == slate_domain::InstanceSetupState::Preparing {
+        return Err(AppError::new(
+            "local.instance_preparing",
+            "Wait for the current installation to finish before changing this instance's content.",
         ));
     }
     Ok(instance)

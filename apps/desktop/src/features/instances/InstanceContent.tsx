@@ -3,6 +3,7 @@ import {
   ArrowRight,
   ChevronLeft,
   Download,
+  FileUp,
   LoaderCircle,
   Plus,
   Search,
@@ -13,6 +14,7 @@ import { InstallProgressIndicator } from "../../components/InstallProgressIndica
 import { EmptyState, InlineNotice } from "../../components/PageScaffold";
 import {
   installMods,
+  importLocalMod,
   listInstallJobs,
   listInstanceMods,
   removeInstanceMod,
@@ -31,9 +33,7 @@ import type {
   ModpackSummary,
   Provider,
 } from "../../types/launcher";
-import {
-  contentErrorMessage,
-} from "./instanceContentFormat";
+import { contentErrorMessage } from "./instanceContentFormat";
 import {
   ContentNavigation,
   ContentSelect,
@@ -53,7 +53,9 @@ import {
 
 export function InstanceContent({ instance }: { instance: LauncherInstance }) {
   const queryClient = useQueryClient();
-  const [contentKind, setContentKind] = useState<"mods" | InstanceContentKind>("mods");
+  const [contentKind, setContentKind] = useState<"mods" | InstanceContentKind>(
+    "mods",
+  );
   const [browserOpen, setBrowserOpen] = useState(false);
   const [installedFilter, setInstalledFilter] = useState("");
   const [installedStatus, setInstalledStatus] = useState<
@@ -131,7 +133,9 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
         throw new UserFacingError("Select at least one mod to install.");
       }
       if (items.some((item) => item.provider === "ftb")) {
-        throw new UserFacingError("FTB does not provide individual mod downloads.");
+        throw new UserFacingError(
+          "FTB does not provide individual mod downloads.",
+        );
       }
       return installMods({
         instanceId: instance.id,
@@ -179,6 +183,28 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
       queryClient.invalidateQueries({ queryKey: ["instances"] }),
     ]);
   };
+  const importMutation = useMutation({
+    mutationFn: () =>
+      importLocalMod({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated) => {
+      if (updated.revision === instance.revision) return;
+      return refreshContentAfterMutation(
+        updated,
+        "Mod imported",
+        "The local mod JAR is ready for the next launch.",
+      );
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Mod was not imported",
+        message: contentErrorMessage(error),
+      }),
+  });
   const toggleMutation = useMutation({
     mutationFn: ({ item, enabled }: { item: InstanceMod; enabled: boolean }) =>
       setInstanceModEnabled({
@@ -344,7 +370,10 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
     installJob?.state === "queued" ||
     installJob?.state === "running";
   const contentMutationPending =
-    toggleMutation.isPending || pinModMutation.isPending || removeMutation.isPending;
+    importMutation.isPending ||
+    toggleMutation.isPending ||
+    pinModMutation.isPending ||
+    removeMutation.isPending;
   const installedIdentityPending =
     installedQuery.isPending ||
     (Boolean(installedQuery.data?.length) && resolutionQuery.isFetching);
@@ -392,19 +421,38 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                 : `${instance.minecraftVersion} · ${loaderLabel(instance.loaderKind)} ${instance.loaderVersion ?? ""}`}
             </p>
           </div>
-          <button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={isVanilla || installing}
-            onClick={() => {
-              if (browserOpen) setSelectedMods({});
-              setBrowserOpen((open) => !open);
-              setNotice(undefined);
-            }}
-          >
-            <Plus size={15} aria-hidden="true" />
-            {browserOpen ? "Close browser" : "Add mods"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-control border border-app-separator bg-app-bg px-4 text-xs font-bold text-app-secondary hover:text-app-text disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={isVanilla || installing || contentMutationPending}
+              onClick={() => importMutation.mutate()}
+            >
+              {importMutation.isPending ? (
+                <LoaderCircle
+                  size={15}
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <FileUp size={15} aria-hidden="true" />
+              )}
+              {importMutation.isPending ? "Importing" : "Import JAR"}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={isVanilla || installing || contentMutationPending}
+              onClick={() => {
+                if (browserOpen) setSelectedMods({});
+                setBrowserOpen((open) => !open);
+                setNotice(undefined);
+              }}
+            >
+              <Plus size={15} aria-hidden="true" />
+              {browserOpen ? "Close browser" : "Add mods"}
+            </button>
+          </div>
         </div>
 
         {isVanilla ? (
@@ -805,13 +853,14 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                             item.filePath
                             ? "toggle"
                             : pinModMutation.isPending &&
-                                pinModMutation.variables?.item.filePath === item.filePath
-                              ? "pin"
-                            : removeMutation.isPending &&
-                                removeMutation.variables?.filePath ===
+                                pinModMutation.variables?.item.filePath ===
                                   item.filePath
-                              ? "remove"
-                              : undefined
+                              ? "pin"
+                              : removeMutation.isPending &&
+                                  removeMutation.variables?.filePath ===
+                                    item.filePath
+                                ? "remove"
+                                : undefined
                         }
                         onToggle={() =>
                           toggleMutation.mutate({
@@ -914,7 +963,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
         ) : !browserOpen && !isVanilla ? (
           <EmptyState
             title="No mod JARs detected"
-            description="Add a compatible mod from CurseForge or Modrinth, or install a modpack from Discover."
+            description="Add a compatible mod from CurseForge or Modrinth, import a local JAR, or install a modpack from Discover."
           />
         ) : null}
       </section>
