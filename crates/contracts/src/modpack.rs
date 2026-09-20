@@ -95,13 +95,35 @@ pub struct InstanceModsRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum InstanceModOriginDto {
+    Added,
+    Modpack,
+    Local,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstanceModSummary {
-    pub provider: Provider,
-    pub project_id: String,
-    pub version_id: String,
+    pub provider: Option<Provider>,
+    pub project_id: Option<String>,
+    pub version_id: Option<String>,
     pub display_name: String,
     pub file_path: String,
     pub enabled: bool,
     pub pinned: bool,
-    pub installed_at: String,
+    pub installed_at: Option<String>,
+    pub origin: InstanceModOriginDto,
+    pub file_size: u64,
+    pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceModResolution {
+    pub file_path: String,
+    pub provider: Provider,
+    pub project_id: String,
+    pub version_id: Option<String>,
+    pub display_name: Option<String>,
+    pub icon_url: Option<String>,
 }

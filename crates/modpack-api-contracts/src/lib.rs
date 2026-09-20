@@ -22,7 +22,8 @@ pub use metadata::{
     UpdateResponse,
 };
 pub use modpack::{
-    Author, Modpack, ModpackLinks, ModpackSummary, SearchResponse, VersionReference,
+    Author, ModProjectReference, Modpack, ModpackLinks, ModpackSummary, ResolveModsRequest,
+    ResolveModsResponse, ResolvedModProject, SearchResponse, VersionReference,
 };
 pub use provider::{Provider, ProviderMetadata, ProviderStatus, ProvidersResponse};
 pub use version::{

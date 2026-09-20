@@ -4,7 +4,7 @@ use reqwest::{Method, StatusCode};
 use slate_modpack_api_contracts::{
     ApiEnvelope, ApiErrorCode, CategoriesResponse, InstallPlan, InstallPlanRequest, LoaderKind,
     ModInstallPlanRequest, Modpack, ModpackVersion, Provider, ProvidersResponse, ReleaseType,
-    SearchResponse, VersionPage,
+    ResolveModsRequest, ResolveModsResponse, SearchResponse, VersionPage,
 };
 use std::time::Duration;
 use url::Url;
@@ -223,6 +223,15 @@ impl ModpackApiClient {
             return Err(ClientError::MissingModTarget);
         }
         let url = self.endpoint(&["v1", "mods", provider.as_str(), project_id, "install-plan"])?;
+        self.send(Method::POST, url, Some(serde_json::to_vec(request)?))
+            .await
+    }
+
+    pub async fn resolve_mods(
+        &self,
+        request: &ResolveModsRequest,
+    ) -> Result<ResolveModsResponse, ClientError> {
+        let url = self.endpoint(&["v1", "mods", "resolve"])?;
         self.send(Method::POST, url, Some(serde_json::to_vec(request)?))
             .await
     }

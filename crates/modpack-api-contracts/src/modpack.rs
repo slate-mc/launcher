@@ -47,6 +47,30 @@ pub struct SearchResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ModProjectReference {
+    pub provider: Provider,
+    pub project_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ResolveModsRequest {
+    pub items: Vec<ModProjectReference>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ResolvedModProject {
+    pub provider: Provider,
+    pub project_id: String,
+    pub name: String,
+    pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ResolveModsResponse {
+    pub items: Vec<ResolvedModProject>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 pub struct Modpack {
     pub provider: Provider,
     pub id: String,

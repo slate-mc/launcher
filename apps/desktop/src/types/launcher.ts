@@ -30,7 +30,12 @@ export const contentLoaderSchema = z.enum([
   "fabric",
   "quilt",
 ]);
-export const releaseTypeSchema = z.enum(["release", "beta", "alpha", "unknown"]);
+export const releaseTypeSchema = z.enum([
+  "release",
+  "beta",
+  "alpha",
+  "unknown",
+]);
 
 export const modpackSourceSchema = z.object({
   provider: providerSchema,
@@ -325,7 +330,11 @@ export const modpackVersionSchema = z.object({
       side: z.enum(["both", "client", "server"]),
       optional: z.boolean(),
       option: z
-        .object({ id: z.string().min(1), name: z.string().min(1), default: z.boolean() })
+        .object({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          default: z.boolean(),
+        })
         .optional(),
     }),
   ),
@@ -336,7 +345,11 @@ export const modpackVersionSchema = z.object({
 
 export const modpackProvidersSchema = z.object({
   providers: z.array(
-    z.object({ id: providerSchema, name: z.string().min(1), available: z.boolean() }),
+    z.object({
+      id: providerSchema,
+      name: z.string().min(1),
+      available: z.boolean(),
+    }),
   ),
 });
 
@@ -346,17 +359,33 @@ export const modpackInstallStartedSchema = z.object({
 });
 
 export const instanceModSchema = z.object({
-  provider: z.enum(["curseforge", "modrinth"]),
-  projectId: z.string().min(1),
-  versionId: z.string().min(1),
+  provider: z.enum(["curseforge", "modrinth"]).nullable(),
+  projectId: z.string().min(1).nullable(),
+  versionId: z.string().min(1).nullable(),
   displayName: z.string().min(1),
   filePath: z.string().min(1),
   enabled: z.boolean(),
   pinned: z.boolean(),
-  installedAt: z.string(),
+  installedAt: z.string().nullable(),
+  origin: z.enum(["added", "modpack", "local"]),
+  fileSize: z.number().int().nonnegative(),
+  iconUrl: z.string().url().nullable(),
 });
 
 export const instanceModListSchema = z.array(instanceModSchema);
+
+export const instanceModResolutionSchema = z.object({
+  filePath: z.string().min(1),
+  provider: z.enum(["curseforge", "modrinth"]),
+  projectId: z.string().min(1),
+  versionId: z.string().min(1).nullable(),
+  displayName: z.string().min(1).nullable(),
+  iconUrl: z.string().url().nullable(),
+});
+
+export const instanceModResolutionListSchema = z.array(
+  instanceModResolutionSchema,
+);
 
 export type Bootstrap = z.infer<typeof bootstrapSchema>;
 export type LauncherInstance = z.infer<typeof instanceSummarySchema>;
@@ -387,6 +416,7 @@ export type ModpackVersion = z.infer<typeof modpackVersionSchema>;
 export type ModpackProviders = z.infer<typeof modpackProvidersSchema>;
 export type ModpackInstallStarted = z.infer<typeof modpackInstallStartedSchema>;
 export type InstanceMod = z.infer<typeof instanceModSchema>;
+export type InstanceModResolution = z.infer<typeof instanceModResolutionSchema>;
 
 export type ServerPreview = {
   id: string;

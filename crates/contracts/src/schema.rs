@@ -1,12 +1,12 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
     CreateInstanceRequest, EventEnvelope, GameSessionSummary, InstallInstanceRequest,
-    InstallJobSummary, InstallModRequest, InstallModpackRequest, InstanceModSummary,
-    InstanceModsRequest, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
-    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModSearchRequest,
-    ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackVersionRequest,
-    ModpackVersionsRequest, PreflightSummary, RedactedLaunchPlan, SessionLogEvent,
-    SessionLogSubscription, StopGameSessionRequest, SubscribeSessionLogRequest,
+    InstallJobSummary, InstallModRequest, InstallModpackRequest, InstanceModResolution,
+    InstanceModSummary, InstanceModsRequest, InstanceSummary, LaunchInstanceRequest,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
+    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
+    ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary, RedactedLaunchPlan,
+    SessionLogEvent, SessionLogSubscription, StopGameSessionRequest, SubscribeSessionLogRequest,
     UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
 };
 use schemars::{Schema, schema_for};
@@ -109,6 +109,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         ("instance-mods-request", schema_for!(InstanceModsRequest)),
         ("instance-mod-list", schema_for!(Vec<InstanceModSummary>)),
         (
+            "instance-mod-resolution-list",
+            schema_for!(Vec<InstanceModResolution>),
+        ),
+        (
             "minecraft-account-summary",
             schema_for!(MinecraftAccountSummary),
         ),
@@ -140,7 +144,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 39);
+        assert_eq!(schemas.len(), 40);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

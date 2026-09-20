@@ -14,19 +14,26 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::{get, post};
 use futures_util::future::join_all;
+use futures_util::{StreamExt, stream};
 use serde::Deserialize;
 use slate_modpack_api_contracts::{
     ApiErrorCode, DownloadSource, InstallPlan, InstallPlanDownload, InstallPlanInstance, JavaPlan,
     Loader, LoaderKind, MemoryRecommendation, ModInstallPlanRequest, Provider, ProviderStatus,
-    RuntimePlan, SearchResponse,
+    ResolveModsRequest, ResolveModsResponse, ResolvedModProject, RuntimePlan, SearchResponse,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+const MAX_RESOLVE_ITEMS: usize = 512;
+const RESOLVE_CONCURRENCY: usize = 24;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/mods", get(search)).route(
-        "/mods/{provider}/{project_id}/install-plan",
-        post(install_plan),
-    )
+    Router::new()
+        .route("/mods", get(search))
+        .route("/mods/resolve", post(resolve))
+        .route(
+            "/mods/{provider}/{project_id}/install-plan",
+            post(install_plan),
+        )
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -245,6 +252,84 @@ async fn install_plan(
     Ok(success(&context, plan, CacheControl::NoStore))
 }
 
+async fn resolve(
+    State(state): State<AppState>,
+    Extension(context): Extension<RequestContext>,
+    payload: Result<Json<ResolveModsRequest>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let Json(request) = payload.map_err(|_| {
+        ApiError::invalid_request(&context, "The mod resolution body is invalid.").with_field(
+            "body",
+            "Provide an items array of provider project references.",
+        )
+    })?;
+    if request.items.len() > MAX_RESOLVE_ITEMS {
+        return Err(ApiError::invalid_request(
+            &context,
+            "Too many mods were submitted for resolution.",
+        )
+        .with_field(
+            "items",
+            format!("Submit no more than {MAX_RESOLVE_ITEMS} items."),
+        ));
+    }
+
+    let mut references = BTreeSet::new();
+    for item in request.items {
+        validate_mod_provider(&context, item.provider)?;
+        if !valid_identifier(&item.project_id) {
+            return Err(ApiError::invalid_request(
+                &context,
+                "A mod project identifier is invalid.",
+            )
+            .with_field(
+                "items.project_id",
+                "Use a provider project identifier containing only letters, numbers, hyphens, underscores, or periods.",
+            ));
+        }
+        references.insert((item.provider, item.project_id));
+    }
+
+    let providers = state.providers.clone();
+    let items = stream::iter(references)
+        .map(|(provider, project_id)| {
+            let adapter = providers.get(provider);
+            async move {
+                let result = match adapter {
+                    Some(adapter) => adapter.get_project(&project_id).await,
+                    None => Err(ProviderError::Unavailable),
+                };
+                match result {
+                    Ok(project) => Some(ResolvedModProject {
+                        provider,
+                        project_id,
+                        name: project.name,
+                        icon_url: project.icon_url,
+                    }),
+                    Err(error) => {
+                        tracing::warn!(
+                            provider = %provider,
+                            project_id,
+                            error = %error,
+                            "mod project resolution failed"
+                        );
+                        None
+                    }
+                }
+            }
+        })
+        .buffer_unordered(RESOLVE_CONCURRENCY)
+        .filter_map(|item| async move { item })
+        .collect::<Vec<_>>()
+        .await;
+
+    Ok(success(
+        &context,
+        ResolveModsResponse { items },
+        CacheControl::NoStore,
+    ))
+}
+
 fn validate_mod_provider(context: &RequestContext, provider: Provider) -> Result<(), ApiError> {
     if provider == Provider::Ftb {
         Err(ApiError::new(
@@ -275,9 +360,17 @@ fn validate_mod_loader(context: &RequestContext, loader: LoaderKind) -> Result<(
     }
 }
 
+fn valid_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{validate_mod_loader, validate_mod_provider};
+    use super::{valid_identifier, validate_mod_loader, validate_mod_provider};
     use crate::response::RequestContext;
     use slate_modpack_api_contracts::{LoaderKind, Provider};
 
@@ -288,5 +381,14 @@ mod tests {
         assert!(validate_mod_loader(&context, LoaderKind::Fabric).is_ok());
         assert!(validate_mod_provider(&context, Provider::Ftb).is_err());
         assert!(validate_mod_provider(&context, Provider::Modrinth).is_ok());
+    }
+
+    #[test]
+    fn mod_resolution_identifiers_are_bounded_and_path_safe() {
+        assert!(valid_identifier("AANobbMI"));
+        assert!(valid_identifier("387638"));
+        assert!(!valid_identifier("../387638"));
+        assert!(!valid_identifier("project/id"));
+        assert!(!valid_identifier(""));
     }
 }

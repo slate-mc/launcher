@@ -9,6 +9,7 @@ import {
   installJobListSchema,
   installJobSchema,
   instanceModListSchema,
+  instanceModResolutionListSchema,
   instanceSummaryListSchema,
   instanceSummarySchema,
   loaderVersionCatalogSchema,
@@ -47,6 +48,7 @@ import {
   type SessionLogEvent,
   type InstallJob,
   type InstanceMod,
+  type InstanceModResolution,
   type Preflight,
   type ServerPreview,
 } from "../types/launcher";
@@ -469,10 +471,21 @@ export async function searchMods(input: {
   );
 }
 
-export async function listInstanceMods(instanceId: string): Promise<InstanceMod[]> {
+export async function listInstanceMods(
+  instanceId: string,
+): Promise<InstanceMod[]> {
   if (bridgeMode !== "native") return [];
   return instanceModListSchema.parse(
     await invoke("instance_mods_list", { request: { instanceId } }),
+  );
+}
+
+export async function resolveInstanceMods(
+  instanceId: string,
+): Promise<InstanceModResolution[]> {
+  if (bridgeMode !== "native") return [];
+  return instanceModResolutionListSchema.parse(
+    await invoke("instance_mods_resolve", { request: { instanceId } }),
   );
 }
 
@@ -572,30 +585,26 @@ export async function updateInstanceConfiguration(input: {
       }),
     );
   }
-  return updatePreviewInstance(
-    input.id,
-    input.expectedRevision,
-    (instance) => {
-      const minecraftVersion = input.minecraftVersion.trim();
-      const loaderVersion = cleanLoaderVersion(
-        input.loaderKind,
-        input.loaderVersion,
-      );
-      const runtimeChanged =
-        instance.minecraftVersion !== minecraftVersion ||
-        instance.loaderKind !== input.loaderKind ||
-        instance.loaderVersion !== loaderVersion;
-      return {
-        ...instance,
-        minecraftVersion,
-        loaderKind: input.loaderKind,
-        loaderVersion,
-        memoryMb: input.memoryMb,
-        setupState: runtimeChanged ? "configured" : instance.setupState,
-        artworkTone: toneForLoader(input.loaderKind),
-      };
-    },
-  );
+  return updatePreviewInstance(input.id, input.expectedRevision, (instance) => {
+    const minecraftVersion = input.minecraftVersion.trim();
+    const loaderVersion = cleanLoaderVersion(
+      input.loaderKind,
+      input.loaderVersion,
+    );
+    const runtimeChanged =
+      instance.minecraftVersion !== minecraftVersion ||
+      instance.loaderKind !== input.loaderKind ||
+      instance.loaderVersion !== loaderVersion;
+    return {
+      ...instance,
+      minecraftVersion,
+      loaderKind: input.loaderKind,
+      loaderVersion,
+      memoryMb: input.memoryMb,
+      setupState: runtimeChanged ? "configured" : instance.setupState,
+      artworkTone: toneForLoader(input.loaderKind),
+    };
+  });
 }
 
 export async function setInstanceFavorite(input: {
@@ -820,7 +829,9 @@ function requirePreview() {
 
 function requireNativeContent() {
   if (bridgeMode !== "native") {
-    throw new Error("Modpack content is available only in the slate desktop app.");
+    throw new Error(
+      "Modpack content is available only in the slate desktop app.",
+    );
   }
 }
 

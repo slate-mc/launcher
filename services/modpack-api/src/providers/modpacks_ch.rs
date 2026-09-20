@@ -667,7 +667,7 @@ fn map_file(
             .clone()
             .unwrap_or_else(|| format!("path-{}", slugify(&path)))
     } else {
-        raw_id
+        raw_id.clone()
     };
     let option = file.optional.unwrap_or(false).then(|| FileOption {
         id: format!("optional-{}", slugify(&id)),
@@ -678,7 +678,12 @@ fn map_file(
         || {
             Some(ProviderReference {
                 provider,
-                project_id: project_id.to_owned(),
+                project_id: if provider == Provider::Modrinth && !raw_id.is_empty() && raw_id != "0"
+                {
+                    raw_id
+                } else {
+                    project_id.to_owned()
+                },
                 version_id: file.version.map(|value| value.to_string_value()),
             })
         },
@@ -1375,9 +1380,10 @@ struct UpstreamTags {
 #[cfg(test)]
 mod tests {
     use super::{
-        FlexibleId, ProviderError, UpstreamTarget, UpstreamVersionSummary, map_version_summary,
+        FlexibleId, ProviderError, UpstreamFile, UpstreamTarget, UpstreamVersionSummary, map_file,
+        map_version_summary,
     };
-    use slate_modpack_api_contracts::{LoaderKind, ReleaseType};
+    use slate_modpack_api_contracts::{LoaderKind, Provider, ProviderReference, ReleaseType};
 
     #[test]
     fn version_lists_are_mapped_without_resolving_full_manifests() -> Result<(), ProviderError> {
@@ -1407,6 +1413,40 @@ mod tests {
         assert_eq!(summary.loader.version, None);
         assert_eq!(summary.release_type, ReleaseType::Release);
         assert_eq!(summary.changelog, None);
+        Ok(())
+    }
+
+    #[test]
+    fn modrinth_pack_files_preserve_the_mod_project_identity() -> Result<(), ProviderError> {
+        let file = map_file(
+            UpstreamFile {
+                id: FlexibleId::String("AANobbMI".to_owned()),
+                name: "example.jar".to_owned(),
+                kind: Some("mod".to_owned()),
+                version: Some(FlexibleId::String("version-id".to_owned())),
+                path: Some("mods".to_owned()),
+                url: Some("https://cdn.modrinth.com/data/example.jar".to_owned()),
+                mirrors: None,
+                sha1: Some("1111111111111111111111111111111111111111".to_owned()),
+                hashes: None,
+                size: Some(42),
+                client_only: None,
+                server_only: None,
+                optional: None,
+                curseforge: None,
+            },
+            Provider::Modrinth,
+            "parent-pack",
+        )?;
+
+        assert_eq!(
+            file.source,
+            Some(ProviderReference {
+                provider: Provider::Modrinth,
+                project_id: "AANobbMI".to_owned(),
+                version_id: Some("version-id".to_owned()),
+            })
+        );
         Ok(())
     }
 }

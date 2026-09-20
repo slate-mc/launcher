@@ -1,5 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod instance_content;
+
+use instance_content::{InstanceModFile, scan_instance_mods};
 use slate_auth::{
     AuthError, CredentialVault, MICROSOFT_CONSUMER_TENANT, MinecraftAuthClient,
     MinecraftAuthConfig, MinecraftSession, SLATE_MICROSOFT_CLIENT_ID,
@@ -8,17 +11,18 @@ use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, AuthCancelRequest, AuthFlowStateDto,
     AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary, CreateInstanceRequest,
     GameSessionStateDto, GameSessionSummary, InstallInstanceRequest, InstallJobStateDto,
-    InstallJobSummary, InstallModRequest, InstallModpackRequest, InstanceModSummary,
-    InstanceModeDto, InstanceModsRequest, InstanceSummary, JavaRuntimeSummary,
-    LaunchInstanceRequest, LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest,
-    MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
-    MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
-    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
-    ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto,
-    RenameInstanceRequest, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
-    SetDefaultAccountRequest, SetFavoriteRequest, StopGameSessionRequest,
-    SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
-    UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
+    InstallJobSummary, InstallModRequest, InstallModpackRequest, InstanceModOriginDto,
+    InstanceModResolution, InstanceModSummary, InstanceModeDto, InstanceModsRequest,
+    InstanceSummary, JavaRuntimeSummary, LaunchInstanceRequest, LoaderKindDto,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
+    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
+    MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackVersionRequest,
+    ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto, RenameInstanceRequest,
+    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest,
+    SetFavoriteRequest, StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto,
+    TrashInstanceRequest, UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest,
+    UpdateInstanceConfigurationRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, LoaderFamily, ManagementMode,
@@ -36,7 +40,8 @@ use slate_minecraft::{
 };
 use slate_modpack_api_contracts::{
     Architecture as ModpackArchitecture, InstallPlan, InstallPlanRequest, LoaderKind,
-    ModInstallPlanRequest, Modpack, ModpackVersion, Platform as ModpackPlatform, ProvidersResponse,
+    ModInstallPlanRequest, ModProjectReference, Modpack, ModpackVersion, PackFileType,
+    Platform as ModpackPlatform, ProviderReference, ProvidersResponse, ResolveModsRequest,
     SearchResponse, VersionPage,
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
@@ -51,7 +56,7 @@ use slate_storage::{
     InstallJobRecord, InstalledRuntime, InstanceModRecord, InstanceRecord, JobState, NewInstance,
     NewInstanceMod, NewModpackSource, ReduceMotionPreference, StorageError, ThemePreference,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -352,17 +357,160 @@ async fn instance_mods_list(
     request: InstanceModsRequest,
 ) -> Result<Vec<InstanceModSummary>, AppError> {
     let instance_id = InstanceId::from_uuid(request.instance_id);
-    state
+    let instance = state
         .database
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
-    state
+    let stored_mods = state
         .database
         .list_instance_mods(instance_id)
         .await
-        .map(|mods| mods.into_iter().map(instance_mod_summary).collect())
-        .map_err(|error| map_storage_error(error, "slate could not load installed mods."))
+        .map_err(|error| map_storage_error(error, "slate could not load installed mods."))?;
+    let paths = state.paths.clone();
+    let files = tokio::task::spawn_blocking(move || scan_instance_mods(&paths, instance_id))
+        .await
+        .map_err(|_| {
+            AppError::new(
+                "local.mod_inventory_failed",
+                "slate could not inspect the instance mod directory.",
+            )
+        })?
+        .map_err(|_| {
+            AppError::new(
+                "local.mod_inventory_failed",
+                "slate could not inspect the instance mod directory.",
+            )
+        })?;
+    let mut stored_by_path = stored_mods
+        .into_iter()
+        .map(|record| (normalized_content_path(&record.file_path), record))
+        .collect::<HashMap<_, _>>();
+    let untracked_origin = if instance.modpack_source.is_some() {
+        InstanceModOriginDto::Modpack
+    } else {
+        InstanceModOriginDto::Local
+    };
+    Ok(files
+        .into_iter()
+        .map(|file| {
+            let record = stored_by_path.remove(&normalized_content_path(&file.file_path));
+            instance_mod_summary(record, file, untracked_origin.clone())
+        })
+        .collect())
+}
+
+#[tauri::command]
+async fn instance_mods_resolve(
+    state: tauri::State<'_, DesktopState>,
+    request: InstanceModsRequest,
+) -> Result<Vec<InstanceModResolution>, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let stored_mods = state
+        .database
+        .list_instance_mods(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load installed mods."))?;
+    let mut references_by_path = stored_mods
+        .into_iter()
+        .map(|record| {
+            (
+                normalized_content_path(&record.file_path),
+                ProviderReference {
+                    provider: record.provider,
+                    project_id: record.project_id,
+                    version_id: Some(record.version_id),
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    if let Some(source) = instance.modpack_source {
+        match state
+            .modpacks
+            .version(source.provider, &source.project_id, &source.version_id)
+            .await
+        {
+            Ok(version) => {
+                for file in version.files {
+                    if file.kind == PackFileType::Mod
+                        && let Some(reference) = file.source
+                        && reference.provider != slate_modpack_api_contracts::Provider::Ftb
+                    {
+                        references_by_path
+                            .entry(normalized_content_path(&file.path))
+                            .or_insert(reference);
+                    }
+                }
+            }
+            Err(error) => tracing::warn!(
+                instance_id = %request.instance_id,
+                error = %error,
+                "could not load modpack sources for installed mod resolution"
+            ),
+        }
+    }
+
+    let unique_projects = references_by_path
+        .values()
+        .map(|reference| {
+            (
+                (reference.provider, reference.project_id.clone()),
+                ModProjectReference {
+                    provider: reference.provider,
+                    project_id: reference.project_id.clone(),
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect::<Vec<_>>();
+    let resolved = if unique_projects.is_empty() {
+        Vec::new()
+    } else {
+        match state
+            .modpacks
+            .resolve_mods(&ResolveModsRequest {
+                items: unique_projects,
+            })
+            .await
+        {
+            Ok(response) => response.items,
+            Err(error) => {
+                tracing::warn!(
+                    instance_id = %request.instance_id,
+                    error = %error,
+                    "provider mod metadata resolution failed"
+                );
+                Vec::new()
+            }
+        }
+    };
+    let resolved_by_project = resolved
+        .into_iter()
+        .map(|project| ((project.provider, project.project_id.clone()), project))
+        .collect::<BTreeMap<_, _>>();
+
+    Ok(references_by_path
+        .into_iter()
+        .map(|(file_path, reference)| {
+            let project =
+                resolved_by_project.get(&(reference.provider, reference.project_id.clone()));
+            InstanceModResolution {
+                file_path,
+                provider: reference.provider,
+                project_id: reference.project_id,
+                version_id: reference.version_id,
+                display_name: project.map(|project| project.name.clone()),
+                icon_url: project.and_then(|project| project.icon_url.clone()),
+            }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -1827,17 +1975,47 @@ fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
     }
 }
 
-fn instance_mod_summary(record: InstanceModRecord) -> InstanceModSummary {
-    InstanceModSummary {
-        provider: record.provider,
-        project_id: record.project_id,
-        version_id: record.version_id,
-        display_name: record.display_name,
-        file_path: record.file_path,
-        enabled: record.enabled,
-        pinned: record.pinned,
-        installed_at: record.installed_at,
+fn instance_mod_summary(
+    record: Option<InstanceModRecord>,
+    file: InstanceModFile,
+    untracked_origin: InstanceModOriginDto,
+) -> InstanceModSummary {
+    match record {
+        Some(record) => InstanceModSummary {
+            provider: Some(record.provider),
+            project_id: Some(record.project_id),
+            version_id: Some(record.version_id),
+            display_name: record.display_name,
+            file_path: file.file_path,
+            enabled: file.enabled,
+            pinned: record.pinned,
+            installed_at: Some(record.installed_at),
+            origin: InstanceModOriginDto::Added,
+            file_size: file.size,
+            icon_url: None,
+        },
+        None => InstanceModSummary {
+            provider: None,
+            project_id: None,
+            version_id: None,
+            display_name: file.display_name,
+            file_path: file.file_path,
+            enabled: file.enabled,
+            pinned: false,
+            installed_at: file.modified_at,
+            origin: untracked_origin,
+            file_size: file.size,
+            icon_url: None,
+        },
     }
+}
+
+fn normalized_content_path(value: &str) -> String {
+    let normalized = value.replace('\\', "/").to_ascii_lowercase();
+    normalized
+        .strip_suffix(".disabled")
+        .unwrap_or(&normalized)
+        .to_owned()
 }
 
 fn preferences_dto(value: AppPreferences) -> AppPreferencesDto {
@@ -2545,6 +2723,7 @@ fn main() {
             modpack_version_get,
             modpack_install,
             instance_mods_list,
+            instance_mods_resolve,
             instance_mod_install,
         ])
         .run(tauri::generate_context!());

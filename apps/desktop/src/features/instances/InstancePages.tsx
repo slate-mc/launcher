@@ -45,6 +45,7 @@ import {
   listInstallJobs,
   listInstanceMods,
   renameInstance,
+  resolveInstanceMods,
   setInstanceFavorite,
   searchMods,
   trashInstance,
@@ -677,6 +678,7 @@ function Overview({ instance }: { instance: LauncherInstance }) {
 function Content({ instance }: { instance: LauncherInstance }) {
   const queryClient = useQueryClient();
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [installedFilter, setInstalledFilter] = useState("");
   const [draftQuery, setDraftQuery] = useState("");
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState<"all" | "curseforge" | "modrinth">(
@@ -696,6 +698,12 @@ function Content({ instance }: { instance: LauncherInstance }) {
   const installedQuery = useQuery({
     queryKey: ["instance-mods", instance.id],
     queryFn: () => listInstanceMods(instance.id),
+  });
+  const resolutionQuery = useQuery({
+    queryKey: ["instance-mod-resolutions", instance.id],
+    queryFn: () => resolveInstanceMods(instance.id),
+    enabled: Boolean(installedQuery.data?.length),
+    staleTime: 30 * 60_000,
   });
   const searchQuery = useQuery({
     queryKey: ["mod-search", instance.id, query, provider, sort, page],
@@ -767,6 +775,9 @@ function Content({ instance }: { instance: LauncherInstance }) {
       queryClient.invalidateQueries({
         queryKey: ["instance-mods", instance.id],
       }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-mod-resolutions", instance.id],
+      }),
       queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
       queryClient.invalidateQueries({ queryKey: ["instances"] }),
     ]);
@@ -789,9 +800,39 @@ function Content({ instance }: { instance: LauncherInstance }) {
       : undefined;
   const visibleNotice = completionNotice ?? notice;
 
-  const installed = installedQuery.data ?? [];
+  const resolutionsByPath = new Map(
+    (resolutionQuery.data ?? []).map((resolution) => [
+      normalizedModPath(resolution.filePath),
+      resolution,
+    ]),
+  );
+  const installed = (installedQuery.data ?? []).map((item) => {
+    const resolution = resolutionsByPath.get(normalizedModPath(item.filePath));
+    return resolution
+      ? {
+          ...item,
+          provider: resolution.provider,
+          projectId: resolution.projectId,
+          versionId: resolution.versionId ?? item.versionId,
+          displayName: resolution.displayName ?? item.displayName,
+          iconUrl: resolution.iconUrl ?? item.iconUrl,
+        }
+      : item;
+  });
+  const normalizedInstalledFilter = installedFilter.trim().toLocaleLowerCase();
+  const visibleInstalled = normalizedInstalledFilter
+    ? installed.filter((item) =>
+        `${item.displayName} ${item.filePath} ${item.provider ?? ""}`
+          .toLocaleLowerCase()
+          .includes(normalizedInstalledFilter),
+      )
+    : installed;
   const installedIds = new Set(
-    installed.map((item) => `${item.provider}:${item.projectId}`),
+    installed.flatMap((item) =>
+      item.provider && item.projectId
+        ? [`${item.provider}:${item.projectId}`]
+        : [],
+    ),
   );
   const unavailableProviders = Object.entries(
     searchQuery.data?.provider_status ?? {},
@@ -1067,18 +1108,64 @@ function Content({ instance }: { instance: LauncherInstance }) {
             </InlineNotice>
           </div>
         ) : installed.length ? (
-          <div className="divide-y divide-app-separator/45 px-5">
-            {installed.map((item) => (
-              <InstalledModRow
-                key={`${item.provider}:${item.projectId}`}
-                item={item}
-              />
-            ))}
-          </div>
+          <>
+            <div className="flex items-center justify-between gap-4 border-b border-app-separator/45 px-5 py-3">
+              <label className="relative block w-full max-w-sm">
+                <span className="sr-only">Filter installed mods</span>
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-app-muted"
+                  aria-hidden="true"
+                />
+                <input
+                  value={installedFilter}
+                  onChange={(event) => setInstalledFilter(event.target.value)}
+                  placeholder="Filter installed mods"
+                  className="h-8 w-full rounded-control border border-app-separator bg-app-bg pr-3 pl-9 text-[11px] text-app-text outline-none placeholder:text-app-muted focus:border-app-accent"
+                />
+              </label>
+              <span className="shrink-0 font-mono text-[10px] text-app-muted">
+                {resolutionQuery.isFetching ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <LoaderCircle
+                      size={11}
+                      className="animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                    Matching providers
+                  </span>
+                ) : visibleInstalled.length === installed.length ? (
+                  `${installed.length} detected`
+                ) : (
+                  `${visibleInstalled.length} of ${installed.length}`
+                )}
+              </span>
+            </div>
+            {visibleInstalled.length ? (
+              <div className="divide-y divide-app-separator/45 px-5">
+                {visibleInstalled.map((item) => (
+                  <InstalledModRow key={item.filePath} item={item} />
+                ))}
+              </div>
+            ) : (
+              <div className="px-5 py-14 text-center">
+                <p className="m-0 text-sm font-bold text-app-text">
+                  No installed mods match
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 border-0 bg-transparent text-xs font-bold text-app-accent"
+                  onClick={() => setInstalledFilter("")}
+                >
+                  Clear filter
+                </button>
+              </div>
+            )}
+          </>
         ) : !browserOpen && !isVanilla ? (
           <EmptyState
-            title="No installed mods"
-            description="Browse CurseForge and Modrinth. Every installation is checked against this instance before slate changes its files."
+            title="No mod JARs detected"
+            description="Add a compatible mod from CurseForge or Modrinth, or install a modpack from Discover."
           />
         ) : null}
       </section>
@@ -1129,35 +1216,73 @@ function ModSearchResult({
 }
 
 function InstalledModRow({ item }: { item: InstanceMod }) {
+  const originLabel = item.provider
+    ? `${modProviderName(item.provider)} · ${item.origin === "modpack" ? "Modpack" : "Added"}`
+    : item.origin === "modpack"
+      ? "Modpack"
+      : "Local file";
   return (
-    <article className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3.5">
+    <article className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 py-3.5">
+      <ContentArtwork
+        src={item.iconUrl}
+        name={item.displayName}
+        stableKey={
+          item.provider && item.projectId
+            ? `${item.provider}:${item.projectId}`
+            : item.filePath
+        }
+        className="size-9 rounded-control border border-app-separator"
+      />
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span
-            className="size-1.5 rounded-full bg-app-accent"
+            className={`size-1.5 rounded-full ${item.enabled ? "bg-app-accent" : "bg-app-muted"}`}
             aria-hidden="true"
           />
-          <h3 className="m-0 truncate text-[13px] font-bold text-app-text">
+          <h3
+            className="m-0 truncate text-[13px] font-bold text-app-text"
+            title={item.displayName}
+          >
             {item.displayName}
           </h3>
           <span className="rounded-full border border-app-separator px-2 py-0.5 font-mono text-[9px] text-app-muted">
-            {modProviderName(item.provider)}
+            {originLabel}
           </span>
+          {!item.enabled ? (
+            <span className="font-mono text-[9px] text-app-warning">
+              Disabled
+            </span>
+          ) : null}
         </div>
-        <p className="mt-1.5 mb-0 truncate pl-3.5 font-mono text-[9px] text-app-muted">
+        <p className="mt-1.5 mb-0 truncate font-mono text-[9px] text-app-muted">
           {item.filePath}
         </p>
       </div>
       <div className="text-right">
         <p className="m-0 font-mono text-[9px] text-app-secondary">
-          {item.versionId}
+          {item.versionId ?? formatContentFileSize(item.fileSize)}
         </p>
-        <p className="mt-1 mb-0 text-[10px] text-app-muted">
-          Installed {formatDate(item.installedAt)}
-        </p>
+        {item.installedAt ? (
+          <p className="mt-1 mb-0 text-[10px] text-app-muted">
+            Installed {formatDate(item.installedAt)}
+          </p>
+        ) : null}
       </div>
     </article>
   );
+}
+
+function formatContentFileSize(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function normalizedModPath(value: string) {
+  return value
+    .replaceAll("\\", "/")
+    .toLocaleLowerCase()
+    .replace(/\.disabled$/, "");
 }
 
 function ContentSelect({

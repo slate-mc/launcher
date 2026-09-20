@@ -6,6 +6,14 @@
     "$ref": "#/$defs/InstanceModSummary"
   },
   "$defs": {
+    "InstanceModOriginDto": {
+      "type": "string",
+      "enum": [
+        "added",
+        "modpack",
+        "local"
+      ]
+    },
     "InstanceModSummary": {
       "type": "object",
       "properties": {
@@ -18,31 +26,59 @@
         "filePath": {
           "type": "string"
         },
+        "fileSize": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "iconUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "installedAt": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "$ref": "#/$defs/InstanceModOriginDto"
         },
         "pinned": {
           "type": "boolean"
         },
         "projectId": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "provider": {
-          "$ref": "#/$defs/Provider"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provider"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "versionId": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "provider",
-        "projectId",
-        "versionId",
         "displayName",
         "filePath",
         "enabled",
         "pinned",
-        "installedAt"
+        "origin",
+        "fileSize"
       ]
     },
     "Provider": {
