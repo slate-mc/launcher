@@ -59,7 +59,7 @@ use slate_storage::{
     InstanceModTarget, InstanceRecord, JobState, NewInstance, NewInstanceMod, NewModpackSource,
     ReduceMotionPreference, StorageError, ThemePreference,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -1581,8 +1581,21 @@ async fn instance_mod_install(
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    if instance_mod_is_installed(
+        state.inner(),
+        &instance,
+        request.provider,
+        &request.project_id,
+    )
+    .await?
+    {
+        return Err(AppError::new(
+            "mod.already_installed",
+            "That mod is already installed in this instance.",
+        ));
+    }
     let (loader, loader_version) = instance_mod_target(&instance)?;
-    let mut plan = state
+    let plan = state
         .modpacks
         .mod_install_plan(
             request.provider,
@@ -1602,20 +1615,6 @@ async fn instance_mod_install(
             "The mod service returned an empty install plan.",
         )
     })?;
-    let existing = state
-        .database
-        .list_instance_mods(instance_id)
-        .await
-        .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?
-        .into_iter()
-        .find(|installed| {
-            installed.provider == request.provider && installed.project_id == request.project_id
-        });
-    if let Some(existing) = existing
-        && existing.file_path != download.destination
-    {
-        plan.delete.push(existing.file_path);
-    }
     let pending_mod = NewInstanceMod {
         provider: request.provider,
         project_id: request.project_id,
@@ -1632,6 +1631,77 @@ async fn instance_mod_install(
         Some(pending_mod),
     )
     .await
+}
+
+async fn instance_mod_is_installed(
+    state: &DesktopState,
+    instance: &InstanceRecord,
+    provider: slate_modpack_api_contracts::Provider,
+    project_id: &str,
+) -> Result<bool, AppError> {
+    let paths = state.paths.clone();
+    let instance_id = instance.id;
+    let files = tokio::task::spawn_blocking(move || scan_instance_mods(&paths, instance_id))
+        .await
+        .map_err(|_| content_file_error())?
+        .map_err(|_| content_file_error())?;
+    let installed_paths = files
+        .into_iter()
+        .map(|file| normalized_content_path(&file.file_path))
+        .collect::<HashSet<_>>();
+    let stored_match = state
+        .database
+        .list_instance_mods(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?
+        .into_iter()
+        .any(|installed| {
+            installed_mod_reference_matches(
+                &installed_paths,
+                provider,
+                project_id,
+                installed.provider,
+                &installed.project_id,
+                &installed.file_path,
+            )
+        });
+    if stored_match {
+        return Ok(true);
+    }
+    let Some(source) = &instance.modpack_source else {
+        return Ok(false);
+    };
+    let version = state
+        .modpacks
+        .version(source.provider, &source.project_id, &source.version_id)
+        .await
+        .map_err(modpack_api_error)?;
+    Ok(version.files.into_iter().any(|file| {
+        file.kind == PackFileType::Mod
+            && file.source.as_ref().is_some_and(|reference| {
+                installed_mod_reference_matches(
+                    &installed_paths,
+                    provider,
+                    project_id,
+                    reference.provider,
+                    &reference.project_id,
+                    &file.path,
+                )
+            })
+    }))
+}
+
+fn installed_mod_reference_matches(
+    installed_paths: &HashSet<String>,
+    requested_provider: slate_modpack_api_contracts::Provider,
+    requested_project_id: &str,
+    candidate_provider: slate_modpack_api_contracts::Provider,
+    candidate_project_id: &str,
+    candidate_path: &str,
+) -> bool {
+    requested_provider == candidate_provider
+        && requested_project_id == candidate_project_id
+        && installed_paths.contains(&normalized_content_path(candidate_path))
 }
 
 fn instance_mod_target(instance: &InstanceRecord) -> Result<(LoaderKind, String), AppError> {
@@ -2917,5 +2987,50 @@ fn main() {
     if let Err(error) = application {
         eprintln!("slate failed to start: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::installed_mod_reference_matches;
+    use slate_modpack_api_contracts::Provider;
+    use std::collections::HashSet;
+
+    #[test]
+    fn installed_mod_identity_requires_provider_project_and_present_file() {
+        let installed_paths = HashSet::from(["mods/sodium.jar".to_owned()]);
+
+        assert!(installed_mod_reference_matches(
+            &installed_paths,
+            Provider::Modrinth,
+            "AANobbMI",
+            Provider::Modrinth,
+            "AANobbMI",
+            "mods/sodium.jar.disabled",
+        ));
+        assert!(!installed_mod_reference_matches(
+            &installed_paths,
+            Provider::Modrinth,
+            "AANobbMI",
+            Provider::CurseForge,
+            "AANobbMI",
+            "mods/sodium.jar",
+        ));
+        assert!(!installed_mod_reference_matches(
+            &installed_paths,
+            Provider::Modrinth,
+            "AANobbMI",
+            Provider::Modrinth,
+            "different-project",
+            "mods/sodium.jar",
+        ));
+        assert!(!installed_mod_reference_matches(
+            &installed_paths,
+            Provider::Modrinth,
+            "AANobbMI",
+            Provider::Modrinth,
+            "AANobbMI",
+            "mods/missing.jar",
+        ));
     }
 }

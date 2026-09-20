@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUpDown,
   Box,
   Check,
   ChevronLeft,
@@ -71,6 +72,14 @@ import type {
 } from "../../types/launcher";
 
 type InstanceSection = "overview" | "content" | "settings";
+
+type InstalledModSortKey =
+  "name" | "source" | "version" | "status" | "size" | "installed";
+
+type InstalledModSort = {
+  key: InstalledModSortKey;
+  direction: "ascending" | "descending";
+};
 
 export function InstanceOverviewPage() {
   return <InstancePage section="overview" />;
@@ -682,6 +691,18 @@ function Content({ instance }: { instance: LauncherInstance }) {
   const queryClient = useQueryClient();
   const [browserOpen, setBrowserOpen] = useState(false);
   const [installedFilter, setInstalledFilter] = useState("");
+  const [installedStatus, setInstalledStatus] = useState<
+    "all" | "enabled" | "disabled"
+  >("all");
+  const [installedOrigin, setInstalledOrigin] = useState<
+    "all" | InstanceMod["origin"]
+  >("all");
+  const [installedSort, setInstalledSort] = useState<InstalledModSort>({
+    key: "name",
+    direction: "ascending",
+  });
+  const [installedPage, setInstalledPage] = useState(1);
+  const [installedPageSize, setInstalledPageSize] = useState(25);
   const [draftQuery, setDraftQuery] = useState("");
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState<"all" | "curseforge" | "modrinth">(
@@ -890,13 +911,23 @@ function Content({ instance }: { instance: LauncherInstance }) {
       : item;
   });
   const normalizedInstalledFilter = installedFilter.trim().toLocaleLowerCase();
-  const visibleInstalled = normalizedInstalledFilter
-    ? installed.filter((item) =>
-        `${item.displayName} ${item.filePath} ${item.provider ?? ""}`
+  const visibleInstalled = installed
+    .filter(
+      (item) =>
+        !normalizedInstalledFilter ||
+        `${item.displayName} ${item.filePath} ${item.provider ?? ""} ${item.versionId ?? ""}`
           .toLocaleLowerCase()
           .includes(normalizedInstalledFilter),
-      )
-    : installed;
+    )
+    .filter(
+      (item) =>
+        installedStatus === "all" ||
+        (installedStatus === "enabled" ? item.enabled : !item.enabled),
+    )
+    .filter(
+      (item) => installedOrigin === "all" || item.origin === installedOrigin,
+    )
+    .sort((left, right) => compareInstalledMods(left, right, installedSort));
   const installedIds = new Set(
     installed.flatMap((item) =>
       item.provider && item.projectId
@@ -915,6 +946,24 @@ function Content({ instance }: { instance: LauncherInstance }) {
     installJob?.state === "running";
   const contentMutationPending =
     toggleMutation.isPending || removeMutation.isPending;
+  const installedIdentityPending =
+    installedQuery.isPending ||
+    (Boolean(installedQuery.data?.length) && resolutionQuery.isFetching);
+  const enabledModCount = installed.filter((item) => item.enabled).length;
+  const installedPageCount = Math.max(
+    1,
+    Math.ceil(visibleInstalled.length / installedPageSize),
+  );
+  const activeInstalledPage = Math.min(installedPage, installedPageCount);
+  const installedPageStart = (activeInstalledPage - 1) * installedPageSize;
+  const pagedInstalled = visibleInstalled.slice(
+    installedPageStart,
+    installedPageStart + installedPageSize,
+  );
+  const updateInstalledSort = (next: InstalledModSort) => {
+    setInstalledSort(next);
+    setInstalledPage(1);
+  };
 
   return (
     <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6">
@@ -1124,8 +1173,11 @@ function Content({ instance }: { instance: LauncherInstance }) {
                       key={`${item.provider}:${item.id}`}
                       item={item}
                       installed={installedAlready}
+                      checkingInstalled={installedIdentityPending}
                       disabled={installing}
-                      onInstall={() => installMutation.mutate(item)}
+                      onInstall={() => {
+                        if (!installedAlready) installMutation.mutate(item);
+                      }}
                     />
                   );
                 })}
@@ -1181,21 +1233,59 @@ function Content({ instance }: { instance: LauncherInstance }) {
           </div>
         ) : installed.length ? (
           <>
-            <div className="flex items-center justify-between gap-4 border-b border-app-separator/45 px-5 py-3">
-              <label className="relative block w-full max-w-sm">
-                <span className="sr-only">Filter installed mods</span>
-                <Search
-                  size={14}
-                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-app-muted"
-                  aria-hidden="true"
-                />
-                <input
-                  value={installedFilter}
-                  onChange={(event) => setInstalledFilter(event.target.value)}
-                  placeholder="Filter installed mods"
-                  className="h-8 w-full rounded-control border border-app-separator bg-app-bg pr-3 pl-9 text-[11px] text-app-text outline-none placeholder:text-app-muted focus:border-app-accent"
-                />
-              </label>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-app-separator/45 bg-app-bg/20 px-5 py-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <label className="relative block min-w-52 flex-1 max-w-sm">
+                  <span className="sr-only">Filter installed mods</span>
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-app-muted"
+                    aria-hidden="true"
+                  />
+                  <input
+                    value={installedFilter}
+                    onChange={(event) => {
+                      setInstalledFilter(event.target.value);
+                      setInstalledPage(1);
+                    }}
+                    placeholder="Filter by name, file, provider, or version"
+                    className="h-8 w-full rounded-control border border-app-separator bg-app-bg pr-3 pl-9 text-[11px] text-app-text outline-none placeholder:text-app-muted focus:border-app-accent"
+                  />
+                </label>
+                <div className="w-32">
+                  <ContentSelect
+                    label="Mod status"
+                    value={installedStatus}
+                    options={[
+                      ["all", "All statuses"],
+                      ["enabled", "Enabled"],
+                      ["disabled", "Disabled"],
+                    ]}
+                    onChange={(value) => {
+                      setInstalledStatus(value as typeof installedStatus);
+                      setInstalledPage(1);
+                    }}
+                    compact
+                  />
+                </div>
+                <div className="w-32">
+                  <ContentSelect
+                    label="Mod origin"
+                    value={installedOrigin}
+                    options={[
+                      ["all", "All origins"],
+                      ["modpack", "Modpack"],
+                      ["added", "Added"],
+                      ["local", "Local file"],
+                    ]}
+                    onChange={(value) => {
+                      setInstalledOrigin(value as typeof installedOrigin);
+                      setInstalledPage(1);
+                    }}
+                    compact
+                  />
+                </div>
+              </div>
               <span className="shrink-0 font-mono text-[10px] text-app-muted">
                 {resolutionQuery.isFetching ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -1206,53 +1296,182 @@ function Content({ instance }: { instance: LauncherInstance }) {
                     />
                     Matching providers
                   </span>
-                ) : visibleInstalled.length === installed.length ? (
-                  `${installed.length} detected`
                 ) : (
-                  `${visibleInstalled.length} of ${installed.length}`
+                  `${visibleInstalled.length} shown · ${enabledModCount} enabled · ${installed.length} total`
                 )}
               </span>
             </div>
             {visibleInstalled.length ? (
-              <div className="divide-y divide-app-separator/45 px-5">
-                {visibleInstalled.map((item) => (
-                  <InstalledModRow
-                    key={item.filePath}
-                    item={item}
-                    disabled={installing || contentMutationPending}
-                    confirmingRemove={removeTargetPath === item.filePath}
-                    pendingAction={
-                      toggleMutation.isPending &&
-                      toggleMutation.variables?.item.filePath === item.filePath
-                        ? "toggle"
-                        : removeMutation.isPending &&
-                            removeMutation.variables?.filePath === item.filePath
-                          ? "remove"
-                          : undefined
-                    }
-                    onToggle={() =>
-                      toggleMutation.mutate({
-                        item,
-                        enabled: !item.enabled,
-                      })
-                    }
-                    onRequestRemove={() => setRemoveTargetPath(item.filePath)}
-                    onCancelRemove={() => setRemoveTargetPath(undefined)}
-                    onConfirmRemove={() => removeMutation.mutate(item)}
-                  />
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
+                  <caption className="sr-only">
+                    Installed mods for {instance.name}
+                  </caption>
+                  <colgroup>
+                    <col className="w-[29%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[12%]" />
+                  </colgroup>
+                  <thead className="bg-app-bg/35">
+                    <tr className="border-b border-app-separator/55">
+                      <ModTableSortHeader
+                        label="Mod"
+                        sortKey="name"
+                        sort={installedSort}
+                        onSort={updateInstalledSort}
+                      />
+                      <ModTableSortHeader
+                        label="Source"
+                        sortKey="source"
+                        sort={installedSort}
+                        onSort={updateInstalledSort}
+                      />
+                      <ModTableSortHeader
+                        label="Version"
+                        sortKey="version"
+                        sort={installedSort}
+                        onSort={updateInstalledSort}
+                      />
+                      <ModTableSortHeader
+                        label="Status"
+                        sortKey="status"
+                        sort={installedSort}
+                        onSort={updateInstalledSort}
+                      />
+                      <ModTableSortHeader
+                        label="Size"
+                        sortKey="size"
+                        sort={installedSort}
+                        onSort={updateInstalledSort}
+                        align="right"
+                      />
+                      <ModTableSortHeader
+                        label="Installed"
+                        sortKey="installed"
+                        sort={installedSort}
+                        onSort={updateInstalledSort}
+                      />
+                      <th
+                        scope="col"
+                        className="px-4 py-2.5 text-right text-[9px] font-bold tracking-[.08em] text-app-muted uppercase"
+                      >
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedInstalled.map((item) => (
+                      <InstalledModRow
+                        key={item.filePath}
+                        item={item}
+                        disabled={installing || contentMutationPending}
+                        confirmingRemove={removeTargetPath === item.filePath}
+                        pendingAction={
+                          toggleMutation.isPending &&
+                          toggleMutation.variables?.item.filePath ===
+                            item.filePath
+                            ? "toggle"
+                            : removeMutation.isPending &&
+                                removeMutation.variables?.filePath ===
+                                  item.filePath
+                              ? "remove"
+                              : undefined
+                        }
+                        onToggle={() =>
+                          toggleMutation.mutate({
+                            item,
+                            enabled: !item.enabled,
+                          })
+                        }
+                        onRequestRemove={() =>
+                          setRemoveTargetPath(item.filePath)
+                        }
+                        onCancelRemove={() => setRemoveTargetPath(undefined)}
+                        onConfirmRemove={() => removeMutation.mutate(item)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex min-w-[900px] items-center justify-between border-t border-app-separator/45 bg-app-bg/20 px-4 py-2.5">
+                  <span className="font-mono text-[9px] text-app-muted">
+                    Rows {installedPageStart + 1}–
+                    {Math.min(
+                      installedPageStart + installedPageSize,
+                      visibleInstalled.length,
+                    )}{" "}
+                    of {visibleInstalled.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-app-muted">Rows</span>
+                    <div className="w-20">
+                      <ContentSelect
+                        label="Rows per page"
+                        value={String(installedPageSize)}
+                        options={[
+                          ["25", "25"],
+                          ["50", "50"],
+                          ["100", "100"],
+                        ]}
+                        onChange={(value) => {
+                          setInstalledPageSize(Number(value));
+                          setInstalledPage(1);
+                        }}
+                        compact
+                      />
+                    </div>
+                    <span className="min-w-20 text-center font-mono text-[9px] text-app-muted">
+                      Page {activeInstalledPage} of {installedPageCount}
+                    </span>
+                    <button
+                      type="button"
+                      className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary disabled:opacity-35"
+                      disabled={activeInstalledPage === 1}
+                      onClick={() =>
+                        setInstalledPage((current) => Math.max(1, current - 1))
+                      }
+                      aria-label="Previous installed mod page"
+                    >
+                      <ChevronLeft size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary disabled:opacity-35"
+                      disabled={activeInstalledPage === installedPageCount}
+                      onClick={() =>
+                        setInstalledPage((current) =>
+                          Math.min(installedPageCount, current + 1),
+                        )
+                      }
+                      aria-label="Next installed mod page"
+                    >
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="px-5 py-14 text-center">
                 <p className="m-0 text-sm font-bold text-app-text">
                   No installed mods match
                 </p>
+                <p className="mt-1 mb-0 text-[11px] text-app-secondary">
+                  Clear the search or filters to show the complete table.
+                </p>
                 <button
                   type="button"
-                  className="mt-2 border-0 bg-transparent text-xs font-bold text-app-accent"
-                  onClick={() => setInstalledFilter("")}
+                  className="mt-3 h-8 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary hover:text-app-text"
+                  onClick={() => {
+                    setInstalledFilter("");
+                    setInstalledStatus("all");
+                    setInstalledOrigin("all");
+                    setInstalledPage(1);
+                  }}
                 >
-                  Clear filter
+                  Clear filters
                 </button>
               </div>
             )}
@@ -1271,11 +1490,13 @@ function Content({ instance }: { instance: LauncherInstance }) {
 function ModSearchResult({
   item,
   installed,
+  checkingInstalled,
   disabled,
   onInstall,
 }: {
   item: ModpackSummary;
   installed: boolean;
+  checkingInstalled: boolean;
   disabled: boolean;
   onInstall: () => void;
 }) {
@@ -1300,11 +1521,39 @@ function ModSearchResult({
       </div>
       <button
         type="button"
-        disabled={disabled || item.provider === "ftb"}
+        disabled={
+          disabled || installed || checkingInstalled || item.provider === "ftb"
+        }
         onClick={onInstall}
-        className="h-8 rounded-control border border-app-accent/55 bg-app-accent/10 px-3 text-[11px] font-bold text-app-accent hover:bg-app-accent/15 disabled:cursor-not-allowed disabled:opacity-45"
+        title={
+          installed
+            ? "Already installed in this instance"
+            : checkingInstalled
+              ? "Checking installed mods"
+              : undefined
+        }
+        className={`inline-flex h-8 min-w-20 items-center justify-center gap-1.5 rounded-control border px-3 text-[11px] font-bold disabled:cursor-not-allowed ${
+          installed
+            ? "border-app-accent/30 bg-app-accent/10 text-app-accent"
+            : "border-app-accent/55 bg-app-accent/10 text-app-accent hover:bg-app-accent/15 disabled:opacity-45"
+        }`}
       >
-        {installed ? "Update" : "Add"}
+        {installed ? (
+          <>
+            <Check size={13} aria-hidden="true" /> Installed
+          </>
+        ) : checkingInstalled ? (
+          <>
+            <LoaderCircle
+              size={13}
+              className="animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+            Checking
+          </>
+        ) : (
+          "Add"
+        )}
       </button>
     </article>
   );
@@ -1329,125 +1578,222 @@ function InstalledModRow({
   onCancelRemove: () => void;
   onConfirmRemove: () => void;
 }) {
-  const originLabel = item.provider
-    ? `${modProviderName(item.provider)} · ${item.origin === "modpack" ? "Modpack" : "Added"}`
-    : item.origin === "modpack"
-      ? "Modpack"
-      : "Local file";
   return (
-    <article className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 py-3.5">
-      <ContentArtwork
-        src={item.iconUrl}
-        name={item.displayName}
-        stableKey={
-          item.provider && item.projectId
-            ? `${item.provider}:${item.projectId}`
-            : item.filePath
+    <>
+      <tr className="border-b border-app-separator/40 transition-colors duration-150 hover:bg-app-raised/35">
+        <td className="px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <ContentArtwork
+              src={item.iconUrl}
+              name={item.displayName}
+              stableKey={
+                item.provider && item.projectId
+                  ? `${item.provider}:${item.projectId}`
+                  : item.filePath
+              }
+              className="size-9 shrink-0 rounded-control border border-app-separator"
+            />
+            <div className="min-w-0">
+              <p
+                className="m-0 truncate text-[12px] font-bold text-app-text"
+                title={item.displayName}
+              >
+                {item.displayName}
+              </p>
+              <p
+                className="mt-1 mb-0 truncate font-mono text-[9px] text-app-muted"
+                title={item.filePath}
+              >
+                {item.filePath}
+              </p>
+            </div>
+          </div>
+        </td>
+        <td className="px-4 py-2.5">
+          <p className="m-0 truncate text-[11px] font-semibold text-app-secondary">
+            {item.provider ? modProviderName(item.provider) : "Local"}
+          </p>
+          <p className="mt-1 mb-0 text-[9px] text-app-muted">
+            {modOriginLabel(item.origin)}
+          </p>
+        </td>
+        <td className="px-4 py-2.5">
+          <p
+            className="m-0 truncate font-mono text-[9px] text-app-secondary"
+            title={item.versionId ?? "Version unavailable"}
+          >
+            {item.versionId ?? "Unknown"}
+          </p>
+        </td>
+        <td className="px-4 py-2.5">
+          <StatusPill tone={item.enabled ? "positive" : "neutral"}>
+            {item.enabled ? "Enabled" : "Disabled"}
+          </StatusPill>
+        </td>
+        <td className="px-4 py-2.5 text-right font-mono text-[9px] text-app-secondary">
+          {formatContentFileSize(item.fileSize)}
+        </td>
+        <td className="px-4 py-2.5 text-[10px] text-app-secondary">
+          {item.installedAt ? formatDate(item.installedAt) : "Unknown"}
+        </td>
+        <td className="px-4 py-2.5">
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary hover:border-app-accent/45 hover:text-app-text disabled:opacity-45"
+              disabled={disabled}
+              onClick={onToggle}
+              aria-label={`${item.enabled ? "Disable" : "Enable"} ${item.displayName}`}
+              title={item.enabled ? "Disable mod" : "Enable mod"}
+            >
+              {pendingAction === "toggle" ? (
+                <LoaderCircle
+                  size={14}
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Power size={14} aria-hidden="true" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-muted hover:border-app-danger/45 hover:text-app-danger disabled:opacity-45"
+              disabled={disabled}
+              onClick={onRequestRemove}
+              aria-label={`Remove ${item.displayName}`}
+              title="Remove mod"
+            >
+              <Trash2 size={14} aria-hidden="true" />
+            </button>
+          </div>
+        </td>
+      </tr>
+      {confirmingRemove ? (
+        <tr className="border-b border-app-danger/25 bg-app-danger/5">
+          <td colSpan={7} className="px-4 py-3">
+            <div className="flex items-center justify-between gap-5">
+              <p className="m-0 text-[10px]/[15px] text-app-warning">
+                Remove <strong>{item.displayName}</strong>? This may break
+                dependent mods.{" "}
+                {item.origin === "modpack"
+                  ? "Reinstalling the modpack will restore it."
+                  : "The file will move to slate’s trash."}
+              </p>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  className="h-8 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary"
+                  disabled={disabled}
+                  onClick={onCancelRemove}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-danger/45 bg-app-danger/10 px-3 text-[11px] font-bold text-app-danger disabled:opacity-45"
+                  disabled={disabled}
+                  onClick={onConfirmRemove}
+                >
+                  {pendingAction === "remove" ? (
+                    <LoaderCircle
+                      size={13}
+                      className="animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Trash2 size={13} aria-hidden="true" />
+                  )}
+                  Remove
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function ModTableSortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: InstalledModSortKey;
+  sort: InstalledModSort;
+  onSort: (sort: InstalledModSort) => void;
+  align?: "left" | "right";
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? sort.direction : "none"}
+      className="px-4 py-0"
+    >
+      <button
+        type="button"
+        className={`flex h-9 w-full items-center gap-1.5 text-[9px] font-bold tracking-[.08em] uppercase ${
+          align === "right" ? "justify-end" : "justify-start"
+        } ${active ? "text-app-text" : "text-app-muted hover:text-app-secondary"}`}
+        onClick={() =>
+          onSort({
+            key: sortKey,
+            direction:
+              active && sort.direction === "ascending"
+                ? "descending"
+                : "ascending",
+          })
         }
-        className="size-9 rounded-control border border-app-separator"
-      />
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span
-            className={`size-1.5 rounded-full ${item.enabled ? "bg-app-accent" : "bg-app-muted"}`}
+      >
+        {label}
+        {active ? (
+          <ChevronLeft
+            size={11}
+            className={`text-app-accent ${sort.direction === "ascending" ? "rotate-90" : "-rotate-90"}`}
             aria-hidden="true"
           />
-          <h3
-            className="m-0 truncate text-[13px] font-bold text-app-text"
-            title={item.displayName}
-          >
-            {item.displayName}
-          </h3>
-          <span className="rounded-full border border-app-separator px-2 py-0.5 font-mono text-[9px] text-app-muted">
-            {originLabel}
-          </span>
-          {!item.enabled ? (
-            <span className="font-mono text-[9px] text-app-warning">
-              Disabled
-            </span>
-          ) : null}
-        </div>
-        <p className="mt-1.5 mb-0 truncate font-mono text-[9px] text-app-muted">
-          {item.filePath}
-        </p>
-      </div>
-      {confirmingRemove ? (
-        <div className="flex max-w-[360px] items-center justify-end gap-2">
-          <p className="m-0 text-right text-[10px]/[14px] text-app-warning">
-            Removing this mod may break dependent mods.{" "}
-            {item.origin === "modpack"
-              ? "Reinstalling the pack will restore it."
-              : "It will move to slate’s trash."}
-          </p>
-          <button
-            type="button"
-            className="h-8 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary"
-            disabled={disabled}
-            onClick={onCancelRemove}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-danger/45 bg-app-danger/10 px-3 text-[11px] font-bold text-app-danger disabled:opacity-45"
-            disabled={disabled}
-            onClick={onConfirmRemove}
-          >
-            {pendingAction === "remove" ? (
-              <LoaderCircle
-                size={13}
-                className="animate-spin motion-reduce:animate-none"
-                aria-hidden="true"
-              />
-            ) : (
-              <Trash2 size={13} aria-hidden="true" />
-            )}
-            Remove
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center justify-end gap-3">
-          <div className="text-right">
-            <p className="m-0 font-mono text-[9px] text-app-secondary">
-              {item.versionId ?? formatContentFileSize(item.fileSize)}
-            </p>
-            {item.installedAt ? (
-              <p className="mt-1 mb-0 text-[10px] text-app-muted">
-                Installed {formatDate(item.installedAt)}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary hover:border-app-accent/45 hover:text-app-text disabled:opacity-45"
-            disabled={disabled}
-            onClick={onToggle}
-          >
-            {pendingAction === "toggle" ? (
-              <LoaderCircle
-                size={13}
-                className="animate-spin motion-reduce:animate-none"
-                aria-hidden="true"
-              />
-            ) : (
-              <Power size={13} aria-hidden="true" />
-            )}
-            {item.enabled ? "Disable" : "Enable"}
-          </button>
-          <button
-            type="button"
-            className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-muted hover:border-app-danger/45 hover:text-app-danger disabled:opacity-45"
-            disabled={disabled}
-            onClick={onRequestRemove}
-            aria-label={`Remove ${item.displayName}`}
-            title="Remove mod"
-          >
-            <Trash2 size={14} aria-hidden="true" />
-          </button>
-        </div>
-      )}
-    </article>
+        ) : (
+          <ArrowUpDown size={11} aria-hidden="true" />
+        )}
+      </button>
+    </th>
   );
+}
+
+function compareInstalledMods(
+  left: InstanceMod,
+  right: InstanceMod,
+  sort: InstalledModSort,
+) {
+  const sourceValue = (item: InstanceMod) =>
+    `${item.provider ?? "local"}:${item.origin}`;
+  const installedValue = (item: InstanceMod) =>
+    item.installedAt ? Date.parse(item.installedAt) || 0 : 0;
+  let result =
+    sort.key === "name"
+      ? left.displayName.localeCompare(right.displayName)
+      : sort.key === "source"
+        ? sourceValue(left).localeCompare(sourceValue(right))
+        : sort.key === "version"
+          ? (left.versionId ?? "").localeCompare(right.versionId ?? "")
+          : sort.key === "status"
+            ? Number(right.enabled) - Number(left.enabled)
+            : sort.key === "size"
+              ? left.fileSize - right.fileSize
+              : installedValue(left) - installedValue(right);
+  if (result === 0) result = left.filePath.localeCompare(right.filePath);
+  return sort.direction === "ascending" ? result : -result;
+}
+
+function modOriginLabel(origin: InstanceMod["origin"]) {
+  if (origin === "modpack") return "From modpack";
+  if (origin === "added") return "Added in slate";
+  return "Unmanaged file";
 }
 
 function formatContentFileSize(value: number) {
@@ -1468,11 +1814,13 @@ function ContentSelect({
   value,
   options,
   onChange,
+  compact = false,
 }: {
   label: string;
   value: string;
   options: ReadonlyArray<readonly [string, string]>;
   onChange: (value: string) => void;
+  compact?: boolean;
 }) {
   return (
     <label className="relative block">
@@ -1481,7 +1829,7 @@ function ContentSelect({
         aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full appearance-none rounded-control border border-app-separator bg-app-bg px-3 pr-8 text-xs text-app-text outline-none focus:border-app-accent"
+        className={`${compact ? "h-8 text-[11px]" : "h-9 text-xs"} w-full appearance-none rounded-control border border-app-separator bg-app-bg px-3 pr-8 text-app-text outline-none focus:border-app-accent`}
       >
         {options.map(([optionValue, optionLabel]) => (
           <option key={optionValue} value={optionValue}>
@@ -1530,12 +1878,32 @@ function ModResultSkeletons() {
 
 function InstalledModSkeletons() {
   return (
-    <div className="space-y-3 p-5" aria-label="Loading installed mods">
-      {Array.from({ length: 3 }, (_, index) => (
-        <span
+    <div className="overflow-hidden" aria-label="Loading installed mods">
+      <div className="grid h-9 grid-cols-[2fr_1fr_1fr_1fr] items-center gap-4 border-b border-app-separator/55 bg-app-bg/35 px-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <span
+            key={index}
+            className="h-2 w-16 animate-pulse rounded bg-app-raised"
+          />
+        ))}
+      </div>
+      {Array.from({ length: 5 }, (_, index) => (
+        <div
           key={index}
-          className="block h-11 animate-pulse rounded-control bg-app-raised"
-        />
+          className="grid h-[61px] grid-cols-[36px_2fr_1fr_1fr_1fr] items-center gap-3 border-b border-app-separator/40 px-4"
+        >
+          <span className="size-9 animate-pulse rounded-control bg-app-raised" />
+          <span className="grid gap-2">
+            <span className="h-2.5 w-36 animate-pulse rounded bg-app-raised" />
+            <span className="h-2 w-52 animate-pulse rounded bg-app-raised" />
+          </span>
+          {Array.from({ length: 3 }, (_, cell) => (
+            <span
+              key={cell}
+              className="h-2.5 w-14 animate-pulse rounded bg-app-raised"
+            />
+          ))}
+        </div>
       ))}
     </div>
   );
