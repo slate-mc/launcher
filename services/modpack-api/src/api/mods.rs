@@ -190,9 +190,16 @@ async fn install_plan(
             ApiError::invalid_request(&context, "The loader version is required.")
                 .with_field("loader_version", "Use the exact instance loader version.")
         })?;
+    let version_id = request.version_id.as_deref().map(str::trim);
+    if version_id.is_some_and(|value| !valid_identifier(value)) {
+        return Err(
+            ApiError::invalid_request(&context, "The requested mod version is invalid.")
+                .with_field("version_id", "Use a version identifier returned by slate."),
+        );
+    }
     let adapter = provider_adapter(&state, &context, provider)?;
     let resolved = adapter
-        .resolve_mods(&project_id, minecraft_version, request.loader)
+        .resolve_mods(&project_id, minecraft_version, request.loader, version_id)
         .await
         .map_err(|error| provider_error(&context, error))?;
     let root = resolved.first().ok_or_else(|| {

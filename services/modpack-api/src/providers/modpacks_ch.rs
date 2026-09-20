@@ -161,8 +161,12 @@ impl ModpacksChProvider {
         project_id: &str,
         minecraft_version: &str,
         loader: LoaderKind,
+        version_id: Option<&str>,
     ) -> Result<Vec<ResolvedMod>, ProviderError> {
         validate_identifier(project_id)?;
+        if version_id.is_some_and(|value| validate_identifier(value).is_err()) {
+            return Err(ProviderError::InvalidIdentifier);
+        }
         if minecraft_version.is_empty() || minecraft_version.len() > 32 {
             return Err(ProviderError::InvalidIdentifier);
         }
@@ -171,11 +175,11 @@ impl ModpacksChProvider {
         }
         match self.provider {
             Provider::CurseForge => {
-                self.resolve_curseforge_mod_graph(project_id, minecraft_version, loader)
+                self.resolve_curseforge_mod_graph(project_id, minecraft_version, loader, version_id)
                     .await
             }
             Provider::Modrinth => {
-                self.resolve_modrinth_mod_graph(project_id, minecraft_version, loader)
+                self.resolve_modrinth_mod_graph(project_id, minecraft_version, loader, version_id)
                     .await
             }
             Provider::Ftb => Err(ProviderError::UnsupportedContent),
@@ -187,8 +191,10 @@ impl ModpacksChProvider {
         project_id: &str,
         minecraft_version: &str,
         loader: LoaderKind,
+        version_id: Option<&str>,
     ) -> Result<Vec<ResolvedMod>, ProviderError> {
-        let mut queue = VecDeque::from([(project_id.to_owned(), None, true)]);
+        let mut queue =
+            VecDeque::from([(project_id.to_owned(), version_id.map(str::to_owned), true)]);
         let mut resolved_versions = BTreeMap::new();
         let mut resolved = Vec::new();
         while let Some((dependency_project_id, version_id, root)) = queue.pop_front() {
@@ -336,8 +342,13 @@ impl ModpacksChProvider {
         project_id: &str,
         minecraft_version: &str,
         loader: LoaderKind,
+        version_id: Option<&str>,
     ) -> Result<Vec<ResolvedMod>, ProviderError> {
-        let mut queue = VecDeque::from([(Some(project_id.to_owned()), None, true)]);
+        let mut queue = VecDeque::from([(
+            Some(project_id.to_owned()),
+            version_id.map(str::to_owned),
+            true,
+        )]);
         let mut resolved_versions = BTreeMap::new();
         let mut resolved = Vec::new();
         while let Some((requested_project_id, version_id, root)) = queue.pop_front() {

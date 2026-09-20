@@ -50,6 +50,7 @@ pub trait ModpackProvider: Send + Sync {
         project_id: &str,
         minecraft_version: &str,
         loader: slate_modpack_api_contracts::LoaderKind,
+        version_id: Option<&str>,
     ) -> Result<Vec<ResolvedMod>, ProviderError>;
 }
 

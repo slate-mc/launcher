@@ -65,9 +65,10 @@ impl ModpackProvider for CurseForgeProvider {
         project_id: &str,
         minecraft_version: &str,
         loader: slate_modpack_api_contracts::LoaderKind,
+        version_id: Option<&str>,
     ) -> Result<Vec<ResolvedMod>, ProviderError> {
         self.0
-            .resolve_mods(project_id, minecraft_version, loader)
+            .resolve_mods(project_id, minecraft_version, loader, version_id)
             .await
     }
 }

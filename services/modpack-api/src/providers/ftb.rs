@@ -65,6 +65,7 @@ impl ModpackProvider for FtbProvider {
         _project_id: &str,
         _minecraft_version: &str,
         _loader: slate_modpack_api_contracts::LoaderKind,
+        _version_id: Option<&str>,
     ) -> Result<Vec<ResolvedMod>, ProviderError> {
         Err(ProviderError::UnsupportedContent)
     }

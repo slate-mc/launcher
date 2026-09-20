@@ -989,6 +989,7 @@ async fn instance_mod_install_inner(
                     minecraft_version: instance.minecraft_version.clone(),
                     loader,
                     loader_version: Some(loader_version.clone()),
+                    version_id: None,
                 },
             )
             .await

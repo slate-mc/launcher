@@ -30,6 +30,8 @@ pub struct ModInstallPlanRequest {
     pub minecraft_version: String,
     pub loader: LoaderKind,
     pub loader_version: Option<String>,
+    #[serde(default)]
+    pub version_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -79,4 +81,29 @@ pub struct InstallPlan {
     pub extract: Vec<ExtractAction>,
     pub delete: Vec<String>,
     pub total_download_size: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ModInstallPlanRequest;
+
+    #[test]
+    fn mod_install_requests_accept_latest_or_an_exact_version()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let latest: ModInstallPlanRequest = serde_json::from_value(serde_json::json!({
+            "minecraft_version": "1.21.1",
+            "loader": "fabric",
+            "loader_version": "0.16.10"
+        }))?;
+        assert_eq!(latest.version_id, None);
+
+        let exact: ModInstallPlanRequest = serde_json::from_value(serde_json::json!({
+            "minecraft_version": "1.21.1",
+            "loader": "fabric",
+            "loader_version": "0.16.10",
+            "version_id": "abc123"
+        }))?;
+        assert_eq!(exact.version_id.as_deref(), Some("abc123"));
+        Ok(())
+    }
 }
