@@ -40,7 +40,9 @@ Last updated: September 20, 2026
   JAR import, local resource/shader/data-pack ZIP import, and compatible Modrinth browsing and batch
   installation. Provider content uses exact Minecraft/runtime matching, explicit world selection for
    data packs, verified downloads, duplicate protection, version pinning, exact-version changes,
-   bounded downgrade history, snapshots, and rollback.
+   bounded downgrade history, transitive required-dependency installation, snapshots, and rollback.
+   Required loader mods are installed into the Mods inventory; installed exact versions are reused
+   and pinned or conflicting dependencies fail safely.
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
   formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
   authenticated quick join.
@@ -67,7 +69,7 @@ Verified on Windows on September 20, 2026:
 - 15 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 147 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 149 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -75,7 +77,7 @@ Verified on Windows on September 20, 2026:
 
 1. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
    validated local ZIP import plus compatible Modrinth browsing and batch installation. Provider
-   dependency handling and ordering remain incomplete.
+   resource-pack ordering remains incomplete.
 2. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
@@ -126,6 +128,5 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add dependency handling and ordering for provider-managed resource packs, shaders, and data packs.
-Then add native clean-install smoke coverage so release claims are evidence-based rather than
-inferred from unit tests.
+Add resource-pack ordering, then add native clean-install smoke coverage so release claims are
+evidence-based rather than inferred from unit tests.

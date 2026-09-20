@@ -328,7 +328,8 @@ async fn insert_content_audit(
 #[cfg(test)]
 mod tests {
     use crate::{
-        CompletedInstall, Database, InstalledRuntime, NewInstance, NewInstanceProviderContent,
+        CompletedInstall, Database, InstalledRuntime, NewInstance, NewInstanceMod,
+        NewInstanceProviderContent,
     };
     use slate_domain::{InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId};
     use slate_modpack_api_contracts::{ContentKind, Hashes, Provider};
@@ -378,8 +379,20 @@ mod tests {
             .begin_instance_install(instance.id, pinned.revision, RequestId::new())
             .await?;
         database
-            .complete_instance_provider_content_install(
+            .complete_instance_mixed_content_install(
                 completed(second.job.id, second.revision_id),
+                vec![NewInstanceMod {
+                    provider: Provider::Modrinth,
+                    project_id: "dependency".to_owned(),
+                    version_id: "dependency-version".to_owned(),
+                    display_name: "Dependency".to_owned(),
+                    file_path: "mods/dependency.jar".to_owned(),
+                    hashes: hashes(),
+                    enabled: true,
+                    pinned: false,
+                }],
+                Vec::new(),
+                Vec::new(),
                 vec![content("version-2", "resourcepacks/content-v2.zip", true)],
                 vec!["resourcepacks/content-v1.zip".to_owned()],
             )
@@ -391,6 +404,7 @@ mod tests {
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].version_id, "version-2");
         assert!(installed[0].pinned);
+        assert_eq!(database.list_instance_mods(instance.id).await?.len(), 1);
         let history = database
             .list_instance_provider_content_history(
                 instance.id,
@@ -413,12 +427,16 @@ mod tests {
             display_name: "Content".to_owned(),
             icon_url: None,
             file_path: file_path.to_owned(),
-            hashes: Hashes {
-                sha512: Some("hash".to_owned()),
-                sha256: None,
-                sha1: None,
-            },
+            hashes: hashes(),
             pinned,
+        }
+    }
+
+    fn hashes() -> Hashes {
+        Hashes {
+            sha512: Some("hash".to_owned()),
+            sha256: None,
+            sha1: None,
         }
     }
 

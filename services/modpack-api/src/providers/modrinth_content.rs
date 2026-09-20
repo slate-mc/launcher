@@ -4,8 +4,9 @@ use crate::domain::{SearchPage, SearchRequest, SearchSort};
 use crate::upstream::{UpstreamClient, UpstreamError};
 use serde::Deserialize;
 use slate_modpack_api_contracts::{
-    Author, ContentKind, Hashes, ModVersionSummary, ModpackSummary, Provider,
+    Author, ContentKind, Hashes, LoaderKind, ModVersionSummary, ModpackSummary, Provider,
 };
+use std::collections::{HashSet, VecDeque};
 use url::{Host, Url};
 
 #[derive(Clone, Debug)]
@@ -18,6 +19,22 @@ pub struct ResolvedContent {
     pub project_id: String,
     pub version_id: String,
     pub version_name: String,
+    pub artifacts: Vec<ResolvedContentArtifact>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResolvedContentArtifactKind {
+    Content(ContentKind),
+    Mod,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedContentArtifact {
+    pub kind: ResolvedContentArtifactKind,
+    pub project_id: String,
+    pub version_id: String,
+    pub display_name: String,
+    pub icon_url: Option<String>,
     pub file_name: String,
     pub url: String,
     pub size: u64,
@@ -108,47 +125,100 @@ impl ModrinthContentProvider {
         project_id: &str,
         minecraft_version: &str,
         version_id: Option<&str>,
+        loader: LoaderKind,
     ) -> Result<ResolvedContent, ProviderError> {
         validate_identifier(project_id)?;
         if version_id.is_some_and(|value| validate_identifier(value).is_err()) {
             return Err(ProviderError::InvalidIdentifier);
         }
-        self.project(kind, project_id).await?;
-        let versions = self
-            .version_list(kind, project_id, minecraft_version)
+        let project = self.project(kind, project_id).await?;
+        let root_kind = ResolvedContentArtifactKind::Content(kind);
+        let root_version = self
+            .select_version(project_id, minecraft_version, version_id, root_kind, loader)
             .await?;
-        let version = if let Some(requested) = version_id {
-            versions.into_iter().find(|version| version.id == requested)
-        } else {
-            versions.into_iter().next()
-        };
-        let version = version.ok_or(ProviderError::NotFound(MissingResource::Version))?;
-        let file = version
-            .files
-            .iter()
-            .find(|file| file.primary)
-            .or_else(|| version.files.first())
-            .ok_or(ProviderError::DownloadUnavailable)?;
-        if !safe_archive_name(&file.filename) || !trusted_modrinth_download(&file.url) {
-            return Err(ProviderError::DownloadUnavailable);
-        }
-        let hashes = Hashes {
-            sha512: file.hashes.sha512.clone(),
-            sha256: file.hashes.sha256.clone(),
-            sha1: file.hashes.sha1.clone(),
-        };
-        if !hashes.has_cryptographic_hash() || file.size == 0 {
-            return Err(ProviderError::DownloadUnavailable);
+        let root_version_id = root_version.id.clone();
+        let root_version_name = bounded_text(&root_version.name, 160);
+        let mut artifacts = vec![resolved_artifact(root_kind, &project, &root_version)?];
+        let mut dependencies = VecDeque::from(root_version.dependencies);
+        let mut visited = HashSet::from([project_id.to_owned()]);
+        while let Some(dependency) = dependencies.pop_front() {
+            if dependency.dependency_type != "required" {
+                continue;
+            }
+            if artifacts.len() >= 32 {
+                return Err(ProviderError::InvalidResponse);
+            }
+            let (dependency_project_id, exact_version) =
+                self.dependency_identity(&dependency).await?;
+            if !visited.insert(dependency_project_id.clone()) {
+                continue;
+            }
+            let dependency_project = self.project_details(&dependency_project_id).await?;
+            let dependency_kind = classify_project(&dependency_project, loader)
+                .ok_or(ProviderError::UnsupportedContent)?;
+            if matches!(dependency_kind, ResolvedContentArtifactKind::Content(value) if value != kind)
+            {
+                return Err(ProviderError::UnsupportedContent);
+            }
+            let dependency_version = self
+                .select_version(
+                    &dependency_project_id,
+                    minecraft_version,
+                    exact_version.as_deref(),
+                    dependency_kind,
+                    loader,
+                )
+                .await?;
+            dependencies.extend(dependency_version.dependencies.clone());
+            artifacts.push(resolved_artifact(
+                dependency_kind,
+                &dependency_project,
+                &dependency_version,
+            )?);
         }
         Ok(ResolvedContent {
-            project_id: version.project_id,
-            version_id: version.id,
-            version_name: bounded_text(&version.name, 160),
-            file_name: file.filename.clone(),
-            url: file.url.clone(),
-            size: file.size,
-            hashes,
+            project_id: project.id,
+            version_id: root_version_id,
+            version_name: root_version_name,
+            artifacts,
         })
+    }
+
+    async fn dependency_identity(
+        &self,
+        dependency: &DependencyWire,
+    ) -> Result<(String, Option<String>), ProviderError> {
+        if let Some(project_id) = dependency.project_id.as_deref() {
+            validate_identifier(project_id)?;
+            return Ok((project_id.to_owned(), dependency.version_id.clone()));
+        }
+        let version_id = dependency
+            .version_id
+            .as_deref()
+            .ok_or(ProviderError::DownloadUnavailable)?;
+        validate_identifier(version_id)?;
+        let version: VersionWire = self
+            .upstream
+            .get_modrinth_json(&["version", version_id], &[], CachePolicy::Version)
+            .await
+            .map_err(|error| map_upstream(error, MissingResource::Version))?;
+        Ok((version.project_id, Some(version.id)))
+    }
+
+    async fn select_version(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        version_id: Option<&str>,
+        kind: ResolvedContentArtifactKind,
+        loader: LoaderKind,
+    ) -> Result<VersionWire, ProviderError> {
+        let versions = self.raw_version_list(project_id, minecraft_version).await?;
+        versions
+            .into_iter()
+            .filter(|version| version_compatible(version, minecraft_version, kind, loader))
+            .find(|version| version_id.is_none_or(|requested| version.id == requested))
+            .ok_or(ProviderError::NotFound(MissingResource::Version))
     }
 
     async fn project(
@@ -157,15 +227,19 @@ impl ModrinthContentProvider {
         project_id: &str,
     ) -> Result<ProjectWire, ProviderError> {
         validate_identifier(project_id)?;
-        let project: ProjectWire = self
-            .upstream
-            .get_modrinth_json(&["project", project_id], &[], CachePolicy::Project)
-            .await
-            .map_err(|error| map_upstream(error, MissingResource::Project))?;
+        let project = self.project_details(project_id).await?;
         if !project_matches_details(kind, &project.project_type, &project.loaders) {
             return Err(ProviderError::UnsupportedContent);
         }
         Ok(project)
+    }
+
+    async fn project_details(&self, project_id: &str) -> Result<ProjectWire, ProviderError> {
+        validate_identifier(project_id)?;
+        self.upstream
+            .get_modrinth_json(&["project", project_id], &[], CachePolicy::Project)
+            .await
+            .map_err(|error| map_upstream(error, MissingResource::Project))
     }
 
     async fn version_list(
@@ -177,21 +251,9 @@ impl ModrinthContentProvider {
         if minecraft_version.is_empty() || minecraft_version.len() > 32 {
             return Err(ProviderError::InvalidIdentifier);
         }
-        let game_versions = serde_json::to_string(&[minecraft_version])
-            .map_err(|_| ProviderError::InvalidResponse)?;
-        let response: Vec<VersionWire> = self
-            .upstream
-            .get_modrinth_json(
-                &["project", project_id, "version"],
-                &[
-                    ("game_versions", game_versions.as_str()),
-                    ("include_changelog", "false"),
-                ],
-                CachePolicy::Versions,
-            )
-            .await
-            .map_err(|error| map_upstream(error, MissingResource::Version))?;
-        Ok(response
+        Ok(self
+            .raw_version_list(project_id, minecraft_version)
+            .await?
             .into_iter()
             .filter(|version| {
                 version.project_id == project_id
@@ -202,6 +264,30 @@ impl ModrinthContentProvider {
                     && version_matches(kind, &version.loaders)
             })
             .collect())
+    }
+
+    async fn raw_version_list(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+    ) -> Result<Vec<VersionWire>, ProviderError> {
+        validate_identifier(project_id)?;
+        if minecraft_version.is_empty() || minecraft_version.len() > 32 {
+            return Err(ProviderError::InvalidIdentifier);
+        }
+        let game_versions = serde_json::to_string(&[minecraft_version])
+            .map_err(|_| ProviderError::InvalidResponse)?;
+        self.upstream
+            .get_modrinth_json(
+                &["project", project_id, "version"],
+                &[
+                    ("game_versions", game_versions.as_str()),
+                    ("include_changelog", "false"),
+                ],
+                CachePolicy::Versions,
+            )
+            .await
+            .map_err(|error| map_upstream(error, MissingResource::Version))
     }
 }
 
@@ -223,6 +309,93 @@ fn map_search_hit(hit: SearchHitWire) -> ModpackSummary {
         loaders: Vec::new(),
         categories: hit.categories,
     }
+}
+
+fn resolved_artifact(
+    kind: ResolvedContentArtifactKind,
+    project: &ProjectWire,
+    version: &VersionWire,
+) -> Result<ResolvedContentArtifact, ProviderError> {
+    let file = version
+        .files
+        .iter()
+        .find(|file| file.primary)
+        .or_else(|| version.files.first())
+        .ok_or(ProviderError::DownloadUnavailable)?;
+    let safe_name = match kind {
+        ResolvedContentArtifactKind::Content(_) => safe_archive_name(&file.filename),
+        ResolvedContentArtifactKind::Mod => safe_mod_name(&file.filename),
+    };
+    if !safe_name || !trusted_modrinth_download(&file.url) {
+        return Err(ProviderError::DownloadUnavailable);
+    }
+    let hashes = Hashes {
+        sha512: file.hashes.sha512.clone(),
+        sha256: file.hashes.sha256.clone(),
+        sha1: file.hashes.sha1.clone(),
+    };
+    if !hashes.has_cryptographic_hash() || file.size == 0 {
+        return Err(ProviderError::DownloadUnavailable);
+    }
+    Ok(ResolvedContentArtifact {
+        kind,
+        project_id: version.project_id.clone(),
+        version_id: version.id.clone(),
+        display_name: bounded_text(&project.title, 160),
+        icon_url: project
+            .icon_url
+            .clone()
+            .filter(|value| trusted_modrinth_image(value)),
+        file_name: file.filename.clone(),
+        url: file.url.clone(),
+        size: file.size,
+        hashes,
+    })
+}
+
+fn classify_project(
+    project: &ProjectWire,
+    loader: LoaderKind,
+) -> Option<ResolvedContentArtifactKind> {
+    match project.project_type.as_str() {
+        "resourcepack" => Some(ResolvedContentArtifactKind::Content(
+            ContentKind::ResourcePack,
+        )),
+        "shader" => Some(ResolvedContentArtifactKind::Content(
+            ContentKind::ShaderPack,
+        )),
+        "datapack" => Some(ResolvedContentArtifactKind::Content(ContentKind::DataPack)),
+        "mod" if project.loaders.iter().any(|value| value == "datapack") => {
+            Some(ResolvedContentArtifactKind::Content(ContentKind::DataPack))
+        }
+        "mod" if loader != LoaderKind::Vanilla => Some(ResolvedContentArtifactKind::Mod),
+        _ => None,
+    }
+}
+
+fn version_compatible(
+    version: &VersionWire,
+    minecraft_version: &str,
+    kind: ResolvedContentArtifactKind,
+    loader: LoaderKind,
+) -> bool {
+    version
+        .game_versions
+        .iter()
+        .any(|value| value == minecraft_version)
+        && match kind {
+            ResolvedContentArtifactKind::Content(kind) => version_matches(kind, &version.loaders),
+            ResolvedContentArtifactKind::Mod => version.loaders.iter().any(|value| {
+                value
+                    == match loader {
+                        LoaderKind::Fabric => "fabric",
+                        LoaderKind::NeoForge => "neoforge",
+                        LoaderKind::Forge => "forge",
+                        LoaderKind::Quilt => "quilt",
+                        LoaderKind::Vanilla => return false,
+                    }
+            }),
+        }
 }
 
 const fn project_type(kind: ContentKind) -> &'static str {
@@ -275,6 +448,15 @@ fn validate_identifier(value: &str) -> Result<(), ProviderError> {
 fn safe_archive_name(value: &str) -> bool {
     value.len() <= 240
         && value.to_ascii_lowercase().ends_with(".zip")
+        && !value.is_empty()
+        && !matches!(value, "." | "..")
+        && !value.contains(['/', '\\', ':'])
+        && !value.chars().any(char::is_control)
+}
+
+fn safe_mod_name(value: &str) -> bool {
+    value.len() <= 240
+        && value.to_ascii_lowercase().ends_with(".jar")
         && !value.is_empty()
         && !matches!(value, "." | "..")
         && !value.contains(['/', '\\', ':'])
@@ -354,12 +536,16 @@ struct SearchHitWire {
 
 #[derive(Debug, Deserialize)]
 struct ProjectWire {
+    id: String,
+    title: String,
     project_type: String,
     #[serde(default)]
     loaders: Vec<String>,
+    #[serde(default)]
+    icon_url: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct VersionWire {
     id: String,
     project_id: String,
@@ -370,9 +556,20 @@ struct VersionWire {
     loaders: Vec<String>,
     #[serde(default)]
     files: Vec<FileWire>,
+    #[serde(default)]
+    dependencies: Vec<DependencyWire>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
+struct DependencyWire {
+    #[serde(default)]
+    version_id: Option<String>,
+    #[serde(default)]
+    project_id: Option<String>,
+    dependency_type: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct FileWire {
     url: String,
     filename: String,
@@ -384,7 +581,7 @@ struct FileWire {
     hashes: HashWire,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 struct HashWire {
     #[serde(default)]
     sha512: Option<String>,
@@ -396,8 +593,11 @@ struct HashWire {
 
 #[cfg(test)]
 mod tests {
-    use super::{project_matches, safe_archive_name, trusted_modrinth_download, version_matches};
-    use slate_modpack_api_contracts::ContentKind;
+    use super::{
+        ProjectWire, ResolvedContentArtifactKind, VersionWire, classify_project, project_matches,
+        safe_archive_name, trusted_modrinth_download, version_compatible, version_matches,
+    };
+    use slate_modpack_api_contracts::{ContentKind, LoaderKind};
 
     #[test]
     fn content_kinds_match_modrinth_projects_and_versions() {
@@ -433,5 +633,55 @@ mod tests {
         assert!(!trusted_modrinth_download(
             "https://cdn.modrinth.com.example.test/content.zip"
         ));
+    }
+
+    #[test]
+    fn required_mod_dependencies_keep_exact_identity_and_loader_compatibility()
+    -> Result<(), serde_json::Error> {
+        let project: ProjectWire = serde_json::from_value(serde_json::json!({
+            "id": "dependency",
+            "title": "Dependency",
+            "project_type": "mod",
+            "loaders": ["fabric", "neoforge"],
+            "icon_url": null
+        }))?;
+        let version: VersionWire = serde_json::from_value(serde_json::json!({
+            "id": "version",
+            "project_id": "dependency",
+            "name": "1.0",
+            "game_versions": ["1.21.1"],
+            "loaders": ["fabric"],
+            "files": [],
+            "dependencies": [{
+                "project_id": "nested",
+                "version_id": "nested-version",
+                "dependency_type": "required"
+            }]
+        }))?;
+        assert_eq!(
+            classify_project(&project, LoaderKind::Fabric),
+            Some(ResolvedContentArtifactKind::Mod)
+        );
+        assert!(version_compatible(
+            &version,
+            "1.21.1",
+            ResolvedContentArtifactKind::Mod,
+            LoaderKind::Fabric
+        ));
+        assert!(!version_compatible(
+            &version,
+            "1.21.1",
+            ResolvedContentArtifactKind::Mod,
+            LoaderKind::NeoForge
+        ));
+        assert_eq!(
+            version.dependencies[0].project_id.as_deref(),
+            Some("nested")
+        );
+        assert_eq!(
+            version.dependencies[0].version_id.as_deref(),
+            Some("nested-version")
+        );
+        Ok(())
     }
 }

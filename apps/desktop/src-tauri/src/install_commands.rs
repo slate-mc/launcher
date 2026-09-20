@@ -443,6 +443,11 @@ pub(super) async fn queue_instance_install(
                         "Updated the pack to {} with {} verified content files",
                         update.version_id, outcome.installed_content_files
                     )
+                } else if !provider_content.is_empty() && !pending_mods.is_empty() {
+                    format!(
+                        "Installed {} verified content and dependency files",
+                        outcome.installed_content_files
+                    )
                 } else if !replaced_mod_paths.is_empty() {
                     format!(
                         "Updated {} verified mod files without reinstalling the instance",
@@ -487,6 +492,25 @@ pub(super) async fn queue_instance_install(
                                 version_id: update.version_id,
                                 loader_version: update.loader_version,
                             },
+                        )
+                        .await
+                } else if !provider_content.is_empty() && !pending_mods.is_empty() {
+                    task_state
+                        .database
+                        .complete_instance_mixed_content_install(
+                            CompletedInstall {
+                                job_id: pending.job.id,
+                                revision_id: pending.revision_id,
+                                manifest_digest: outcome.manifest_digest,
+                                client_version: outcome.resolved_version_id,
+                                runtime,
+                                message,
+                            },
+                            pending_mods,
+                            replaced_mod_paths,
+                            dependency_sets,
+                            provider_content,
+                            replaced_content_paths,
                         )
                         .await
                 } else if !replaced_mod_paths.is_empty() {

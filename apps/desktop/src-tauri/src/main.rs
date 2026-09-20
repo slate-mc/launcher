@@ -150,10 +150,10 @@ use slate_minecraft::{
 };
 use slate_modpack_api_contracts::{
     Architecture as ModpackArchitecture, ContentInstallPlanRequest, ContentKind, Hashes,
-    ImportPackPlanRequest, ImportedPackPlan, InstallPlan, InstallPlanRequest, LoaderKind,
-    ModInstallPlanRequest, ModProjectReference, ModVersionList, Modpack, ModpackVersion,
-    PackFileType, Platform as ModpackPlatform, ProviderReference, ProvidersResponse,
-    ResolveModsRequest, SearchResponse, Side, VersionPage,
+    ImportPackPlanRequest, ImportedPackPlan, InstallPlan, InstallPlanDownload, InstallPlanRequest,
+    LoaderKind, ModInstallPlanRequest, ModProjectReference, ModVersionList, Modpack,
+    ModpackVersion, PackFileType, Platform as ModpackPlatform, ProviderReference,
+    ProvidersResponse, ResolveModsRequest, SearchResponse, Side, VersionPage,
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
 use slate_platform::{
@@ -830,9 +830,10 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        InstalledModArtifact, installed_artifact_matches, parse_mod_download_id, same_mod_artifact,
+        InstalledModArtifact, installed_artifact_matches, parse_content_download_id,
+        parse_mod_download_id, same_mod_artifact,
     };
-    use slate_modpack_api_contracts::{Hashes, Provider};
+    use slate_modpack_api_contracts::{ContentKind, Hashes, Provider};
 
     #[test]
     fn mod_install_plan_ids_preserve_dependency_identity() {
@@ -854,6 +855,23 @@ mod tests {
         );
         assert_eq!(parse_mod_download_id("ftb:1:2"), None);
         assert_eq!(parse_mod_download_id("modrinth:missing-version"), None);
+    }
+
+    #[test]
+    fn content_install_plan_ids_preserve_kind_and_dependency_identity() {
+        assert_eq!(
+            parse_content_download_id("content:resource_pack:modrinth:project:version"),
+            Some((
+                ContentKind::ResourcePack,
+                Provider::Modrinth,
+                "project".to_owned(),
+                "version".to_owned(),
+            ))
+        );
+        assert_eq!(
+            parse_content_download_id("content:mod:modrinth:project:version"),
+            None
+        );
     }
 
     #[test]

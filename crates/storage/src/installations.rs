@@ -465,6 +465,26 @@ impl Database {
         .await
     }
 
+    pub async fn complete_instance_mixed_content_install(
+        &self,
+        completion: CompletedInstall,
+        installed_mods: Vec<NewInstanceMod>,
+        replaced_mod_paths: Vec<String>,
+        dependency_sets: Vec<NewInstanceModDependencySet>,
+        installed_content: Vec<NewInstanceProviderContent>,
+        replaced_content_paths: Vec<String>,
+    ) -> Result<(), StorageError> {
+        self.complete_instance_install_inner(
+            completion,
+            Some(installed_mods),
+            Some(replaced_mod_paths),
+            Some(dependency_sets),
+            None,
+            Some((installed_content, replaced_content_paths)),
+        )
+        .await
+    }
+
     async fn complete_instance_install_inner(
         &self,
         completion: CompletedInstall,

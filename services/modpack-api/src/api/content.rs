@@ -4,6 +4,7 @@ use super::modpacks::{
 };
 use super::provider_error;
 use crate::domain::{SearchRequest, java_major_for_minecraft, normalize_install_path};
+use crate::providers::ResolvedContentArtifactKind;
 use crate::response::{ApiError, CacheControl, RequestContext, success};
 use crate::state::AppState;
 use axum::Router;
@@ -151,22 +152,66 @@ async fn install_plan(
     let version_id = request.version_id.as_deref().map(str::trim);
     let resolved = state
         .content
-        .resolve(kind, &project_id, minecraft_version, version_id)
+        .resolve(
+            kind,
+            &project_id,
+            minecraft_version,
+            version_id,
+            request.loader,
+        )
         .await
         .map_err(|error| provider_error(&context, error))?;
-    let destination = normalize_install_path(&format!(
-        "{}/{}",
-        content_destination(kind),
-        resolved.file_name
-    ))
-    .map_err(|_| {
-        ApiError::new(
-            &context,
-            StatusCode::BAD_GATEWAY,
-            ApiErrorCode::InvalidInstallPath,
-            "The selected content has an unsafe file name.",
-            false,
-        )
+    let downloads = resolved
+        .artifacts
+        .into_iter()
+        .map(|artifact| {
+            let (id, directory) = match artifact.kind {
+                ResolvedContentArtifactKind::Content(artifact_kind) => (
+                    format!(
+                        "content:{}:modrinth:{}:{}",
+                        artifact_kind.as_str(),
+                        artifact.project_id,
+                        artifact.version_id
+                    ),
+                    content_destination(artifact_kind),
+                ),
+                ResolvedContentArtifactKind::Mod => (
+                    format!("modrinth:{}:{}", artifact.project_id, artifact.version_id),
+                    "mods",
+                ),
+            };
+            let destination =
+                normalize_install_path(&format!("{directory}/{}", artifact.file_name)).map_err(
+                    |_| {
+                        ApiError::new(
+                            &context,
+                            StatusCode::BAD_GATEWAY,
+                            ApiErrorCode::InvalidInstallPath,
+                            "The selected content has an unsafe file name.",
+                            false,
+                        )
+                    },
+                )?;
+            Ok(InstallPlanDownload {
+                id,
+                destination,
+                size: artifact.size,
+                hashes: artifact.hashes,
+                sources: vec![DownloadSource::Direct { url: artifact.url }],
+                required: true,
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+    let total_download_size = downloads.iter().try_fold(0_u64, |total, download| {
+        total.checked_add(download.size).ok_or_else(|| {
+            ApiError::new(
+                &context,
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::InternalError,
+                "The content download size is invalid.",
+                false,
+            )
+        })
     })?;
     let plan = InstallPlan {
         schema: 1,
@@ -190,22 +235,10 @@ async fn install_plan(
                 recommended_mb: 4_096,
             },
         },
-        downloads: vec![InstallPlanDownload {
-            id: format!(
-                "content:{}:modrinth:{}:{}",
-                kind.as_str(),
-                resolved.project_id,
-                resolved.version_id
-            ),
-            destination,
-            size: resolved.size,
-            hashes: resolved.hashes,
-            sources: vec![DownloadSource::Direct { url: resolved.url }],
-            required: true,
-        }],
+        downloads,
         extract: Vec::new(),
         delete: Vec::new(),
-        total_download_size: resolved.size,
+        total_download_size,
     };
     Ok(success(&context, plan, CacheControl::NoStore))
 }

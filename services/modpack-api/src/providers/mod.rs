@@ -7,7 +7,7 @@ mod modrinth_content;
 pub use curseforge::CurseForgeProvider;
 pub use ftb::FtbProvider;
 pub use modrinth::ModrinthProvider;
-pub use modrinth_content::{ModrinthContentProvider, ResolvedContent};
+pub use modrinth_content::{ModrinthContentProvider, ResolvedContent, ResolvedContentArtifactKind};
 
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use async_trait::async_trait;

@@ -125,10 +125,20 @@ pub(super) async fn instance_content_install_inner(
     .collect::<Vec<_>>()
     .await;
 
-    let existing_paths = installed
+    let installed_content = installed
         .iter()
-        .map(|item| normalized_content_path(&item.file_path))
-        .collect::<HashSet<_>>();
+        .map(|item| ((item.provider, item.project_id.clone()), item))
+        .collect::<HashMap<_, _>>();
+    let installed_mods = state
+        .database
+        .list_instance_mods(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?;
+    let installed_mods_by_identity = installed_mods
+        .iter()
+        .map(|item| ((item.provider, item.project_id.clone()), item))
+        .collect::<HashMap<_, _>>();
+    let mod_index = installed_mod_index(state, &instance).await?;
     let paths = paths_for_instance(state, &instance);
     let internal_kind = content_kind(request.kind);
     let scanned = tokio::task::spawn_blocking(move || {
@@ -141,57 +151,157 @@ pub(super) async fn instance_content_install_inner(
         .into_iter()
         .map(|item| normalized_content_path(&item.file_path))
         .collect::<HashSet<_>>();
-    let mut planned_paths = HashSet::new();
+    let mut planned_paths = HashMap::<String, (u64, Hashes)>::new();
     let mut downloads = Vec::new();
-    let mut records = Vec::new();
+    let mut records = BTreeMap::new();
+    let mut mod_records = BTreeMap::new();
+    let mut replaced_content_paths = BTreeSet::new();
+    let mut replaced_mod_paths = BTreeSet::new();
     let mut merged_plan = None;
     for result in plans {
-        let (selection, mut plan) = result?;
+        let (selection, plan) = result?;
         validate_content_plan(&instance, kind, &selection, &plan)?;
-        let mut download = plan.downloads.remove(0);
-        if kind == ContentKind::DataPack {
-            let world_name = world_name.as_deref().ok_or_else(|| {
-                AppError::new(
-                    "content.world_required",
-                    "Choose a world before adding a data pack.",
-                )
-            })?;
-            let file_name = download
-                .destination
-                .strip_prefix("datapacks/")
-                .ok_or_else(invalid_content_plan)?;
-            download.destination = format!("saves/{world_name}/datapacks/{file_name}");
+        for mut download in plan.downloads.clone() {
+            if let Some((download_kind, provider, project_id, version_id)) =
+                parse_content_download_id(&download.id)
+            {
+                let identity = (provider, project_id.clone());
+                let existing = installed_content.get(&identity).copied();
+                if existing.is_some_and(|item| {
+                    item.version_id == version_id
+                        && scanned_paths.contains(&normalized_content_path(&item.file_path))
+                }) {
+                    continue;
+                }
+                if existing.is_some_and(|item| item.pinned) {
+                    return Err(AppError::new(
+                        "content.dependency_pinned",
+                        format!(
+                            "{} is pinned, but the selected content requires another version.",
+                            existing.map_or("A dependency", |item| item.display_name.as_str())
+                        ),
+                    ));
+                }
+                if download_kind == ContentKind::DataPack {
+                    let world_name = world_name.as_deref().ok_or_else(|| {
+                        AppError::new(
+                            "content.world_required",
+                            "Choose a world before adding a data pack.",
+                        )
+                    })?;
+                    let file_name = download
+                        .destination
+                        .strip_prefix("datapacks/")
+                        .ok_or_else(invalid_content_plan)?;
+                    download.destination = format!("saves/{world_name}/datapacks/{file_name}");
+                }
+                let normalized = normalized_content_path(&download.destination);
+                let replaced = existing.map(|item| normalized_content_path(&item.file_path));
+                if scanned_paths.contains(&normalized) && replaced.as_deref() != Some(&normalized) {
+                    return Err(AppError::new(
+                        "content.file_conflict",
+                        format!(
+                            "{} conflicts with a content file that is already installed.",
+                            selection.display_name.trim()
+                        ),
+                    ));
+                }
+                if !accept_planned_download(&mut planned_paths, &normalized, &download)? {
+                    continue;
+                }
+                if let Some(existing) = existing {
+                    replaced_content_paths.insert(existing.file_path.clone());
+                }
+                let root = project_id == selection.project_id.trim();
+                records.insert(
+                    identity,
+                    NewInstanceProviderContent {
+                        kind: download_kind,
+                        provider,
+                        project_id,
+                        version_id,
+                        display_name: if root {
+                            selection.display_name.trim().to_owned()
+                        } else {
+                            existing.map_or_else(
+                                || display_name_from_path(&download.destination),
+                                |item| item.display_name.clone(),
+                            )
+                        },
+                        icon_url: if root {
+                            trusted_content_icon(selection.icon_url.as_deref())
+                        } else {
+                            existing.and_then(|item| item.icon_url.clone())
+                        },
+                        file_path: download.destination.clone(),
+                        hashes: download.hashes.clone(),
+                        pinned: existing.is_some_and(|item| item.pinned),
+                    },
+                );
+                downloads.push(download);
+            } else if let Some((provider, project_id, version_id)) =
+                parse_mod_download_id(&download.id)
+            {
+                let identity = (provider, project_id.clone());
+                let identity_key = format!("{provider}:{project_id}");
+                let existing = installed_mods_by_identity.get(&identity).copied();
+                if mod_index.versions.get(&identity_key) == Some(&version_id) {
+                    continue;
+                }
+                if existing.is_some_and(|item| item.pinned) {
+                    return Err(AppError::new(
+                        "content.dependency_pinned",
+                        format!(
+                            "{} is pinned, but the selected content requires another version.",
+                            existing.map_or("A mod dependency", |item| item.display_name.as_str())
+                        ),
+                    ));
+                }
+                let normalized = normalized_content_path(&download.destination);
+                let replaced = existing.map(|item| normalized_content_path(&item.file_path));
+                if mod_index.artifacts.contains_key(&normalized)
+                    && replaced.as_deref() != Some(&normalized)
+                {
+                    return Err(AppError::new(
+                        "content.file_conflict",
+                        "A required mod conflicts with a mod file that is already installed.",
+                    ));
+                }
+                if !accept_planned_download(&mut planned_paths, &normalized, &download)? {
+                    continue;
+                }
+                if let Some(existing) = existing {
+                    replaced_mod_paths.insert(existing.file_path.clone());
+                }
+                mod_records.insert(
+                    identity,
+                    NewInstanceMod {
+                        provider,
+                        project_id,
+                        version_id,
+                        display_name: existing.map_or_else(
+                            || display_name_from_path(&download.destination),
+                            |item| item.display_name.clone(),
+                        ),
+                        file_path: download.destination.clone(),
+                        hashes: download.hashes.clone(),
+                        enabled: true,
+                        pinned: existing.is_some_and(|item| item.pinned),
+                    },
+                );
+                downloads.push(download);
+            } else {
+                return Err(invalid_content_plan());
+            }
         }
-        let normalized = normalized_content_path(&download.destination);
-        if existing_paths.contains(&normalized)
-            || scanned_paths.contains(&normalized)
-            || !planned_paths.insert(normalized)
-        {
-            return Err(AppError::new(
-                "content.file_conflict",
-                format!(
-                    "{} conflicts with a content file that is already installed.",
-                    selection.display_name.trim()
-                ),
-            ));
-        }
-        let version_id = plan.instance.version_id.clone();
-        records.push(NewInstanceProviderContent {
-            kind,
-            provider: selection.provider,
-            project_id: selection.project_id.trim().to_owned(),
-            version_id,
-            display_name: selection.display_name.trim().to_owned(),
-            icon_url: trusted_content_icon(selection.icon_url.as_deref()),
-            file_path: download.destination.clone(),
-            hashes: download.hashes.clone(),
-            pinned: false,
-        });
-        downloads.push(download);
         merged_plan.get_or_insert(plan);
     }
     let mut plan = merged_plan.ok_or_else(invalid_content_plan)?;
     plan.downloads = downloads;
+    plan.delete.extend(replaced_content_paths.iter().cloned());
+    plan.delete.extend(replaced_mod_paths.iter().cloned());
+    plan.delete.sort();
+    plan.delete.dedup();
     plan.total_download_size = plan.downloads.iter().try_fold(0_u64, |total, download| {
         total
             .checked_add(download.size)
@@ -203,7 +313,10 @@ pub(super) async fn instance_content_install_inner(
         request.expected_revision,
         Some(plan),
         PendingModChanges {
-            provider_content: records,
+            installed: mod_records.into_values().collect(),
+            replaced_paths: replaced_mod_paths.into_iter().collect(),
+            provider_content: records.into_values().collect(),
+            replaced_content_paths: replaced_content_paths.into_iter().collect(),
             ..PendingModChanges::default()
         },
         None,
@@ -214,6 +327,39 @@ pub(super) async fn instance_content_install_inner(
         },
     )
     .await
+}
+
+fn accept_planned_download(
+    planned: &mut HashMap<String, (u64, Hashes)>,
+    destination: &str,
+    download: &InstallPlanDownload,
+) -> Result<bool, AppError> {
+    if let Some((size, hashes)) = planned.get(destination) {
+        if same_mod_artifact(*size, hashes, download.size, &download.hashes) {
+            Ok(false)
+        } else {
+            Err(AppError::new(
+                "content.file_conflict",
+                "The selected content resolves to conflicting files.",
+            ))
+        }
+    } else {
+        planned.insert(
+            destination.to_owned(),
+            (download.size, download.hashes.clone()),
+        );
+        Ok(true)
+    }
+}
+
+fn display_name_from_path(value: &str) -> String {
+    let file_name = value.rsplit('/').next().unwrap_or(value);
+    let file_name = file_name.strip_suffix(".disabled").unwrap_or(file_name);
+    file_name
+        .strip_suffix(".zip")
+        .or_else(|| file_name.strip_suffix(".jar"))
+        .unwrap_or(file_name)
+        .to_owned()
 }
 
 #[tauri::command]
@@ -313,12 +459,13 @@ pub(super) async fn instance_content_update_inner(
         .await
         .map_err(|error| map_storage_error(error, "slate could not inspect installed content."))?;
     let current = records
-        .into_iter()
+        .iter()
         .find(|item| {
             item.provider == request.provider
                 && item.project_id == request.project_id.trim()
                 && item.file_path == request.file_path
         })
+        .cloned()
         .ok_or_else(|| {
             AppError::new(
                 "content.not_installed",
@@ -356,18 +503,20 @@ pub(super) async fn instance_content_update_inner(
     if plan.instance.version_id != target_version_id {
         return Err(invalid_content_plan());
     }
-    let mut download = plan.downloads.remove(0);
-    let file_name = download
-        .destination
-        .rsplit('/')
-        .next()
-        .filter(|value| !value.is_empty())
-        .ok_or_else(invalid_content_plan)?;
-    download.destination =
-        updated_content_destination(request.kind, &current.file_path, file_name)?;
-    if current.file_path.ends_with(".disabled") {
-        download.destination.push_str(".disabled");
-    }
+    let installed_content = records
+        .iter()
+        .map(|item| ((item.provider, item.project_id.clone()), item))
+        .collect::<HashMap<_, _>>();
+    let installed_mods = state
+        .database
+        .list_instance_mods(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?;
+    let installed_mods_by_identity = installed_mods
+        .iter()
+        .map(|item| ((item.provider, item.project_id.clone()), item))
+        .collect::<HashMap<_, _>>();
+    let mod_index = installed_mod_index(state, &instance).await?;
     let paths = paths_for_instance(state, &instance);
     let internal_kind = content_kind(request.kind);
     let scanned = tokio::task::spawn_blocking(move || {
@@ -376,43 +525,178 @@ pub(super) async fn instance_content_update_inner(
     .await
     .map_err(|_| content_file_error())?
     .map_err(|_| content_file_error())?;
-    let target_path = normalized_content_path(&download.destination);
-    let current_path = normalized_content_path(&current.file_path);
-    if scanned.into_iter().any(|item| {
-        let path = normalized_content_path(&item.file_path);
-        path == target_path && path != current_path
-    }) {
-        return Err(AppError::new(
-            "content.file_conflict",
-            "That version conflicts with a content file that is already installed.",
-        ));
-    }
-    plan.downloads = vec![download.clone()];
-    plan.delete = vec![current.file_path.clone()];
-    plan.total_download_size = download.size;
+    let scanned_paths = scanned
+        .into_iter()
+        .map(|item| normalized_content_path(&item.file_path))
+        .collect::<HashSet<_>>();
     let display_name = if request.display_name.trim().is_empty() {
         current.display_name.clone()
     } else {
         request.display_name.trim().to_owned()
     };
+    let mut planned_paths = HashMap::<String, (u64, Hashes)>::new();
+    let mut accepted_downloads = Vec::new();
+    let mut content_records = BTreeMap::new();
+    let mut mod_records = BTreeMap::new();
+    let mut replaced_content_paths = BTreeSet::new();
+    let mut replaced_mod_paths = BTreeSet::new();
+    let mut root_found = false;
+    for mut download in std::mem::take(&mut plan.downloads) {
+        if let Some((download_kind, provider, project_id, version_id)) =
+            parse_content_download_id(&download.id)
+        {
+            let identity = (provider, project_id.clone());
+            let existing = installed_content.get(&identity).copied();
+            let root = provider == request.provider && project_id == request.project_id.trim();
+            if root {
+                root_found = true;
+                if version_id != target_version_id {
+                    return Err(invalid_content_plan());
+                }
+            } else if existing.is_some_and(|item| {
+                item.version_id == version_id
+                    && scanned_paths.contains(&normalized_content_path(&item.file_path))
+            }) {
+                continue;
+            }
+            if !root && existing.is_some_and(|item| item.pinned) {
+                return Err(AppError::new(
+                    "content.dependency_pinned",
+                    format!(
+                        "{} is pinned, but this version requires another release.",
+                        existing.map_or("A dependency", |item| item.display_name.as_str())
+                    ),
+                ));
+            }
+            let file_name = download
+                .destination
+                .rsplit('/')
+                .next()
+                .filter(|value| !value.is_empty())
+                .ok_or_else(invalid_content_plan)?;
+            let location =
+                existing.map_or(current.file_path.as_str(), |item| item.file_path.as_str());
+            download.destination = updated_content_destination(request.kind, location, file_name)?;
+            if existing.is_some_and(|item| item.file_path.ends_with(".disabled")) {
+                download.destination.push_str(".disabled");
+            }
+            let normalized = normalized_content_path(&download.destination);
+            let replaced = existing.map(|item| normalized_content_path(&item.file_path));
+            if scanned_paths.contains(&normalized) && replaced.as_deref() != Some(&normalized) {
+                return Err(AppError::new(
+                    "content.file_conflict",
+                    "That version conflicts with a content file that is already installed.",
+                ));
+            }
+            if !accept_planned_download(&mut planned_paths, &normalized, &download)? {
+                continue;
+            }
+            if let Some(existing) = existing {
+                replaced_content_paths.insert(existing.file_path.clone());
+            }
+            content_records.insert(
+                identity,
+                NewInstanceProviderContent {
+                    kind: download_kind,
+                    provider,
+                    project_id,
+                    version_id,
+                    display_name: if root {
+                        display_name.clone()
+                    } else {
+                        existing.map_or_else(
+                            || display_name_from_path(&download.destination),
+                            |item| item.display_name.clone(),
+                        )
+                    },
+                    icon_url: if root {
+                        current.icon_url.clone()
+                    } else {
+                        existing.and_then(|item| item.icon_url.clone())
+                    },
+                    file_path: download.destination.clone(),
+                    hashes: download.hashes.clone(),
+                    pinned: existing.is_some_and(|item| item.pinned),
+                },
+            );
+            accepted_downloads.push(download);
+        } else if let Some((provider, project_id, version_id)) = parse_mod_download_id(&download.id)
+        {
+            let identity = (provider, project_id.clone());
+            let identity_key = format!("{provider}:{project_id}");
+            let existing = installed_mods_by_identity.get(&identity).copied();
+            if mod_index.versions.get(&identity_key) == Some(&version_id) {
+                continue;
+            }
+            if existing.is_some_and(|item| item.pinned) {
+                return Err(AppError::new(
+                    "content.dependency_pinned",
+                    format!(
+                        "{} is pinned, but this version requires another release.",
+                        existing.map_or("A mod dependency", |item| item.display_name.as_str())
+                    ),
+                ));
+            }
+            let normalized = normalized_content_path(&download.destination);
+            let replaced = existing.map(|item| normalized_content_path(&item.file_path));
+            if mod_index.artifacts.contains_key(&normalized)
+                && replaced.as_deref() != Some(&normalized)
+            {
+                return Err(AppError::new(
+                    "content.file_conflict",
+                    "A required mod conflicts with a mod file that is already installed.",
+                ));
+            }
+            if !accept_planned_download(&mut planned_paths, &normalized, &download)? {
+                continue;
+            }
+            if let Some(existing) = existing {
+                replaced_mod_paths.insert(existing.file_path.clone());
+            }
+            mod_records.insert(
+                identity,
+                NewInstanceMod {
+                    provider,
+                    project_id,
+                    version_id,
+                    display_name: existing.map_or_else(
+                        || display_name_from_path(&download.destination),
+                        |item| item.display_name.clone(),
+                    ),
+                    file_path: download.destination.clone(),
+                    hashes: download.hashes.clone(),
+                    enabled: existing.is_none_or(|item| item.enabled),
+                    pinned: existing.is_some_and(|item| item.pinned),
+                },
+            );
+            accepted_downloads.push(download);
+        } else {
+            return Err(invalid_content_plan());
+        }
+    }
+    if !root_found || accepted_downloads.is_empty() {
+        return Err(invalid_content_plan());
+    }
+    plan.downloads = accepted_downloads;
+    plan.delete.extend(replaced_content_paths.iter().cloned());
+    plan.delete.extend(replaced_mod_paths.iter().cloned());
+    plan.delete.sort();
+    plan.delete.dedup();
+    plan.total_download_size = plan.downloads.iter().try_fold(0_u64, |total, download| {
+        total
+            .checked_add(download.size)
+            .ok_or_else(invalid_content_plan)
+    })?;
     queue_instance_install(
         state,
         instance,
         request.expected_revision,
         Some(plan),
         PendingModChanges {
-            provider_content: vec![NewInstanceProviderContent {
-                kind,
-                provider: request.provider,
-                project_id: request.project_id.trim().to_owned(),
-                version_id: target_version_id.to_owned(),
-                display_name: display_name.clone(),
-                icon_url: current.icon_url,
-                file_path: download.destination,
-                hashes: download.hashes,
-                pinned: current.pinned,
-            }],
-            replaced_content_paths: vec![current.file_path.clone()],
+            installed: mod_records.into_values().collect(),
+            replaced_paths: replaced_mod_paths.into_iter().collect(),
+            provider_content: content_records.into_values().collect(),
+            replaced_content_paths: replaced_content_paths.into_iter().collect(),
             ..PendingModChanges::default()
         },
         None,
@@ -563,14 +847,32 @@ fn validate_content_plan(
     plan: &InstallPlan,
 ) -> Result<(), AppError> {
     let (loader, loader_version) = instance_runtime_target(instance);
-    let prefix = match kind {
-        ContentKind::ResourcePack => "resourcepacks/",
-        ContentKind::ShaderPack => "shaderpacks/",
-        ContentKind::DataPack => "datapacks/",
-    };
-    let valid_download = plan.downloads.len() == 1
-        && plan.downloads[0].destination.starts_with(prefix)
-        && plan.downloads[0].hashes.has_cryptographic_hash();
+    let valid_downloads = !plan.downloads.is_empty()
+        && plan.downloads.len() <= 64
+        && plan.downloads.iter().all(|download| {
+            download.hashes.has_cryptographic_hash()
+                && if let Some((download_kind, provider, _, _)) =
+                    parse_content_download_id(&download.id)
+                {
+                    provider == slate_modpack_api_contracts::Provider::Modrinth
+                        && download_kind == kind
+                        && download
+                            .destination
+                            .starts_with(content_download_prefix(download_kind))
+                } else {
+                    parse_mod_download_id(&download.id).is_some()
+                        && download.destination.starts_with("mods/")
+                }
+        })
+        && plan.downloads.iter().any(|download| {
+            parse_content_download_id(&download.id).is_some_and(
+                |(download_kind, provider, project_id, _)| {
+                    download_kind == kind
+                        && provider == selection.provider
+                        && project_id == selection.project_id.trim()
+                },
+            )
+        });
     if plan.schema != 1
         || plan.instance.provider != selection.provider
         || plan.instance.project_id != selection.project_id.trim()
@@ -579,11 +881,49 @@ fn validate_content_plan(
         || plan.runtime.loader.version != loader_version
         || !plan.extract.is_empty()
         || !plan.delete.is_empty()
-        || !valid_download
+        || !valid_downloads
     {
         return Err(invalid_content_plan());
     }
     Ok(())
+}
+
+pub(super) fn parse_content_download_id(
+    value: &str,
+) -> Option<(
+    ContentKind,
+    slate_modpack_api_contracts::Provider,
+    String,
+    String,
+)> {
+    let mut parts = value.splitn(5, ':');
+    if parts.next()? != "content" {
+        return None;
+    }
+    let kind = match parts.next()? {
+        "resource_pack" => ContentKind::ResourcePack,
+        "shader_pack" => ContentKind::ShaderPack,
+        "data_pack" => ContentKind::DataPack,
+        _ => return None,
+    };
+    let provider = slate_modpack_api_contracts::Provider::from_str(parts.next()?).ok()?;
+    let project_id = parts.next()?.trim();
+    let version_id = parts.next()?.trim();
+    if provider == slate_modpack_api_contracts::Provider::Ftb
+        || project_id.is_empty()
+        || version_id.is_empty()
+    {
+        return None;
+    }
+    Some((kind, provider, project_id.to_owned(), version_id.to_owned()))
+}
+
+const fn content_download_prefix(kind: ContentKind) -> &'static str {
+    match kind {
+        ContentKind::ResourcePack => "resourcepacks/",
+        ContentKind::ShaderPack => "shaderpacks/",
+        ContentKind::DataPack => "datapacks/",
+    }
 }
 
 fn trusted_content_icon(value: Option<&str>) -> Option<String> {
