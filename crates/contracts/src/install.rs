@@ -13,6 +13,14 @@ pub enum InstallJobStateDto {
     Cancelled,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstallOperationDto {
+    InstanceInstall,
+    ModInstall,
+    ModpackUpdate,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallInstanceRequest {
@@ -27,6 +35,12 @@ pub struct CancelInstallJobRequest {
     pub revision_id: Uuid,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryInstallJobRequest {
+    pub job_id: Uuid,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallJobSummary {
@@ -34,6 +48,9 @@ pub struct InstallJobSummary {
     pub instance_id: Uuid,
     pub revision_id: Uuid,
     pub state: InstallJobStateDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<InstallOperationDto>,
+    pub can_retry: bool,
     pub phase: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]

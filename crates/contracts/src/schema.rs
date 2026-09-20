@@ -15,9 +15,10 @@ use crate::{
     ModpackVersionsRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
     OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
     RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
-    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
-    SessionLogSubscription, SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogSubscription,
+    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
     StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
     SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
@@ -160,6 +161,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         (
             "cancel-install-job-request",
             schema_for!(CancelInstallJobRequest),
+        ),
+        (
+            "retry-install-job-request",
+            schema_for!(RetryInstallJobRequest),
         ),
         ("install-job-summary", schema_for!(InstallJobSummary)),
         (
@@ -315,7 +320,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 86);
+        assert_eq!(schemas.len(), 87);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

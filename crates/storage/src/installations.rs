@@ -51,6 +51,8 @@ pub struct InstallJobRecord {
     pub instance_id: InstanceId,
     pub revision_id: RevisionId,
     pub state: JobState,
+    pub operation: Option<String>,
+    pub retry_payload: Option<serde_json::Value>,
     pub phase: String,
     pub progress_json: String,
     pub completed_items: Option<u64>,
@@ -121,6 +123,33 @@ impl Database {
         expected_revision: u64,
         request_id: RequestId,
     ) -> Result<PendingInstall, StorageError> {
+        self.begin_instance_install_with_context(
+            instance_id,
+            expected_revision,
+            request_id,
+            "instance_install",
+            None,
+        )
+        .await
+    }
+
+    pub async fn begin_instance_install_with_context(
+        &self,
+        instance_id: InstanceId,
+        expected_revision: u64,
+        request_id: RequestId,
+        operation: &str,
+        retry_payload: Option<serde_json::Value>,
+    ) -> Result<PendingInstall, StorageError> {
+        if !matches!(
+            operation,
+            "instance_install" | "mod_install" | "modpack_update"
+        ) {
+            return Err(StorageError::InvalidStoredValue {
+                field: "jobs.operation",
+                value: operation.to_owned(),
+            });
+        }
         let expected_revision =
             i64::try_from(expected_revision).map_err(|_| StorageError::NegativeRevision)?;
         let job_id = JobId::new();
@@ -163,7 +192,15 @@ impl Database {
         .execute(&mut *transaction)
         .await?;
 
-        let progress = format!(r#"{{"revisionId":"{revision_id}","message":"Queued"}}"#);
+        let mut progress = serde_json::json!({
+            "revisionId": revision_id.to_string(),
+            "message": "Queued",
+            "operation": operation,
+        });
+        if let Some(payload) = retry_payload.clone() {
+            progress["retry"] = payload;
+        }
+        let progress = serde_json::to_string(&progress)?;
         sqlx::query(
             "INSERT INTO jobs \
              (id, kind, entity_id, request_id, state, phase, progress_json, created_at, updated_at) \
@@ -198,6 +235,8 @@ impl Database {
                 instance_id,
                 revision_id,
                 state: JobState::Queued,
+                operation: Some(operation.to_owned()),
+                retry_payload,
                 phase: "metadata".to_owned(),
                 progress_json: progress,
                 completed_items: None,
@@ -796,6 +835,8 @@ fn row_to_install_job(row: &sqlx::sqlite::SqliteRow) -> Result<InstallJobRecord,
     let entity_id: String = row.try_get("entity_id")?;
     let revision_id: String = row.try_get("revision_id")?;
     let state: String = row.try_get("state")?;
+    let progress_json: String = row.try_get("progress_json")?;
+    let progress: serde_json::Value = serde_json::from_str(&progress_json)?;
     Ok(InstallJobRecord {
         id: JobId::from_uuid(parse_uuid(row.try_get("id")?, "jobs.id")?),
         instance_id: InstanceId::from_uuid(parse_uuid(entity_id, "jobs.entity_id")?),
@@ -804,8 +845,13 @@ fn row_to_install_job(row: &sqlx::sqlite::SqliteRow) -> Result<InstallJobRecord,
             "jobs.progress_json.revisionId",
         )?),
         state: JobState::try_from(state.as_str())?,
+        operation: progress
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        retry_payload: progress.get("retry").cloned(),
         phase: row.try_get("phase")?,
-        progress_json: row.try_get("progress_json")?,
+        progress_json,
         completed_items: row
             .try_get::<Option<i64>, _>("completed_items")?
             .map(|value| u64::try_from(value).map_err(|_| StorageError::ProgressOutOfRange))
@@ -1023,7 +1069,13 @@ mod tests {
             })
             .await?;
         let pending = database
-            .begin_instance_install(instance.id, instance.revision, RequestId::new())
+            .begin_instance_install_with_context(
+                instance.id,
+                instance.revision,
+                RequestId::new(),
+                "mod_install",
+                Some(serde_json::json!({"mods": [{"projectId": "example"}]})),
+            )
             .await?;
 
         database
@@ -1038,6 +1090,14 @@ mod tests {
         let updated = database.get_instance(instance.id).await?;
         assert_eq!(job.state, JobState::Cancelled);
         assert_eq!(job.phase, "cancelled");
+        assert_eq!(job.operation.as_deref(), Some("mod_install"));
+        assert_eq!(
+            job.retry_payload
+                .as_ref()
+                .and_then(|value| value.pointer("/mods/0/projectId"))
+                .and_then(serde_json::Value::as_str),
+            Some("example")
+        );
         assert_eq!(
             updated.setup_state,
             slate_domain::InstanceSetupState::Configured

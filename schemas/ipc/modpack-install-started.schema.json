@@ -28,6 +28,9 @@
     "InstallJobSummary": {
       "type": "object",
       "properties": {
+        "canRetry": {
+          "type": "boolean"
+        },
         "completedItems": {
           "type": [
             "integer",
@@ -49,6 +52,16 @@
         },
         "message": {
           "type": "string"
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InstallOperationDto"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "phase": {
           "type": "string"
@@ -77,10 +90,19 @@
         "instanceId",
         "revisionId",
         "state",
+        "canRetry",
         "phase",
         "message",
         "createdAt",
         "updatedAt"
+      ]
+    },
+    "InstallOperationDto": {
+      "type": "string",
+      "enum": [
+        "instanceInstall",
+        "modInstall",
+        "modpackUpdate"
       ]
     },
     "InstanceModeDto": {

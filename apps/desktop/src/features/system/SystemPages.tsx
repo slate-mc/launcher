@@ -36,6 +36,7 @@ import {
   listInstances,
   refreshMinecraftAccount,
   removeMinecraftAccount,
+  retryInstallJob,
   setDefaultMinecraftAccount,
   startMinecraftAuth,
 } from "../../lib/bridge";
@@ -59,6 +60,15 @@ export function DownloadsPage() {
       ]);
     },
   });
+  const retryMutation = useMutation({
+    mutationFn: retryInstallJob,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["install-jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      ]);
+    },
+  });
 
   return (
     <div className="min-h-full bg-app-bg">
@@ -73,6 +83,16 @@ export function DownloadsPage() {
             {getUserFacingError(
               cancelMutation.error,
               "The installation may have already finished. Refresh and try again.",
+            )}
+          </InlineNotice>
+        </div>
+      ) : null}
+      {retryMutation.isError ? (
+        <div className="mx-auto max-w-[940px] px-8 pt-6">
+          <InlineNotice tone="danger" title="Installation was not restarted">
+            {getUserFacingError(
+              retryMutation.error,
+              "Open the instance and try the installation again.",
             )}
           </InlineNotice>
         </div>
@@ -99,7 +119,7 @@ export function DownloadsPage() {
       ) : (
         <div className="mx-auto max-w-[940px] px-8 py-7">
           <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
-            <div className="grid grid-cols-[minmax(0,1fr)_115px_145px_90px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+            <div className="grid grid-cols-[minmax(0,1fr)_115px_145px_150px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
               <span>Installation</span>
               <span>State</span>
               <span>Updated</span>
@@ -109,7 +129,7 @@ export function DownloadsPage() {
               {jobs.map((job) => (
                 <div
                   key={job.id}
-                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_115px_145px_90px] items-center gap-4 px-5 py-3"
+                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_115px_145px_150px] items-center gap-4 px-5 py-3"
                 >
                   <span className="min-w-0">
                     <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
@@ -164,6 +184,37 @@ export function DownloadsPage() {
                       )}
                       Cancel
                     </button>
+                  ) : job.canRetry ? (
+                    <span className="ml-auto inline-flex items-center gap-3">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
+                        disabled={
+                          retryMutation.isPending &&
+                          retryMutation.variables === job.id
+                        }
+                        onClick={() => retryMutation.mutate(job.id)}
+                      >
+                        <RefreshCw
+                          className={
+                            retryMutation.isPending &&
+                            retryMutation.variables === job.id
+                              ? "animate-spin"
+                              : ""
+                          }
+                          size={13}
+                          aria-hidden="true"
+                        />
+                        Retry
+                      </button>
+                      <Link
+                        to="/instances/$instanceId/overview"
+                        params={{ instanceId: job.instanceId }}
+                        className="text-[10px] font-bold text-app-accent no-underline hover:underline"
+                      >
+                        Open
+                      </Link>
+                    </span>
                   ) : (
                     <Link
                       to="/instances/$instanceId/overview"

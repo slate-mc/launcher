@@ -15,8 +15,8 @@ Last updated: September 20, 2026
   acquisition, authenticated launch, duplicate-launch prevention, force stop, last-played tracking,
   and live/retained Minecraft logs.
 - Durable installation records with detailed bounded progress, parallel downloads, verified shared
-  artifacts, restart recovery for interrupted jobs, safe user cancellation, and sanitized
-  user-facing failure messages.
+  artifacts, restart recovery for interrupted jobs, safe user cancellation, operation-aware retry
+  from Downloads, and sanitized user-facing failure messages.
 - Instance library, favorites, profile text/tags/notes, icon/banner selection and positioning,
   per-instance account/window/language/quick-play/performance/Java settings, common Minecraft game
   options, folder shortcuts, relocation, duplication, portable slate import/export, snapshots,
@@ -69,8 +69,9 @@ Verified on Windows on September 20, 2026:
    dependency/dependent views, and rollback are not complete; pinning alone is not an updater.
 2. **Import coverage:** slate portable archives work, but importing CurseForge/Modrinth packs,
    importing from other launchers, and adding a local JAR through a file picker are not complete.
-3. **Download controls:** installation progress, restart recovery, and safe user cancellation work,
-   but direct retry from Downloads, queue ordering, pause/resume, and bandwidth controls are missing.
+3. **Download controls:** installation progress, restart recovery, safe user cancellation, and
+   operation-aware retry from Downloads work, but queue ordering, pause/resume, and bandwidth
+   controls are missing.
 4. **Resource content workflows:** resource packs, shaders, and data packs can be inventoried and
    managed after they exist, but browsing, importing, updating, and ordering them are incomplete.
 5. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by

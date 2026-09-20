@@ -946,6 +946,13 @@ export async function cancelInstallJob(input: {
   );
 }
 
+export async function retryInstallJob(jobId: string): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("install_job_retry", { request: { jobId } }),
+  );
+}
+
 export async function getPreferences(): Promise<AppPreferences> {
   if (bridgeMode === "native") {
     return preferencesSchema.parse(await invoke("preferences_get"));

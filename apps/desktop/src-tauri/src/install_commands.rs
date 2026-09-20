@@ -6,12 +6,46 @@ pub(super) struct PendingModpackUpdate {
     loader_version: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+enum RetryableInstallOperation {
+    InstanceInstall,
+    ModInstall { mods: Vec<InstallModSelection> },
+    ModpackUpdate { target_version_id: String },
+}
+
+impl RetryableInstallOperation {
+    const fn storage_name(&self) -> &'static str {
+        match self {
+            Self::InstanceInstall => "instance_install",
+            Self::ModInstall { .. } => "mod_install",
+            Self::ModpackUpdate { .. } => "modpack_update",
+        }
+    }
+
+    fn payload(&self) -> Option<serde_json::Value> {
+        match self {
+            Self::InstanceInstall => None,
+            Self::ModInstall { mods } => Some(serde_json::json!({ "mods": mods })),
+            Self::ModpackUpdate { target_version_id } => {
+                Some(serde_json::json!({ "targetVersionId": target_version_id }))
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub(super) async fn instance_install(
     state: tauri::State<'_, DesktopState>,
     request: InstallInstanceRequest,
 ) -> Result<InstallJobSummary, AppError> {
-    refresh_exited_sessions(state.inner()).await;
+    instance_install_inner(state.inner(), request).await
+}
+
+async fn instance_install_inner(
+    state: &DesktopState,
+    request: InstallInstanceRequest,
+) -> Result<InstallJobSummary, AppError> {
+    refresh_exited_sessions(state).await;
     let instance_id = InstanceId::from_uuid(request.id);
     let instance = state
         .database
@@ -19,28 +53,30 @@ pub(super) async fn instance_install(
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
     let plan = if let Some(source) = &instance.modpack_source {
-        Some(fetch_instance_modpack_plan(state.inner(), source).await?)
+        Some(fetch_instance_modpack_plan(state, source).await?)
     } else {
         None
     };
     queue_instance_install(
-        state.inner(),
+        state,
         instance,
         request.expected_revision,
         plan,
         Vec::new(),
         None,
+        RetryableInstallOperation::InstanceInstall,
     )
     .await
 }
 
-pub(super) async fn queue_instance_install(
+async fn queue_instance_install(
     state: &DesktopState,
     instance: InstanceRecord,
     expected_revision: u64,
     mut modpack_plan: Option<InstallPlan>,
     pending_mods: Vec<NewInstanceMod>,
     modpack_update: Option<PendingModpackUpdate>,
+    operation: RetryableInstallOperation,
 ) -> Result<InstallJobSummary, AppError> {
     let instance_id = instance.id;
     if state
@@ -95,7 +131,13 @@ pub(super) async fn queue_instance_install(
         .map_err(|error| map_storage_error(error, "slate could not load download settings."))?;
     let pending = state
         .database
-        .begin_instance_install(instance_id, expected_revision, RequestId::new())
+        .begin_instance_install_with_context(
+            instance_id,
+            expected_revision,
+            RequestId::new(),
+            operation.storage_name(),
+            operation.payload(),
+        )
         .await
         .map_err(|error| map_storage_error(error, "slate could not queue the installation."))?;
     let cancellation = state.installs.register(pending.job.id);
@@ -103,13 +145,7 @@ pub(super) async fn queue_instance_install(
         instance_id = %instance_id,
         job_id = %pending.job.id,
         revision_id = %pending.revision_id,
-        operation = if modpack_update.is_some() {
-            "modpack_update"
-        } else if pending_mods.is_empty() {
-            "instance_install"
-        } else {
-            "mod_install"
-        },
+        operation = operation.storage_name(),
         "installation queued"
     );
     let response = install_job_summary(pending.job.clone());
@@ -364,6 +400,88 @@ pub(super) async fn install_job_cancel(
         .map_err(|error| map_storage_error(error, "slate could not reload that installation."))
 }
 
+#[tauri::command]
+pub(super) async fn install_job_retry(
+    state: tauri::State<'_, DesktopState>,
+    request: RetryInstallJobRequest,
+) -> Result<InstallJobSummary, AppError> {
+    let job = state
+        .database
+        .get_install_job(JobId::from_uuid(request.job_id))
+        .await
+        .map_err(|error| map_storage_error(error, "That installation is no longer available."))?;
+    if !matches!(job.state, JobState::Failed | JobState::Cancelled) {
+        return Err(AppError::new(
+            "local.install_not_retryable",
+            "Only failed or cancelled installations can be retried.",
+        ));
+    }
+    let instance = state
+        .database
+        .get_instance(job.instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "That instance is no longer available."))?;
+    let instance_id = instance.id.as_uuid();
+    let expected_revision = instance.revision;
+
+    match job.operation.as_deref() {
+        Some("instance_install") => {
+            instance_install_inner(
+                state.inner(),
+                InstallInstanceRequest {
+                    id: instance_id,
+                    expected_revision,
+                },
+            )
+            .await
+        }
+        Some("mod_install") => {
+            let mods = job
+                .retry_payload
+                .and_then(|payload| payload.get("mods").cloned())
+                .and_then(|mods| serde_json::from_value::<Vec<InstallModSelection>>(mods).ok())
+                .filter(|mods| !mods.is_empty())
+                .ok_or_else(retry_context_missing)?;
+            instance_mod_install_inner(
+                state.inner(),
+                InstallModRequest {
+                    instance_id,
+                    expected_revision,
+                    mods,
+                },
+            )
+            .await
+        }
+        Some("modpack_update") => {
+            let target_version_id = job
+                .retry_payload
+                .as_ref()
+                .and_then(|payload| payload.get("targetVersionId"))
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(retry_context_missing)?;
+            modpack_update_apply_inner(
+                state.inner(),
+                ApplyModpackUpdateRequest {
+                    instance_id,
+                    expected_revision,
+                    target_version_id,
+                },
+            )
+            .await
+        }
+        _ => Err(retry_context_missing()),
+    }
+}
+
+fn retry_context_missing() -> AppError {
+    AppError::new(
+        "local.install_retry_unavailable",
+        "This older installation cannot be retried here. Open the instance and try again.",
+    )
+}
+
 pub(super) async fn fetch_instance_modpack_plan(
     state: &DesktopState,
     source: &slate_storage::ModpackSourceRecord,
@@ -425,7 +543,14 @@ pub(super) async fn modpack_update_apply(
     state: tauri::State<'_, DesktopState>,
     request: ApplyModpackUpdateRequest,
 ) -> Result<InstallJobSummary, AppError> {
-    refresh_exited_sessions(state.inner()).await;
+    modpack_update_apply_inner(state.inner(), request).await
+}
+
+async fn modpack_update_apply_inner(
+    state: &DesktopState,
+    request: ApplyModpackUpdateRequest,
+) -> Result<InstallJobSummary, AppError> {
+    refresh_exited_sessions(state).await;
     if request.target_version_id.trim().is_empty() || request.target_version_id.len() > 128 {
         return Err(AppError::new(
             "modpack.invalid_version",
@@ -434,8 +559,7 @@ pub(super) async fn modpack_update_apply(
     }
     let instance_id = InstanceId::from_uuid(request.instance_id);
     let instance =
-        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
-            .await?;
+        prepare_instance_content_change(state, instance_id, request.expected_revision).await?;
     let source = instance.modpack_source.clone().ok_or_else(|| {
         AppError::new(
             "modpack.not_managed",
@@ -544,15 +668,18 @@ pub(super) async fn modpack_update_apply(
     plan.delete.dedup();
 
     queue_instance_install(
-        state.inner(),
+        state,
         instance,
         request.expected_revision,
         Some(plan),
         Vec::new(),
         Some(PendingModpackUpdate {
-            version_id: latest.id,
+            version_id: latest.id.clone(),
             loader_version: target_loader_version,
         }),
+        RetryableInstallOperation::ModpackUpdate {
+            target_version_id: latest.id,
+        },
     )
     .await
 }
@@ -664,6 +791,7 @@ pub(super) async fn modpack_install(
         Some(plan),
         Vec::new(),
         None,
+        RetryableInstallOperation::InstanceInstall,
     )
     .await
     {
@@ -694,7 +822,14 @@ pub(super) async fn instance_mod_install(
     state: tauri::State<'_, DesktopState>,
     request: InstallModRequest,
 ) -> Result<InstallJobSummary, AppError> {
-    refresh_exited_sessions(state.inner()).await;
+    instance_mod_install_inner(state.inner(), request).await
+}
+
+async fn instance_mod_install_inner(
+    state: &DesktopState,
+    request: InstallModRequest,
+) -> Result<InstallJobSummary, AppError> {
+    refresh_exited_sessions(state).await;
     if request.mods.is_empty() || request.mods.len() > 50 {
         return Err(AppError::new(
             "mod.invalid_selection",
@@ -725,7 +860,7 @@ pub(super) async fn instance_mod_install(
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
-    let installed = installed_mod_index(state.inner(), &instance).await?;
+    let installed = installed_mod_index(state, &instance).await?;
     let (loader, loader_version) = instance_mod_target(&instance)?;
     let mut merged_plan: Option<InstallPlan> = None;
     let mut pending_by_identity = BTreeMap::<String, NewInstanceMod>::new();
@@ -899,12 +1034,13 @@ pub(super) async fn instance_mod_install(
         })
     })?;
     queue_instance_install(
-        state.inner(),
+        state,
         instance,
         request.expected_revision,
         Some(plan),
         pending_by_identity.into_values().collect(),
         None,
+        RetryableInstallOperation::ModInstall { mods: request.mods },
     )
     .await
 }

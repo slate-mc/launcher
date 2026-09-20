@@ -12,6 +12,7 @@ describe("InstallProgressIndicator", () => {
           instanceId: "22345678-1234-4234-8234-123456789abc",
           revisionId: "32345678-1234-4234-8234-123456789abc",
           state: "running",
+          canRetry: false,
           phase: "assets",
           message: "Checking game assets",
           completedItems: 25,
@@ -40,6 +41,7 @@ describe("InstallProgressIndicator", () => {
           instanceId: "22345678-1234-4234-8234-123456789abc",
           revisionId: "32345678-1234-4234-8234-123456789abc",
           state: "running",
+          canRetry: false,
           phase: "loader",
           message: "Running the NeoForge client installer",
           createdAt: "2026-09-13T00:00:00Z",
@@ -67,8 +69,10 @@ describe("InstallProgressIndicator", () => {
           instanceId: "22345678-1234-4234-8234-123456789abc",
           revisionId: "32345678-1234-4234-8234-123456789abc",
           state: "failed",
+          canRetry: false,
           phase: "content",
-          message: "request failed for https://private.example/C:/Users/name/file.jar",
+          message:
+            "request failed for https://private.example/C:/Users/name/file.jar",
           createdAt: "2026-09-13T00:00:00Z",
           updatedAt: "2026-09-13T00:00:01Z",
         }}
@@ -76,7 +80,9 @@ describe("InstallProgressIndicator", () => {
     );
 
     expect(
-      screen.getByText("Installation did not complete. Retry or repair the instance."),
+      screen.getByText(
+        "Installation did not complete. Retry or repair the instance.",
+      ),
     ).toBeVisible();
     expect(screen.queryByText(/private\.example/)).not.toBeInTheDocument();
   });
