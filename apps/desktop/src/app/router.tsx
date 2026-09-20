@@ -1,8 +1,16 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  redirect,
+} from "@tanstack/react-router";
 import { AppShell } from "../components/AppShell";
 import { RoutePlaceholder } from "../components/RoutePlaceholder";
 import { HomePage } from "../features/home/HomePage";
-import { DiscoverPage, ModpackDetailPage } from "../features/discover/DiscoverPages";
+import {
+  DiscoverPage,
+  ModpackDetailPage,
+} from "../features/discover/DiscoverPages";
 import {
   InstanceContentPage,
   InstanceOverviewPage,
@@ -10,6 +18,7 @@ import {
 } from "../features/instances/InstancePages";
 import { LibraryPage } from "../features/library/LibraryPage";
 import { NewInstancePage } from "../features/library/NewInstancePage";
+import { OnboardingPage } from "../features/onboarding/OnboardingPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { StorageSettingsPage } from "../features/settings/StorageSettingsPage";
 import { ServersPage } from "../features/servers/ServersPage";
@@ -43,6 +52,11 @@ const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/home",
   component: HomePage,
+});
+const onboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/onboarding",
+  component: OnboardingPage,
 });
 const libraryRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -117,6 +131,7 @@ const helpRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  onboardingRoute,
   homeRoute,
   libraryRoute,
   newInstanceRoute,

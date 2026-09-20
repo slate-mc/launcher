@@ -17,6 +17,7 @@ mod launch_commands;
 mod launch_support;
 mod mapping;
 mod mod_install_support;
+mod onboarding_commands;
 mod portable_instance;
 mod server_commands;
 mod server_support;
@@ -55,6 +56,7 @@ use launch_commands::*;
 use launch_support::*;
 use mapping::*;
 use mod_install_support::*;
+use onboarding_commands::*;
 use portable_instance::*;
 use serde::{Deserialize, Serialize};
 use server_commands::*;
@@ -86,18 +88,19 @@ use slate_contracts::{
     MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
     ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackUpdateSummary,
     ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
-    OpenInstanceDirectoryRequest, PerformancePresetDto, PingServerRequest, PreflightSummary,
-    ProcessPriorityDto, ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest,
-    RemoveInstanceModRequest, RemoveSavedServerRequest, RenameInstanceRequest,
-    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
-    SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest, SetFavoriteRequest,
-    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
-    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
-    StorageCategoryDto, StorageCategorySummary, StorageCleanupResult, StorageOverview,
-    SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest, TrashedInstanceSummary,
-    UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    OnboardingStateSummary, OpenInstanceDirectoryRequest, PerformancePresetDto, PingServerRequest,
+    PreflightSummary, ProcessPriorityDto, ReduceMotionPreferenceDto,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
+    RenameInstanceRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
+    SetDefaultAccountRequest, SetFavoriteRequest, SetInstanceContentFileEnabledRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
+    StopGameSessionRequest, StorageCategoryDto, StorageCategorySummary, StorageCleanupResult,
+    StorageOverview, SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
+    TrashedInstanceSummary, UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest,
+    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest,
+    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, LoaderFamily, ManagementMode,
@@ -169,6 +172,19 @@ struct DesktopState {
     auth_flows: AuthCoordinator,
     log_streams: SessionLogCoordinator,
     modpacks: ModpackApiClient,
+}
+
+async fn preferred_storage_root_id(state: &DesktopState) -> Result<StorageRootId, AppError> {
+    state
+        .database
+        .get_onboarding_state()
+        .await
+        .map(|onboarding| {
+            onboarding
+                .default_storage_root_id
+                .unwrap_or(state.storage_root_id)
+        })
+        .map_err(|error| map_storage_error(error, "slate could not prepare storage."))
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -689,6 +705,9 @@ fn main() {
             preferences_get,
             preferences_update,
             preflight_get,
+            onboarding_get,
+            onboarding_select_storage,
+            onboarding_complete,
             modpack_providers,
             modpacks_search,
             mods_search,

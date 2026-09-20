@@ -564,13 +564,14 @@ pub(super) async fn modpack_install(
     )
     .map_err(configuration_app_error)?;
 
+    let root_id = preferred_storage_root_id(state.inner()).await?;
     let record = state
         .database
         .create_instance(NewInstance {
             name,
             mode: slate_domain::InstanceMode::Modded,
             management_mode: ManagementMode::Local,
-            root_id: state.storage_root_id,
+            root_id,
             minecraft_version: plan.runtime.minecraft.clone(),
             loader_kind: loader_kind.into(),
             loader_version,

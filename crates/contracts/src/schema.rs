@@ -12,11 +12,12 @@ use crate::{
     LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModSearchRequest,
     ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackUpdateSummary,
     ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
-    OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
-    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
-    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
-    SessionLogSubscription, SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    OnboardingStateSummary, OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary,
+    RedactedLaunchPlan, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
+    RemoveSavedServerRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogSubscription,
+    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
     StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
     UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
@@ -113,6 +114,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(SetInstanceSnapshotPinnedRequest),
         ),
         ("app-preferences", schema_for!(AppPreferencesDto)),
+        (
+            "onboarding-state-summary",
+            schema_for!(OnboardingStateSummary),
+        ),
         ("preflight-summary", schema_for!(PreflightSummary)),
         ("storage-overview", schema_for!(StorageOverview)),
         (
@@ -300,7 +305,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 81);
+        assert_eq!(schemas.len(), 82);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

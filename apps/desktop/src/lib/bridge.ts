@@ -20,6 +20,7 @@ import {
   modpackSearchResultSchema,
   modpackVersionPageSchema,
   modpackVersionSchema,
+  onboardingStateSchema,
   preferencesSchema,
   preflightSchema,
   defaultInstanceSettings,
@@ -36,6 +37,7 @@ import {
   type ModpackProviders,
   type ModpackSearchResult,
   type ModpackVersion,
+  type OnboardingState,
   type Provider,
   type InstallJob,
   type InstanceMod,
@@ -215,7 +217,7 @@ export async function getBootstrap(): Promise<Bootstrap> {
   return bootstrapSchema.parse({
     productName: "slate",
     ipcSchemaVersion: 1,
-    databaseSchemaVersion: 9,
+    databaseSchemaVersion: 10,
     capabilities: [
       { id: "instance.library", available: true },
       { id: "instance.create", available: true },
@@ -244,13 +246,37 @@ export async function getBootstrap(): Promise<Bootstrap> {
   });
 }
 
+export async function getOnboardingState(): Promise<OnboardingState> {
+  if (bridgeMode === "native") {
+    return onboardingStateSchema.parse(await invoke("onboarding_get"));
+  }
+  return { completed: true, customStorageSelected: false };
+}
+
+export async function selectOnboardingStorage(): Promise<OnboardingState> {
+  if (bridgeMode === "native") {
+    return onboardingStateSchema.parse(
+      await invoke("onboarding_select_storage"),
+    );
+  }
+  requirePreview();
+  return { completed: true, customStorageSelected: false };
+}
+
+export async function completeOnboarding(): Promise<OnboardingState> {
+  if (bridgeMode === "native") {
+    return onboardingStateSchema.parse(await invoke("onboarding_complete"));
+  }
+  requirePreview();
+  return { completed: true, customStorageSelected: false };
+}
+
 export async function listInstances(): Promise<LauncherInstance[]> {
   if (bridgeMode === "native") {
     return instanceSummaryListSchema.parse(await invoke("instances_list"));
   }
   return bridgeMode === "preview" ? structuredClone(previewInstances) : [];
 }
-
 
 export async function getInstance(id: string): Promise<LauncherInstance> {
   if (bridgeMode === "native") {
@@ -605,10 +631,7 @@ export async function updateInstanceConfiguration(input: {
 
 export type EditableInstanceSettings = Omit<
   InstanceSettings,
-  | "hasCustomIcon"
-  | "hasCustomBanner"
-  | "effectiveMemoryMb"
-  | "customJavaLabel"
+  "hasCustomIcon" | "hasCustomBanner" | "effectiveMemoryMb" | "customJavaLabel"
 >;
 
 export async function updateInstanceSettings(
@@ -641,7 +664,9 @@ export async function selectInstanceJava(input: {
   expectedRevision: number;
 }): Promise<LauncherInstance> {
   if (bridgeMode !== "native") {
-    throw new Error("Java selection is available only in the slate desktop app.");
+    throw new Error(
+      "Java selection is available only in the slate desktop app.",
+    );
   }
   return instanceSummarySchema.parse(
     await invoke("instance_select_java", { request: input }),
@@ -654,7 +679,9 @@ export async function selectInstanceArtwork(input: {
   expectedRevision: number;
 }): Promise<LauncherInstance> {
   if (bridgeMode !== "native") {
-    throw new Error("Artwork selection is available only in the slate desktop app.");
+    throw new Error(
+      "Artwork selection is available only in the slate desktop app.",
+    );
   }
   return instanceSummarySchema.parse(
     await invoke("instance_select_artwork", { request: input }),
@@ -667,7 +694,9 @@ export async function resetInstanceArtwork(input: {
   expectedRevision: number;
 }): Promise<LauncherInstance> {
   if (bridgeMode !== "native") {
-    throw new Error("Artwork selection is available only in the slate desktop app.");
+    throw new Error(
+      "Artwork selection is available only in the slate desktop app.",
+    );
   }
   return instanceSummarySchema.parse(
     await invoke("instance_reset_artwork", { request: input }),
@@ -702,7 +731,9 @@ export async function updateInstanceGameOptions(input: {
   expectedRevision: number;
 }): Promise<LauncherInstance> {
   if (bridgeMode !== "native") {
-    throw new Error("Game options are available only in the slate desktop app.");
+    throw new Error(
+      "Game options are available only in the slate desktop app.",
+    );
   }
   return instanceSummarySchema.parse(
     await invoke("instance_game_options_update", { request: input }),
@@ -738,7 +769,9 @@ export async function moveInstanceStorage(input: {
   expectedRevision: number;
 }): Promise<LauncherInstance> {
   if (bridgeMode !== "native") {
-    throw new Error("Storage moves are available only in the slate desktop app.");
+    throw new Error(
+      "Storage moves are available only in the slate desktop app.",
+    );
   }
   return instanceSummarySchema.parse(
     await invoke("instance_move_storage", { request: input }),
@@ -879,7 +912,6 @@ export async function listInstallJobs(): Promise<InstallJob[]> {
   return structuredClone(previewInstallJobs);
 }
 
-
 export async function getPreferences(): Promise<AppPreferences> {
   if (bridgeMode === "native") {
     return preferencesSchema.parse(await invoke("preferences_get"));
@@ -917,7 +949,6 @@ export async function getPreflight(): Promise<Preflight> {
     launchImplemented: true,
   });
 }
-
 
 function updatePreviewInstance(
   id: string,

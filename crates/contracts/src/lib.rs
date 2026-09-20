@@ -12,6 +12,7 @@ mod install;
 mod instance;
 mod launch;
 mod modpack;
+mod onboarding;
 mod schema;
 mod server;
 mod settings;
@@ -56,6 +57,7 @@ pub use modpack::{
     SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest,
 };
+pub use onboarding::OnboardingStateSummary;
 pub use schema::schema_documents;
 pub use server::{
     CreateSavedServerRequest, PingServerRequest, RemoveSavedServerRequest, SavedServerSummary,
@@ -71,7 +73,7 @@ pub use system::{
 };
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 9;
+pub const DATABASE_SCHEMA_VERSION: u32 = 10;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

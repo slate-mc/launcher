@@ -6,6 +6,7 @@ mod installations;
 mod instance_mods;
 mod instance_settings;
 mod instances;
+mod onboarding;
 mod servers;
 mod settings;
 mod snapshots;
@@ -26,6 +27,7 @@ pub use instance_settings::{
 pub use instances::{
     InstanceRecord, ModpackSourceRecord, NewInstance, NewModpackSource, TrashedInstanceRecord,
 };
+pub use onboarding::OnboardingStateRecord;
 pub use servers::{NewSavedServer, SavedServerRecord};
 pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference};
 pub use snapshots::InstanceSnapshotRecord;

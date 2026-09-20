@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   CircleHelp,
@@ -7,6 +7,7 @@ import {
   Download,
   Home,
   Library,
+  LoaderCircle,
   Server,
   Settings,
   UserRound,
@@ -15,6 +16,7 @@ import { useEffect, type ComponentType } from "react";
 import {
   bridgeMode,
   getPreferences,
+  getOnboardingState,
   getPreflight,
   listAccounts,
   listGameSessions,
@@ -40,6 +42,12 @@ const quietAction =
   "inline-flex size-9 items-center justify-center rounded-compact border-0 bg-transparent p-0 text-app-secondary no-underline transition-colors duration-[120ms] hover:bg-app-hover hover:text-app-text";
 
 export function AppShell() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const onboardingQuery = useQuery({
+    queryKey: ["onboarding"],
+    queryFn: getOnboardingState,
+  });
   const preferencesQuery = useQuery({
     queryKey: ["preferences"],
     queryFn: getPreferences,
@@ -109,6 +117,52 @@ export function AppShell() {
     reducedMotion.addEventListener("change", applyMotion);
     return () => reducedMotion.removeEventListener("change", applyMotion);
   }, [preferencesQuery.data?.reduceMotion]);
+
+  useEffect(() => {
+    if (bridgeMode !== "native" || !onboardingQuery.data) return;
+    if (
+      !onboardingQuery.data.completed &&
+      location.pathname !== "/onboarding"
+    ) {
+      void navigate({ to: "/onboarding", replace: true });
+    } else if (
+      onboardingQuery.data.completed &&
+      location.pathname === "/onboarding"
+    ) {
+      void navigate({ to: "/home", replace: true });
+    }
+  }, [location.pathname, navigate, onboardingQuery.data]);
+
+  if (bridgeMode === "native" && onboardingQuery.isPending) {
+    return <SetupGate message="Preparing slate" />;
+  }
+  if (bridgeMode === "native" && onboardingQuery.isError) {
+    return (
+      <SetupGate
+        message="Setup could not be loaded"
+        action={
+          <button
+            type="button"
+            className="mt-5 h-9 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent"
+            onClick={() => void onboardingQuery.refetch()}
+          >
+            Try again
+          </button>
+        }
+      />
+    );
+  }
+  if (
+    bridgeMode === "native" &&
+    onboardingQuery.data &&
+    ((!onboardingQuery.data.completed && location.pathname !== "/onboarding") ||
+      (onboardingQuery.data.completed && location.pathname === "/onboarding"))
+  ) {
+    return <SetupGate message="Preparing slate" />;
+  }
+  if (location.pathname === "/onboarding") {
+    return <Outlet />;
+  }
 
   return (
     <div className="flex h-full min-h-[640px] min-w-[960px] flex-col bg-app-bg text-app-text">
@@ -272,6 +326,42 @@ export function AppShell() {
           Help
         </Link>
       </footer>
+    </div>
+  );
+}
+
+function SetupGate({
+  message,
+  action,
+}: {
+  message: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="grid h-full min-h-[640px] min-w-[960px] place-items-center bg-app-bg text-app-text">
+      <div className="text-center">
+        <img
+          className="brand-lockup-paper mx-auto block w-[132px]"
+          src="/brand/slate-lockup-paper.svg"
+          alt="slate"
+        />
+        <img
+          className="brand-lockup-graphite mx-auto hidden w-[132px]"
+          src="/brand/slate-lockup-graphite.svg"
+          alt="slate"
+        />
+        <div className="mt-6 flex items-center justify-center gap-2 text-xs font-semibold text-app-secondary">
+          {!action ? (
+            <LoaderCircle
+              className="animate-spin"
+              size={15}
+              aria-hidden="true"
+            />
+          ) : null}
+          {message}
+        </div>
+        {action}
+      </div>
     </div>
   );
 }

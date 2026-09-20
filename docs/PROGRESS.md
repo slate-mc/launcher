@@ -38,6 +38,9 @@ Last updated: September 20, 2026
 - Structured desktop/API tracing with request correlation, install and session lifecycle events,
   daily JSON launcher diagnostics, a bounded non-blocking event buffer, and automatic age/count/size
   retention.
+- First-run onboarding guides new players through Minecraft account connection, storage choice,
+  managed Java readiness, and first-instance creation. Existing libraries bypass it automatically,
+  and a chosen storage location becomes the default for future instances.
 - Separate Downloads and Activity destinations. Normal product copy no longer exposes internal IDs,
   paths, backend terminology, or raw Rust/HTTP errors; technical output remains in the Minecraft log
   view where it is useful.
@@ -47,32 +50,30 @@ Last updated: September 20, 2026
 Verified on Windows on September 20, 2026:
 
 - Frontend lint passes with zero warnings.
-- 11 Vitest/Testing Library tests pass.
+- 12 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes. It still reports a large initial JavaScript chunk.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-targets` passes: 117 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 118 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
 ## F1 release blockers
 
-1. **Onboarding:** there is no first-run flow for account connection, storage choice, Java readiness,
-   and first-instance creation.
-2. **Content updates:** modpack updates work end to end. Per-mod update, downgrade,
+1. **Content updates:** modpack updates work end to end. Per-mod update, downgrade,
    dependency/dependent views, and rollback are not complete; pinning alone is not an updater.
-3. **Import coverage:** slate portable archives work, but importing CurseForge/Modrinth packs,
+2. **Import coverage:** slate portable archives work, but importing CurseForge/Modrinth packs,
    importing from other launchers, and adding a local JAR through a file picker are not complete.
-4. **Download controls:** installation progress and restart recovery work, but user cancellation,
+3. **Download controls:** installation progress and restart recovery work, but user cancellation,
    retry from the Downloads page, queue ordering, pause/resume, and bandwidth controls are missing.
-5. **Resource content workflows:** resource packs, shaders, and data packs can be inventoried and
+4. **Resource content workflows:** resource packs, shaders, and data packs can be inventoried and
    managed after they exist, but browsing, importing, updating, and ordering them are incomplete.
-6. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
+5. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
-7. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
+6. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-8. **Operational readiness:** structured local tracing is active. Crash reporting, privacy-aware
+7. **Operational readiness:** structured local tracing is active. Crash reporting, privacy-aware
    product analytics, remote feature controls, hosted backend telemetry, offline delivery, and the
    in-app support-report pipeline still need production implementations.
 
@@ -116,6 +117,6 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Build the first-run onboarding flow, then add the user-reviewed support-report export path over the
-new diagnostics foundation. Add native clean-install smoke coverage so release claims are
-evidence-based rather than inferred from unit tests.
+Add the user-reviewed support-report export path over the diagnostics foundation, then add native
+clean-install smoke coverage so release claims are evidence-based rather than inferred from unit
+tests.

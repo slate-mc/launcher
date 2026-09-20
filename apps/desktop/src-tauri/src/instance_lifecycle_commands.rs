@@ -29,13 +29,14 @@ pub(super) async fn instance_duplicate(
         ));
     }
     let name = parse_instance_name(&request.name).map_err(instance_name_app_error)?;
+    let root_id = preferred_storage_root_id(state.inner()).await?;
     let duplicate = state
         .database
         .create_instance(NewInstance {
             name,
             mode: source.mode,
             management_mode: ManagementMode::Local,
-            root_id: state.storage_root_id,
+            root_id,
             minecraft_version: source.minecraft_version.clone(),
             loader_kind: source.loader_kind,
             loader_version: source.loader_version.clone(),
@@ -275,13 +276,14 @@ pub(super) async fn instance_import(
     .map_err(configuration_app_error)?;
     let name = parse_instance_name(&manifest.name).map_err(instance_name_app_error)?;
     let modpack_source = validated_portable_modpack_source(manifest.modpack_source)?;
+    let root_id = preferred_storage_root_id(state.inner()).await?;
     let mut record = state
         .database
         .create_instance(NewInstance {
             name,
             mode: manifest.mode.into(),
             management_mode: ManagementMode::Local,
-            root_id: state.storage_root_id,
+            root_id,
             minecraft_version: manifest.minecraft_version.trim().to_owned(),
             loader_kind: manifest.loader_kind.into(),
             loader_version: manifest.loader_version.clone(),

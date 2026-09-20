@@ -45,13 +45,14 @@ pub(super) async fn instance_create(
     )
     .map_err(configuration_app_error)?;
     let name = parse_instance_name(&request.name).map_err(instance_name_app_error)?;
+    let root_id = preferred_storage_root_id(state.inner()).await?;
     let record = state
         .database
         .create_instance(NewInstance {
             name,
             mode: request.mode.into(),
             management_mode: ManagementMode::Local,
-            root_id: state.storage_root_id,
+            root_id,
             minecraft_version: request.minecraft_version.trim().to_owned(),
             loader_kind: request.loader_kind.into(),
             loader_version,

@@ -13,6 +13,11 @@ export const bootstrapSchema = z.object({
   capabilities: z.array(capabilitySchema),
 });
 
+export const onboardingStateSchema = z.object({
+  completed: z.boolean(),
+  customStorageSelected: z.boolean(),
+});
+
 export const loaderKindSchema = z.enum(["vanilla", "fabric", "neoForge"]);
 export const instanceModeSchema = z.enum(["vanilla", "modded", "pvp"]);
 export const setupStateSchema = z.enum([
@@ -27,11 +32,7 @@ export const instanceWindowModeSchema = z.enum([
   "maximized",
   "fullscreen",
 ]);
-export const launcherBehaviorSchema = z.enum([
-  "keepOpen",
-  "minimize",
-  "hide",
-]);
+export const launcherBehaviorSchema = z.enum(["keepOpen", "minimize", "hide"]);
 export const processPrioritySchema = z.enum([
   "low",
   "belowNormal",
@@ -262,7 +263,10 @@ export const savedServerListSchema = z.array(savedServerSchema);
 
 export const serverTextSegmentSchema = z.object({
   text: z.string(),
-  color: z.string().regex(/^#[0-9A-F]{6}$/).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-F]{6}$/)
+    .optional(),
   bold: z.boolean().default(false),
   italic: z.boolean().default(false),
   underlined: z.boolean().default(false),
@@ -606,6 +610,7 @@ export const instanceModResolutionListSchema = z.array(
 );
 
 export type Bootstrap = z.infer<typeof bootstrapSchema>;
+export type OnboardingState = z.infer<typeof onboardingStateSchema>;
 export type LauncherInstance = z.infer<typeof instanceSummarySchema>;
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 export type InstanceArtworkKind = "icon" | "banner";
@@ -619,7 +624,9 @@ export type SavedServer = z.infer<typeof savedServerSchema>;
 export type ServerTextSegment = z.infer<typeof serverTextSegmentSchema>;
 export type ServerStatus = z.infer<typeof serverStatusSchema>;
 export type StorageCategory = z.infer<typeof storageCategorySchema>;
-export type StorageCategorySummary = z.infer<typeof storageCategorySummarySchema>;
+export type StorageCategorySummary = z.infer<
+  typeof storageCategorySummarySchema
+>;
 export type TrashedInstance = z.infer<typeof trashedInstanceSchema>;
 export type StorageOverview = z.infer<typeof storageOverviewSchema>;
 export type StorageCleanupResult = z.infer<typeof storageCleanupResultSchema>;
