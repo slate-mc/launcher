@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InstanceContentHistoryRequest",
+  "type": "object",
+  "properties": {
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "$ref": "#/$defs/InstanceContentKindDto"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    }
+  },
+  "required": [
+    "instanceId",
+    "kind",
+    "provider",
+    "projectId"
+  ],
+  "$defs": {
+    "InstanceContentKindDto": {
+      "type": "string",
+      "enum": [
+        "resourcePack",
+        "shaderPack",
+        "dataPack"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}

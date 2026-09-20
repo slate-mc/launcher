@@ -185,6 +185,7 @@ pub(super) async fn instance_content_install_inner(
             icon_url: trusted_content_icon(selection.icon_url.as_deref()),
             file_path: download.destination.clone(),
             hashes: download.hashes.clone(),
+            pinned: false,
         });
         downloads.push(download);
         merged_plan.get_or_insert(plan);
@@ -213,6 +214,280 @@ pub(super) async fn instance_content_install_inner(
         },
     )
     .await
+}
+
+#[tauri::command]
+pub(super) async fn instance_content_versions(
+    state: tauri::State<'_, DesktopState>,
+    request: InstanceContentVersionsRequest,
+) -> Result<ModVersionList, AppError> {
+    validate_provider_content_identity(request.provider, &request.project_id)?;
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    ensure_provider_content_installed(
+        state.inner(),
+        instance_id,
+        request.kind,
+        request.provider,
+        &request.project_id,
+    )
+    .await?;
+    state
+        .modpacks
+        .content_versions(
+            provider_content_kind(request.kind),
+            request.project_id.trim(),
+            &instance.minecraft_version,
+        )
+        .await
+        .map_err(modpack_api_error)
+}
+
+#[tauri::command]
+pub(super) async fn instance_content_history(
+    state: tauri::State<'_, DesktopState>,
+    request: InstanceContentHistoryRequest,
+) -> Result<Vec<InstanceContentHistorySummary>, AppError> {
+    validate_provider_content_identity(request.provider, &request.project_id)?;
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    ensure_provider_content_installed(
+        state.inner(),
+        instance_id,
+        request.kind,
+        request.provider,
+        &request.project_id,
+    )
+    .await?;
+    state
+        .database
+        .list_instance_provider_content_history(
+            instance_id,
+            provider_content_kind(request.kind),
+            request.provider,
+            request.project_id.trim(),
+        )
+        .await
+        .map(|items| {
+            items
+                .into_iter()
+                .map(|item| InstanceContentHistorySummary {
+                    version_id: item.version_id,
+                    changed_at: item.changed_at,
+                })
+                .collect()
+        })
+        .map_err(|error| map_storage_error(error, "slate could not load version history."))
+}
+
+#[tauri::command]
+pub(super) async fn instance_content_update(
+    state: tauri::State<'_, DesktopState>,
+    request: UpdateInstanceContentRequest,
+) -> Result<InstallJobSummary, AppError> {
+    instance_content_update_inner(state.inner(), request).await
+}
+
+pub(super) async fn instance_content_update_inner(
+    state: &DesktopState,
+    request: UpdateInstanceContentRequest,
+) -> Result<InstallJobSummary, AppError> {
+    validate_provider_content_identity(request.provider, &request.project_id)?;
+    let target_version_id = request.target_version_id.trim();
+    if target_version_id.is_empty() || target_version_id.len() > 128 {
+        return Err(AppError::new(
+            "content.invalid_version",
+            "Choose a valid content version.",
+        ));
+    }
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state, instance_id, request.expected_revision).await?;
+    let kind = provider_content_kind(request.kind);
+    let records = state
+        .database
+        .list_instance_provider_content(instance_id, kind)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not inspect installed content."))?;
+    let current = records
+        .into_iter()
+        .find(|item| {
+            item.provider == request.provider
+                && item.project_id == request.project_id.trim()
+                && item.file_path == request.file_path
+        })
+        .ok_or_else(|| {
+            AppError::new(
+                "content.not_installed",
+                "That content file is no longer installed in this instance.",
+            )
+        })?;
+    if current.version_id == target_version_id {
+        return Err(AppError::new(
+            "content.version_unchanged",
+            "That content version is already installed.",
+        ));
+    }
+    let (loader, loader_version) = instance_runtime_target(&instance);
+    let mut plan = state
+        .modpacks
+        .content_install_plan(
+            kind,
+            request.project_id.trim(),
+            &ContentInstallPlanRequest {
+                minecraft_version: instance.minecraft_version.clone(),
+                loader,
+                loader_version,
+                version_id: Some(target_version_id.to_owned()),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)?;
+    let selection = InstallContentSelection {
+        provider: request.provider,
+        project_id: request.project_id.trim().to_owned(),
+        display_name: request.display_name.trim().to_owned(),
+        icon_url: current.icon_url.clone(),
+    };
+    validate_content_plan(&instance, kind, &selection, &plan)?;
+    if plan.instance.version_id != target_version_id {
+        return Err(invalid_content_plan());
+    }
+    let mut download = plan.downloads.remove(0);
+    let file_name = download
+        .destination
+        .rsplit('/')
+        .next()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(invalid_content_plan)?;
+    download.destination =
+        updated_content_destination(request.kind, &current.file_path, file_name)?;
+    if current.file_path.ends_with(".disabled") {
+        download.destination.push_str(".disabled");
+    }
+    let paths = paths_for_instance(state, &instance);
+    let internal_kind = content_kind(request.kind);
+    let scanned = tokio::task::spawn_blocking(move || {
+        scan_instance_content(&paths, instance_id, internal_kind)
+    })
+    .await
+    .map_err(|_| content_file_error())?
+    .map_err(|_| content_file_error())?;
+    let target_path = normalized_content_path(&download.destination);
+    let current_path = normalized_content_path(&current.file_path);
+    if scanned.into_iter().any(|item| {
+        let path = normalized_content_path(&item.file_path);
+        path == target_path && path != current_path
+    }) {
+        return Err(AppError::new(
+            "content.file_conflict",
+            "That version conflicts with a content file that is already installed.",
+        ));
+    }
+    plan.downloads = vec![download.clone()];
+    plan.delete = vec![current.file_path.clone()];
+    plan.total_download_size = download.size;
+    let display_name = if request.display_name.trim().is_empty() {
+        current.display_name.clone()
+    } else {
+        request.display_name.trim().to_owned()
+    };
+    queue_instance_install(
+        state,
+        instance,
+        request.expected_revision,
+        Some(plan),
+        PendingModChanges {
+            provider_content: vec![NewInstanceProviderContent {
+                kind,
+                provider: request.provider,
+                project_id: request.project_id.trim().to_owned(),
+                version_id: target_version_id.to_owned(),
+                display_name: display_name.clone(),
+                icon_url: current.icon_url,
+                file_path: download.destination,
+                hashes: download.hashes,
+                pinned: current.pinned,
+            }],
+            replaced_content_paths: vec![current.file_path.clone()],
+            ..PendingModChanges::default()
+        },
+        None,
+        RetryableInstallOperation::ContentUpdate {
+            kind: request.kind,
+            provider: request.provider,
+            project_id: request.project_id,
+            file_path: request.file_path,
+            display_name,
+            target_version_id: target_version_id.to_owned(),
+        },
+    )
+    .await
+}
+
+async fn ensure_provider_content_installed(
+    state: &DesktopState,
+    instance_id: InstanceId,
+    kind: InstanceContentKindDto,
+    provider: slate_modpack_api_contracts::Provider,
+    project_id: &str,
+) -> Result<(), AppError> {
+    let installed = state
+        .database
+        .list_instance_provider_content(instance_id, provider_content_kind(kind))
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not inspect installed content."))?;
+    if installed
+        .iter()
+        .any(|item| item.provider == provider && item.project_id == project_id.trim())
+    {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "content.not_installed",
+            "That content file is no longer installed in this instance.",
+        ))
+    }
+}
+
+fn validate_provider_content_identity(
+    provider: slate_modpack_api_contracts::Provider,
+    project_id: &str,
+) -> Result<(), AppError> {
+    if provider != slate_modpack_api_contracts::Provider::Modrinth
+        || project_id.is_empty()
+        || project_id.len() > 128
+        || !project_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        Err(AppError::new(
+            "content.provider_unavailable",
+            "Updates are not available for that content file.",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn updated_content_destination(
+    kind: InstanceContentKindDto,
+    current_path: &str,
+    file_name: &str,
+) -> Result<String, AppError> {
+    match kind {
+        InstanceContentKindDto::ResourcePack => Ok(format!("resourcepacks/{file_name}")),
+        InstanceContentKindDto::ShaderPack => Ok(format!("shaderpacks/{file_name}")),
+        InstanceContentKindDto::DataPack => {
+            let normalized = current_path.replace('\\', "/");
+            let marker = "/datapacks/";
+            let position = normalized.find(marker).ok_or_else(invalid_content_plan)?;
+            Ok(format!("{}{marker}{file_name}", &normalized[..position]))
+        }
+    }
 }
 
 fn validate_content_selection(selection: &InstallContentSelection) -> Result<(), AppError> {

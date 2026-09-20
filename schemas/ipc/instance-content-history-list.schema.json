@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Array_of_InstanceContentHistorySummary",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/InstanceContentHistorySummary"
+  },
+  "$defs": {
+    "InstanceContentHistorySummary": {
+      "type": "object",
+      "properties": {
+        "changedAt": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "versionId",
+        "changedAt"
+      ]
+    }
+  }
+}

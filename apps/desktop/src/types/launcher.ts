@@ -659,6 +659,13 @@ export const instanceContentFileSchema = z.object({
 
 export const instanceContentFileListSchema = z.array(instanceContentFileSchema);
 
+export const instanceContentHistorySchema = z.array(
+  z.object({
+    versionId: z.string().min(1),
+    changedAt: z.string().min(1),
+  }),
+);
+
 export const instanceWorldListSchema = z.array(z.string().min(1));
 
 export const instanceModResolutionSchema = z.object({
@@ -730,6 +737,9 @@ export type InstanceModHistory = z.infer<
 export type InstanceModResolution = z.infer<typeof instanceModResolutionSchema>;
 export type InstanceContentKind = z.infer<typeof instanceContentKindSchema>;
 export type InstanceContentFile = z.infer<typeof instanceContentFileSchema>;
+export type InstanceContentHistory = z.infer<
+  typeof instanceContentHistorySchema
+>[number];
 
 export type LauncherUpdate = {
   id: string;

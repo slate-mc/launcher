@@ -54,7 +54,8 @@ pub use modpack::{
     ApplyModpackUpdateRequest, CheckModpackUpdateRequest, ContentSearchRequest,
     ImportLocalContentFileRequest, ImportLocalModRequest, InstallContentRequest,
     InstallContentSelection, InstallModRequest, InstallModSelection, InstallModpackRequest,
-    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
+    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentHistoryRequest,
+    InstanceContentHistorySummary, InstanceContentKindDto, InstanceContentVersionsRequest,
     InstanceModHistoryRequest, InstanceModHistorySummary, InstanceModOriginDto,
     InstanceModReferenceSummary, InstanceModResolution, InstanceModSummary,
     InstanceModVersionsRequest, InstanceModsRequest, InstanceWorldsRequest, ModSearchRequest,
@@ -62,7 +63,8 @@ pub use modpack::{
     ModpackVersionRequest, ModpackVersionsRequest, RemoveInstanceContentFileRequest,
     RemoveInstanceModRequest, ResolveInstanceModRelationshipsRequest,
     SetInstanceContentFileEnabledRequest, SetInstanceContentPinnedRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, UpdateInstanceModRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, UpdateInstanceContentRequest,
+    UpdateInstanceModRequest,
 };
 pub use onboarding::OnboardingStateSummary;
 pub use schema::schema_documents;

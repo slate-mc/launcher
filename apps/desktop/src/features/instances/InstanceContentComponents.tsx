@@ -3,16 +3,12 @@ import {
   Download,
   FileUp,
   LoaderCircle,
-  Pin,
-  PinOff,
   Plus,
   RotateCcw,
   Search,
   ShieldCheck,
-  Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import { ContentArtwork } from "../../components/ContentArtwork";
 import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import { EmptyState, InlineNotice } from "../../components/PageScaffold";
 import {
@@ -26,6 +22,7 @@ import {
   searchContent,
   setInstanceContentPinned,
   setInstanceContentFileEnabled,
+  updateInstanceContent,
 } from "../../lib/bridge";
 import { installJobMessage } from "../../lib/installJobPresentation";
 import type {
@@ -34,10 +31,7 @@ import type {
   LauncherInstance,
   ModpackSummary,
 } from "../../types/launcher";
-import {
-  contentErrorMessage,
-  formatContentFileSize,
-} from "./instanceContentFormat";
+import { contentErrorMessage } from "./instanceContentFormat";
 import type { ContentSectionKind } from "./instanceContentModel";
 import {
   ContentNavigation,
@@ -45,6 +39,7 @@ import {
   ModResultSkeletons,
   ModSearchResult,
 } from "./ContentBrowserComponents";
+import { InstalledContentRow } from "./InstalledContentRow";
 
 const secondaryButtonClass =
   "inline-flex h-9 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text hover:border-app-secondary disabled:opacity-50";
@@ -118,6 +113,9 @@ export function InstanceFileContent({
             queryKey: ["instance", instance.id],
           }),
           queryClient.invalidateQueries({ queryKey: ["instances"] }),
+          queryClient.invalidateQueries({
+            queryKey: ["instance-content-history", instance.id, kind],
+          }),
         ]);
       }
       return jobs;
@@ -292,6 +290,43 @@ export function InstanceFileContent({
         message: contentErrorMessage(error),
       }),
   });
+  const updateMutation = useMutation({
+    mutationFn: ({
+      file,
+      versionId,
+    }: {
+      file: InstanceContentFile;
+      versionId: string;
+    }) => {
+      if (!file.provider || !file.projectId) {
+        throw new Error("Updates are not available for that content file.");
+      }
+      return updateInstanceContent({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+        kind,
+        provider: file.provider,
+        projectId: file.projectId,
+        filePath: file.filePath,
+        displayName: file.displayName,
+        targetVersionId: versionId,
+      });
+    },
+    onMutate: () => setNotice(undefined),
+    onSuccess: async (job) => {
+      setInstallJobId(job.id);
+      queryClient.setQueryData(["install-jobs"], (current: unknown) =>
+        Array.isArray(current) ? [job, ...current] : [job],
+      );
+      await queryClient.invalidateQueries({ queryKey: ["install-jobs"] });
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Version change was not queued",
+        message: contentErrorMessage(error),
+      }),
+  });
   const files = query.data ?? [];
   const selectedItems = Object.values(selectedContent);
   const installedIdentities = new Set(
@@ -320,6 +355,7 @@ export function InstanceFileContent({
   const visibleNotice = notice ?? installNotice;
   const installing =
     installMutation.isPending ||
+    updateMutation.isPending ||
     installJob?.state === "queued" ||
     installJob?.state === "running" ||
     installJob?.state === "paused";
@@ -635,121 +671,24 @@ export function InstanceFileContent({
               </thead>
               <tbody className="divide-y divide-app-separator/45">
                 {files.map((file) => (
-                  <tr key={file.filePath} className="text-[11px]">
-                    <td className="px-5 py-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        {file.iconUrl ? (
-                          <ContentImage
-                            src={file.iconUrl}
-                            name={file.displayName}
-                          />
-                        ) : null}
-                        <span className="min-w-0">
-                          <strong className="block truncate text-xs text-app-text">
-                            {file.displayName}
-                          </strong>
-                          <span
-                            className="mt-0.5 block truncate font-mono text-[9px] text-app-muted"
-                            title={file.filePath}
-                          >
-                            {file.filePath}
-                          </span>
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-app-secondary">
-                      {file.worldName ?? "Instance"}
-                    </td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={`rounded-full border px-2 py-1 font-mono text-[9px] ${file.origin === "modpack" ? "border-app-accent/35 text-app-accent" : "border-app-separator text-app-secondary"}`}
-                      >
-                        {file.origin === "modpack"
-                          ? "Included with pack"
-                          : "Added by you"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 font-mono text-[10px] text-app-secondary">
-                      {file.fileSize
-                        ? formatContentFileSize(file.fileSize)
-                        : "Folder"}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        {file.canToggle ? (
-                          <button
-                            type="button"
-                            className="h-7 rounded-control border border-app-separator px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
-                            disabled={busy}
-                            onClick={() =>
-                              toggleMutation.mutate({
-                                file,
-                                enabled: !file.enabled,
-                              })
-                            }
-                          >
-                            {file.enabled ? "Hide" : "Restore"}
-                          </button>
-                        ) : (
-                          <span
-                            className="text-[9px] text-app-muted"
-                            title="Folder packs are enabled and ordered inside Minecraft."
-                          >
-                            In-game
-                          </span>
-                        )}
-                        {file.provider && file.projectId ? (
-                          <button
-                            type="button"
-                            className={`inline-flex size-7 items-center justify-center rounded-control border bg-app-bg disabled:opacity-45 ${file.pinned ? "border-app-accent/40 text-app-accent" : "border-app-separator text-app-secondary hover:border-app-accent/45 hover:text-app-accent"}`}
-                            disabled={busy}
-                            onClick={() => pinMutation.mutate(file)}
-                            aria-label={`${file.pinned ? "Unpin" : "Pin"} ${file.displayName}`}
-                            title={
-                              file.pinned
-                                ? "Allow compatible updates"
-                                : "Keep this version"
-                            }
-                          >
-                            {file.pinned ? (
-                              <PinOff size={13} aria-hidden="true" />
-                            ) : (
-                              <Pin size={13} aria-hidden="true" />
-                            )}
-                          </button>
-                        ) : null}
-                        {removeTarget === file.filePath ? (
-                          <span className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              className="text-[10px] font-bold text-app-danger"
-                              disabled={busy}
-                              onClick={() => removeMutation.mutate(file)}
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              type="button"
-                              className="text-[10px] text-app-secondary"
-                              onClick={() => setRemoveTarget(undefined)}
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="p-1.5 text-app-muted hover:text-app-danger"
-                            title={`Remove ${file.displayName}`}
-                            disabled={busy}
-                            onClick={() => setRemoveTarget(file.filePath)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                  <InstalledContentRow
+                    key={file.filePath}
+                    item={file}
+                    instanceId={instance.id}
+                    kind={kind}
+                    disabled={busy}
+                    confirmingRemove={removeTarget === file.filePath}
+                    onToggle={() =>
+                      toggleMutation.mutate({ file, enabled: !file.enabled })
+                    }
+                    onPin={() => pinMutation.mutate(file)}
+                    onUpdate={(versionId) =>
+                      updateMutation.mutate({ file, versionId })
+                    }
+                    onRequestRemove={() => setRemoveTarget(file.filePath)}
+                    onCancelRemove={() => setRemoveTarget(undefined)}
+                    onConfirmRemove={() => removeMutation.mutate(file)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -791,15 +730,4 @@ function contentKindSingular(kind: InstanceContentKind) {
     case "dataPack":
       return "Data pack";
   }
-}
-
-function ContentImage({ src, name }: { src?: string | null; name: string }) {
-  return (
-    <ContentArtwork
-      src={src}
-      name={name}
-      stableKey={name}
-      className="size-11 rounded-control border border-app-separator"
-    />
-  );
 }

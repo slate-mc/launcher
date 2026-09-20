@@ -8,7 +8,8 @@ use crate::{
     GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
     ImportLocalContentFileRequest, ImportLocalModRequest, InstallContentRequest,
     InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
-    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceGameOptionsSummary,
+    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentHistoryRequest,
+    InstanceContentHistorySummary, InstanceContentVersionsRequest, InstanceGameOptionsSummary,
     InstanceModHistoryRequest, InstanceModHistorySummary, InstanceModResolution,
     InstanceModSummary, InstanceModVersionsRequest, InstanceModsRequest, InstanceSnapshotSummary,
     InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest, LaunchInstanceRequest,
@@ -25,8 +26,9 @@ use crate::{
     SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
     StopGameSessionRequest, StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
     SupportReportExport, SupportReportPreview, UnsubscribeSessionLogRequest,
-    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
-    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    UpdateInstanceConfigurationRequest, UpdateInstanceContentRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
+    UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -343,6 +345,22 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(SetInstanceContentPinnedRequest),
         ),
         (
+            "instance-content-versions-request",
+            schema_for!(InstanceContentVersionsRequest),
+        ),
+        (
+            "instance-content-history-request",
+            schema_for!(InstanceContentHistoryRequest),
+        ),
+        (
+            "instance-content-history-list",
+            schema_for!(Vec<InstanceContentHistorySummary>),
+        ),
+        (
+            "update-instance-content-request",
+            schema_for!(UpdateInstanceContentRequest),
+        ),
+        (
             "remove-instance-content-file-request",
             schema_for!(RemoveInstanceContentFileRequest),
         ),
@@ -382,7 +400,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 103);
+        assert_eq!(schemas.len(), 107);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

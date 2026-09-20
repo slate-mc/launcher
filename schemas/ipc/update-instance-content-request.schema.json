@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UpdateInstanceContentRequest",
+  "type": "object",
+  "properties": {
+    "displayName": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "filePath": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "$ref": "#/$defs/InstanceContentKindDto"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "targetVersionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "instanceId",
+    "expectedRevision",
+    "kind",
+    "provider",
+    "projectId",
+    "filePath",
+    "displayName",
+    "targetVersionId"
+  ],
+  "$defs": {
+    "InstanceContentKindDto": {
+      "type": "string",
+      "enum": [
+        "resourcePack",
+        "shaderPack",
+        "dataPack"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}

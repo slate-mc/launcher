@@ -62,29 +62,54 @@ pub(super) async fn install_job_retry(
                 .cloned()
                 .and_then(|value| serde_json::from_value(value).ok())
                 .ok_or_else(retry_context_missing)?;
-            let world_name = payload
-                .get("worldName")
-                .cloned()
-                .and_then(|value| serde_json::from_value(value).ok());
-            let content = payload
-                .get("content")
-                .cloned()
-                .and_then(|value| {
-                    serde_json::from_value::<Vec<InstallContentSelection>>(value).ok()
-                })
-                .filter(|items| !items.is_empty())
-                .ok_or_else(retry_context_missing)?;
-            instance_content_install_inner(
-                state.inner(),
-                InstallContentRequest {
-                    instance_id,
-                    expected_revision,
-                    kind,
-                    world_name,
-                    content,
-                },
-            )
-            .await
+            if let Some(target_version_id) = payload
+                .get("targetVersionId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+            {
+                instance_content_update_inner(
+                    state.inner(),
+                    UpdateInstanceContentRequest {
+                        instance_id,
+                        expected_revision,
+                        kind,
+                        provider: payload
+                            .get("provider")
+                            .cloned()
+                            .and_then(|value| serde_json::from_value(value).ok())
+                            .ok_or_else(retry_context_missing)?,
+                        project_id: retry_string(payload, "projectId")?,
+                        file_path: retry_string(payload, "filePath")?,
+                        display_name: retry_string(payload, "displayName")?,
+                        target_version_id: target_version_id.to_owned(),
+                    },
+                )
+                .await
+            } else {
+                let world_name = payload
+                    .get("worldName")
+                    .cloned()
+                    .and_then(|value| serde_json::from_value(value).ok());
+                let content = payload
+                    .get("content")
+                    .cloned()
+                    .and_then(|value| {
+                        serde_json::from_value::<Vec<InstallContentSelection>>(value).ok()
+                    })
+                    .filter(|items| !items.is_empty())
+                    .ok_or_else(retry_context_missing)?;
+                instance_content_install_inner(
+                    state.inner(),
+                    InstallContentRequest {
+                        instance_id,
+                        expected_revision,
+                        kind,
+                        world_name,
+                        content,
+                    },
+                )
+                .await
+            }
         }
         Some("mod_update") => {
             let payload = job
@@ -198,6 +223,15 @@ fn retry_context_missing() -> AppError {
         "local.install_retry_unavailable",
         "This older installation cannot be retried here. Open the instance and try again.",
     )
+}
+
+fn retry_string(payload: &serde_json::Value, field: &str) -> Result<String, AppError> {
+    payload
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(retry_context_missing)
 }
 
 pub(super) async fn fetch_instance_modpack_plan(

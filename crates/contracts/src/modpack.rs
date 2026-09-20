@@ -350,6 +350,44 @@ pub struct SetInstanceContentPinnedRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InstanceContentVersionsRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+    pub provider: Provider,
+    pub project_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceContentHistoryRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+    pub provider: Provider,
+    pub project_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceContentHistorySummary {
+    pub version_id: String,
+    pub changed_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInstanceContentRequest {
+    pub instance_id: Uuid,
+    pub expected_revision: u64,
+    pub kind: InstanceContentKindDto,
+    pub provider: Provider,
+    pub project_id: String,
+    pub file_path: String,
+    pub display_name: String,
+    pub target_version_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetInstanceContentFileEnabledRequest {
     pub instance_id: Uuid,
     pub kind: InstanceContentKindDto,

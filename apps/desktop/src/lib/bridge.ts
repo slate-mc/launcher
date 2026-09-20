@@ -6,6 +6,7 @@ import {
   installJobSchema,
   instanceArtworkAssetSchema,
   instanceContentFileListSchema,
+  instanceContentHistorySchema,
   instanceGameOptionsSchema,
   instanceModHistorySchema,
   instanceModReferenceListSchema,
@@ -562,6 +563,46 @@ export async function setInstanceContentPinned(input: {
   requireNativeContent();
   return instanceSummarySchema.parse(
     await invoke("instance_content_set_pinned", { request: input }),
+  );
+}
+
+export async function listInstanceContentVersions(input: {
+  instanceId: string;
+  kind: InstanceContentKind;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+}): Promise<ModVersionOption[]> {
+  requireNativeContent();
+  return modVersionListSchema.parse(
+    await invoke("instance_content_versions", { request: input }),
+  ).items;
+}
+
+export async function listInstanceContentHistory(input: {
+  instanceId: string;
+  kind: InstanceContentKind;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+}) {
+  requireNativeContent();
+  return instanceContentHistorySchema.parse(
+    await invoke("instance_content_history", { request: input }),
+  );
+}
+
+export async function updateInstanceContent(input: {
+  instanceId: string;
+  expectedRevision: number;
+  kind: InstanceContentKind;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+  filePath: string;
+  displayName: string;
+  targetVersionId: string;
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("instance_content_update", { request: input }),
   );
 }
 

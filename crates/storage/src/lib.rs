@@ -18,7 +18,9 @@ pub use installations::{
     CompletedInstall, CompletedModpackUpdate, InstallJobRecord, InstalledRevisionRecord,
     InstalledRuntime, JobState, PendingInstall,
 };
-pub use instance_content::{InstanceProviderContentRecord, NewInstanceProviderContent};
+pub use instance_content::{
+    InstanceProviderContentHistoryRecord, InstanceProviderContentRecord, NewInstanceProviderContent,
+};
 pub use instance_mods::{
     InstanceModDependency, InstanceModDependencyRecord, InstanceModEnabledChange,
     InstanceModHistoryRecord, InstanceModRecord, InstanceModTarget, NewInstanceMod,
