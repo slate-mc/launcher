@@ -18,8 +18,9 @@ use futures_util::{StreamExt, stream};
 use serde::Deserialize;
 use slate_modpack_api_contracts::{
     ApiErrorCode, DownloadSource, InstallPlan, InstallPlanDownload, InstallPlanInstance, JavaPlan,
-    Loader, LoaderKind, MemoryRecommendation, ModInstallPlanRequest, Provider, ProviderStatus,
-    ResolveModsRequest, ResolveModsResponse, ResolvedModProject, RuntimePlan, SearchResponse,
+    Loader, LoaderKind, MemoryRecommendation, ModInstallPlanRequest, ModVersionList, Provider,
+    ProviderStatus, ResolveModsRequest, ResolveModsResponse, ResolvedModProject, RuntimePlan,
+    SearchResponse,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -30,6 +31,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mods", get(search))
         .route("/mods/resolve", post(resolve))
+        .route("/mods/{provider}/{project_id}/versions", get(versions))
         .route(
             "/mods/{provider}/{project_id}/install-plan",
             post(install_plan),
@@ -46,6 +48,52 @@ struct SearchQuery {
     cursor: Option<String>,
     page: Option<u32>,
     limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModVersionsQuery {
+    minecraft_version: Option<String>,
+    loader: Option<String>,
+}
+
+async fn versions(
+    State(state): State<AppState>,
+    Extension(context): Extension<RequestContext>,
+    path: Result<Path<(String, String)>, PathRejection>,
+    query: Result<Query<ModVersionsQuery>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let Path((provider, project_id)) = path.map_err(|_| invalid_path(&context))?;
+    let Query(query) = query.map_err(|_| invalid_query(&context))?;
+    let provider = provider_from_str(&context, &provider)?;
+    validate_mod_provider(&context, provider)?;
+    if !valid_identifier(&project_id) {
+        return Err(
+            ApiError::invalid_request(&context, "The mod project identifier is invalid.")
+                .with_field("project_id", "Use a valid provider project identifier."),
+        );
+    }
+    let minecraft_version =
+        bounded_optional(&context, "minecraft_version", query.minecraft_version, 32)?.ok_or_else(
+            || {
+                ApiError::invalid_request(&context, "A Minecraft version is required.")
+                    .with_field("minecraft_version", "Use the exact instance version.")
+            },
+        )?;
+    let loader = parse_optional_loader(&context, query.loader.as_deref())?.ok_or_else(|| {
+        ApiError::invalid_request(&context, "A mod loader is required.")
+            .with_field("loader", "Use the exact instance loader.")
+    })?;
+    validate_mod_loader(&context, loader)?;
+    let adapter = provider_adapter(&state, &context, provider)?;
+    let items = adapter
+        .list_mod_versions(&project_id, &minecraft_version, loader)
+        .await
+        .map_err(|error| provider_error(&context, error))?;
+    Ok(success(
+        &context,
+        ModVersionList { items },
+        CacheControl::PublicShort,
+    ))
 }
 
 async fn search(

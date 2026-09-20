@@ -3,8 +3,9 @@
 use reqwest::{Method, StatusCode};
 use slate_modpack_api_contracts::{
     ApiEnvelope, ApiErrorCode, CategoriesResponse, InstallPlan, InstallPlanRequest, LoaderKind,
-    ModInstallPlanRequest, Modpack, ModpackVersion, Provider, ProvidersResponse, ReleaseType,
-    ResolveModsRequest, ResolveModsResponse, SearchResponse, UpdateResponse, VersionPage,
+    ModInstallPlanRequest, ModVersionList, Modpack, ModpackVersion, Provider, ProvidersResponse,
+    ReleaseType, ResolveModsRequest, ResolveModsResponse, SearchResponse, UpdateResponse,
+    VersionPage,
 };
 use std::time::Duration;
 use url::Url;
@@ -242,6 +243,26 @@ impl ModpackApiClient {
         let url = self.endpoint(&["v1", "mods", provider.as_str(), project_id, "install-plan"])?;
         self.send(Method::POST, url, Some(serde_json::to_vec(request)?))
             .await
+    }
+
+    pub async fn mod_versions(
+        &self,
+        provider: Provider,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<ModVersionList, ClientError> {
+        if provider == Provider::Ftb {
+            return Err(ClientError::UnsupportedModProvider);
+        }
+        if minecraft_version.trim().is_empty() || loader == LoaderKind::Vanilla {
+            return Err(ClientError::MissingModTarget);
+        }
+        let mut url = self.endpoint(&["v1", "mods", provider.as_str(), project_id, "versions"])?;
+        url.query_pairs_mut()
+            .append_pair("minecraft_version", minecraft_version)
+            .append_pair("loader", loader_name(loader));
+        self.get(url).await
     }
 
     pub async fn resolve_mods(

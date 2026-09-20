@@ -2,7 +2,7 @@ use super::{ModpackProvider, ProviderError, ResolvedMod, modpacks_ch::ModpacksCh
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use async_trait::async_trait;
 use slate_modpack_api_contracts::{
-    CategorySummary, Modpack, ModpackVersion, ModpackVersionSummary, Provider,
+    CategorySummary, ModVersionSummary, Modpack, ModpackVersion, ModpackVersionSummary, Provider,
 };
 
 pub struct CurseForgeProvider(ModpacksChProvider);
@@ -58,6 +58,17 @@ impl ModpackProvider for CurseForgeProvider {
 
     async fn search_mods(&self, request: SearchRequest) -> Result<SearchPage, ProviderError> {
         self.0.search_mods(request).await
+    }
+
+    async fn list_mod_versions(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: slate_modpack_api_contracts::LoaderKind,
+    ) -> Result<Vec<ModVersionSummary>, ProviderError> {
+        self.0
+            .list_mod_versions(project_id, minecraft_version, loader)
+            .await
     }
 
     async fn resolve_mods(

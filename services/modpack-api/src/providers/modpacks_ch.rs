@@ -2,7 +2,8 @@ use super::{MissingResource, ProviderError, ResolvedMod};
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use crate::upstream::{CachePolicy, UpstreamClient};
 use slate_modpack_api_contracts::{
-    CategorySummary, Hashes, LoaderKind, Modpack, ModpackVersion, ModpackVersionSummary, Provider,
+    CategorySummary, Hashes, LoaderKind, ModVersionSummary, Modpack, ModpackVersion,
+    ModpackVersionSummary, Provider,
 };
 use std::collections::{BTreeMap, VecDeque};
 
@@ -15,6 +16,7 @@ use wire::*;
 const INSTALL_METADATA_CONCURRENCY: usize = 4;
 const MAX_MOD_DEPENDENCIES: usize = 256;
 const MAX_DEPENDENCY_VERSION_PAGES: u32 = 10;
+const MAX_LISTED_MOD_VERSIONS: usize = 200;
 
 #[derive(Clone, Debug)]
 pub struct ModpacksChProvider {
@@ -184,6 +186,132 @@ impl ModpacksChProvider {
             }
             Provider::Ftb => Err(ProviderError::UnsupportedContent),
         }
+    }
+
+    pub async fn list_mod_versions(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<Vec<ModVersionSummary>, ProviderError> {
+        validate_identifier(project_id)?;
+        if minecraft_version.is_empty() || minecraft_version.len() > 32 {
+            return Err(ProviderError::InvalidIdentifier);
+        }
+        if loader == LoaderKind::Vanilla {
+            return Err(ProviderError::UnsupportedLoader);
+        }
+        match self.provider {
+            Provider::CurseForge => {
+                self.list_curseforge_mod_versions(project_id, minecraft_version, loader)
+                    .await
+            }
+            Provider::Modrinth => {
+                self.list_modrinth_mod_versions(project_id, minecraft_version, loader)
+                    .await
+            }
+            Provider::Ftb => Err(ProviderError::UnsupportedContent),
+        }
+    }
+
+    async fn list_curseforge_mod_versions(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<Vec<ModVersionSummary>, ProviderError> {
+        let query = VersionQuery {
+            minecraft_version: Some(minecraft_version.to_owned()),
+            loader: Some(loader),
+            release_type: None,
+            page: 1,
+            limit: MAX_LISTED_MOD_VERSIONS,
+        };
+        let mut page = 1_u32;
+        let mut versions = Vec::new();
+        loop {
+            let page_value = page.to_string();
+            let response: UpstreamVersionHistory = self
+                .upstream
+                .get_json(
+                    &[
+                        "public",
+                        "mod",
+                        project_id,
+                        "versions",
+                        minecraft_version,
+                        loader_name(loader),
+                        page_value.as_str(),
+                    ],
+                    &[],
+                    CachePolicy::Versions,
+                )
+                .await
+                .map_err(|error| map_upstream_error(error, MissingResource::Project))?;
+            ensure_success(response.status.as_deref())?;
+            let pages = response
+                .pages
+                .as_ref()
+                .and_then(FlexibleId::as_u32)
+                .unwrap_or(1);
+            versions.extend(
+                response
+                    .versions
+                    .into_iter()
+                    .filter(|version| !version.private.unwrap_or(false))
+                    .filter(|version| summary_matches(version, &query)),
+            );
+            if versions.len() >= MAX_LISTED_MOD_VERSIONS
+                || page >= pages
+                || page >= MAX_DEPENDENCY_VERSION_PAGES
+            {
+                break;
+            }
+            page = page.saturating_add(1);
+        }
+        versions.sort_by_key(|version| std::cmp::Reverse(version.updated));
+        Ok(versions
+            .into_iter()
+            .take(MAX_LISTED_MOD_VERSIONS)
+            .map(|version| ModVersionSummary {
+                id: version.id.to_string_value(),
+                name: bounded_text(&version.name, 160),
+            })
+            .collect())
+    }
+
+    async fn list_modrinth_mod_versions(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<Vec<ModVersionSummary>, ProviderError> {
+        let game_versions = serde_json::to_string(&[minecraft_version])
+            .map_err(|_| ProviderError::InvalidResponse)?;
+        let loaders = serde_json::to_string(&[loader_name(loader)])
+            .map_err(|_| ProviderError::InvalidResponse)?;
+        let mut versions: Vec<ModrinthVersion> = self
+            .upstream
+            .get_modrinth_json(
+                &["project", project_id, "version"],
+                &[
+                    ("game_versions", game_versions.as_str()),
+                    ("loaders", loaders.as_str()),
+                ],
+                CachePolicy::Versions,
+            )
+            .await
+            .map_err(|error| map_upstream_error(error, MissingResource::Project))?;
+        versions.retain(|version| modrinth_version_matches(version, minecraft_version, loader));
+        versions.sort_by(|left, right| right.date_published.cmp(&left.date_published));
+        Ok(versions
+            .into_iter()
+            .take(MAX_LISTED_MOD_VERSIONS)
+            .map(|version| ModVersionSummary {
+                id: version.id,
+                name: bounded_text(&version.name, 160),
+            })
+            .collect())
     }
 
     async fn resolve_curseforge_mod_graph(

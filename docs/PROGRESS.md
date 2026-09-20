@@ -63,7 +63,7 @@ Verified on Windows on September 20, 2026:
 - 15 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 133 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 134 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 

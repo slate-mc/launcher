@@ -10,7 +10,8 @@ pub use modrinth::ModrinthProvider;
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use async_trait::async_trait;
 use slate_modpack_api_contracts::{
-    CategorySummary, Hashes, Modpack, ModpackVersion, ModpackVersionSummary, Provider,
+    CategorySummary, Hashes, ModVersionSummary, Modpack, ModpackVersion, ModpackVersionSummary,
+    Provider,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -44,6 +45,13 @@ pub trait ModpackProvider: Send + Sync {
     async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError>;
 
     async fn search_mods(&self, request: SearchRequest) -> Result<SearchPage, ProviderError>;
+
+    async fn list_mod_versions(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: slate_modpack_api_contracts::LoaderKind,
+    ) -> Result<Vec<ModVersionSummary>, ProviderError>;
 
     async fn resolve_mods(
         &self,

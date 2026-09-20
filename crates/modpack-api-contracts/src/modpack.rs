@@ -71,6 +71,17 @@ pub struct ResolveModsResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ModVersionSummary {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ModVersionList {
+    pub items: Vec<ModVersionSummary>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 pub struct Modpack {
     pub provider: Provider,
     pub id: String,
@@ -88,4 +99,23 @@ pub struct Modpack {
     pub links: ModpackLinks,
     pub updated_at: String,
     pub latest_version: Option<VersionReference>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ModVersionList, ModVersionSummary};
+
+    #[test]
+    fn mod_version_lists_use_stable_id_and_name_fields() -> Result<(), serde_json::Error> {
+        let value = serde_json::to_value(ModVersionList {
+            items: vec![ModVersionSummary {
+                id: "version-42".to_owned(),
+                name: "Release 42".to_owned(),
+            }],
+        })?;
+
+        assert_eq!(value["items"][0]["id"], "version-42");
+        assert_eq!(value["items"][0]["name"], "Release 42");
+        Ok(())
+    }
 }
