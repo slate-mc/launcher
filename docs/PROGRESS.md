@@ -47,6 +47,8 @@ Last updated: September 20, 2026
 - Separate Downloads and Activity destinations. Normal product copy no longer exposes internal IDs,
   paths, backend terminology, or raw Rust/HTTP errors; technical output remains in the Minecraft log
   view where it is useful.
+- Route-level loading keeps the initial desktop JavaScript entry near 293 KB; larger Discover and
+  instance-management features load only when opened.
 
 ## Verification evidence
 
@@ -54,7 +56,7 @@ Verified on Windows on September 20, 2026:
 
 - Frontend lint passes with zero warnings.
 - 13 Vitest/Testing Library tests pass.
-- The Vite/Tailwind production build passes. It still reports a large initial JavaScript chunk.
+- The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
 - `cargo test --workspace --all-features` passes: 120 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
@@ -98,7 +100,6 @@ Verified on Windows on September 20, 2026:
 
 - Add Playwright end-to-end/visual coverage for dark and light themes, onboarding, install, launch,
   content management, storage, and destructive confirmations.
-- Split the roughly 1.03 MB initial frontend bundle with route-level lazy loading.
 - Add accessible Radix-backed dialogs/popovers/tooltips where custom controls currently provide only
   visual behavior; complete keyboard and screen-reader testing.
 - Add localization/message catalogs before user-facing copy grows further.

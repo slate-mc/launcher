@@ -2,32 +2,76 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "../components/AppShell";
 import { RoutePlaceholder } from "../components/RoutePlaceholder";
-import { HomePage } from "../features/home/HomePage";
-import {
-  DiscoverPage,
-  ModpackDetailPage,
-} from "../features/discover/DiscoverPages";
-import {
-  InstanceContentPage,
-  InstanceOverviewPage,
-  InstanceSettingsPage,
-} from "../features/instances/InstancePages";
-import { LibraryPage } from "../features/library/LibraryPage";
-import { NewInstancePage } from "../features/library/NewInstancePage";
-import { OnboardingPage } from "../features/onboarding/OnboardingPage";
-import { SettingsPage } from "../features/settings/SettingsPage";
-import { StorageSettingsPage } from "../features/settings/StorageSettingsPage";
-import { ServersPage } from "../features/servers/ServersPage";
-import {
-  AccountsPage,
-  ActivityPage,
-  DownloadsPage,
-  HelpPage,
-} from "../features/system/SystemPages";
+
+const HomePage = lazyRouteComponent(
+  () => import("../features/home/HomePage"),
+  "HomePage",
+);
+const DiscoverPage = lazyRouteComponent(
+  () => import("../features/discover/DiscoverPages"),
+  "DiscoverPage",
+);
+const ModpackDetailPage = lazyRouteComponent(
+  () => import("../features/discover/DiscoverPages"),
+  "ModpackDetailPage",
+);
+const InstanceContentPage = lazyRouteComponent(
+  () => import("../features/instances/InstancePages"),
+  "InstanceContentPage",
+);
+const InstanceOverviewPage = lazyRouteComponent(
+  () => import("../features/instances/InstancePages"),
+  "InstanceOverviewPage",
+);
+const InstanceSettingsPage = lazyRouteComponent(
+  () => import("../features/instances/InstancePages"),
+  "InstanceSettingsPage",
+);
+const LibraryPage = lazyRouteComponent(
+  () => import("../features/library/LibraryPage"),
+  "LibraryPage",
+);
+const NewInstancePage = lazyRouteComponent(
+  () => import("../features/library/NewInstancePage"),
+  "NewInstancePage",
+);
+const OnboardingPage = lazyRouteComponent(
+  () => import("../features/onboarding/OnboardingPage"),
+  "OnboardingPage",
+);
+const SettingsPage = lazyRouteComponent(
+  () => import("../features/settings/SettingsPage"),
+  "SettingsPage",
+);
+const StorageSettingsPage = lazyRouteComponent(
+  () => import("../features/settings/StorageSettingsPage"),
+  "StorageSettingsPage",
+);
+const ServersPage = lazyRouteComponent(
+  () => import("../features/servers/ServersPage"),
+  "ServersPage",
+);
+const AccountsPage = lazyRouteComponent(
+  () => import("../features/system/SystemPages"),
+  "AccountsPage",
+);
+const ActivityPage = lazyRouteComponent(
+  () => import("../features/system/SystemPages"),
+  "ActivityPage",
+);
+const DownloadsPage = lazyRouteComponent(
+  () => import("../features/system/SystemPages"),
+  "DownloadsPage",
+);
+const HelpPage = lazyRouteComponent(
+  () => import("../features/system/SystemPages"),
+  "HelpPage",
+);
 
 const rootRoute = createRootRoute({
   component: AppShell,
