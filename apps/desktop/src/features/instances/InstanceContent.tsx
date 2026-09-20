@@ -40,10 +40,10 @@ import {
   ContentNavigation,
   ContentSelect,
   InstalledModSkeletons,
-  InstanceFileContent,
   ModResultSkeletons,
   ModSearchResult,
-} from "./InstanceContentComponents";
+} from "./ContentBrowserComponents";
+import { InstanceFileContent } from "./InstanceContentComponents";
 import { InstalledModRow, InstalledModTableHeader } from "./InstalledModRow";
 import {
   compareInstalledMods,
