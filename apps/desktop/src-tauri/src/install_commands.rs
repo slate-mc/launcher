@@ -10,6 +10,7 @@ pub(super) struct PendingModpackUpdate {
 pub(super) struct PendingModChanges {
     pub(super) installed: Vec<NewInstanceMod>,
     pub(super) replaced_paths: Vec<String>,
+    pub(super) dependency_sets: Vec<NewInstanceModDependencySet>,
 }
 
 #[derive(Clone, Debug)]
@@ -112,6 +113,7 @@ pub(super) async fn queue_instance_install(
     let PendingModChanges {
         installed: pending_mods,
         replaced_paths: replaced_mod_paths,
+        dependency_sets,
     } = mod_changes;
     let instance_id = instance.id;
     if state
@@ -387,6 +389,7 @@ pub(super) async fn queue_instance_install(
                             },
                             pending_mods,
                             replaced_mod_paths,
+                            dependency_sets,
                         )
                         .await
                 } else if pending_mods.is_empty() {
@@ -414,6 +417,7 @@ pub(super) async fn queue_instance_install(
                                 message,
                             },
                             pending_mods,
+                            dependency_sets,
                         )
                         .await
                 };

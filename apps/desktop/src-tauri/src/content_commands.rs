@@ -83,6 +83,43 @@ pub(super) async fn instance_mods_list(
         .list_instance_mods(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load installed mods."))?;
+    let relationships = state
+        .database
+        .list_instance_mod_dependencies(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load mod relationships."))?;
+    let mut dependencies_by_root = BTreeMap::<
+        (slate_modpack_api_contracts::Provider, String),
+        Vec<InstanceModReferenceSummary>,
+    >::new();
+    let mut dependents_by_dependency = BTreeMap::<
+        (slate_modpack_api_contracts::Provider, String),
+        Vec<InstanceModReferenceSummary>,
+    >::new();
+    for relationship in relationships {
+        dependencies_by_root
+            .entry((
+                relationship.root_provider,
+                relationship.root_project_id.clone(),
+            ))
+            .or_default()
+            .push(InstanceModReferenceSummary {
+                provider: relationship.dependency_provider,
+                project_id: relationship.dependency_project_id.clone(),
+                display_name: relationship.dependency_display_name,
+            });
+        dependents_by_dependency
+            .entry((
+                relationship.dependency_provider,
+                relationship.dependency_project_id,
+            ))
+            .or_default()
+            .push(InstanceModReferenceSummary {
+                provider: relationship.root_provider,
+                project_id: relationship.root_project_id,
+                display_name: relationship.root_display_name,
+            });
+    }
     let paths = paths_for_instance(state.inner(), &instance);
     let files = tokio::task::spawn_blocking(move || scan_instance_mods(&paths, instance_id))
         .await
@@ -111,7 +148,19 @@ pub(super) async fn instance_mods_list(
         .into_iter()
         .map(|file| {
             let record = stored_by_path.remove(&normalized_content_path(&file.file_path));
-            instance_mod_summary(record, file, untracked_origin.clone())
+            let mut summary = instance_mod_summary(record, file, untracked_origin.clone());
+            if let (Some(provider), Some(project_id)) = (summary.provider, &summary.project_id) {
+                let identity = (provider, project_id.clone());
+                summary.dependencies = dependencies_by_root
+                    .get(&identity)
+                    .cloned()
+                    .unwrap_or_default();
+                summary.required_by = dependents_by_dependency
+                    .get(&identity)
+                    .cloned()
+                    .unwrap_or_default();
+            }
+            summary
         })
         .collect())
 }

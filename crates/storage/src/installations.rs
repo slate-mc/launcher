@@ -1,5 +1,5 @@
 use crate::database::now_rfc3339;
-use crate::{Database, NewInstanceMod, StorageError};
+use crate::{Database, NewInstanceMod, NewInstanceModDependencySet, StorageError};
 use slate_domain::{AccountId, InstanceId, JobId, LoaderFamily, RequestId, RevisionId, SessionId};
 use sqlx::Row;
 use std::path::PathBuf;
@@ -385,6 +385,7 @@ impl Database {
             None,
             None,
             None,
+            None,
         )
         .await
     }
@@ -393,9 +394,16 @@ impl Database {
         &self,
         completion: CompletedInstall,
         installed_mods: Vec<NewInstanceMod>,
+        dependency_sets: Vec<NewInstanceModDependencySet>,
     ) -> Result<(), StorageError> {
-        self.complete_instance_install_inner(completion, Some(installed_mods), None, None)
-            .await
+        self.complete_instance_install_inner(
+            completion,
+            Some(installed_mods),
+            None,
+            Some(dependency_sets),
+            None,
+        )
+        .await
     }
 
     pub async fn complete_instance_mod_update(
@@ -403,11 +411,13 @@ impl Database {
         completion: CompletedInstall,
         installed_mods: Vec<NewInstanceMod>,
         replaced_file_paths: Vec<String>,
+        dependency_sets: Vec<NewInstanceModDependencySet>,
     ) -> Result<(), StorageError> {
         self.complete_instance_install_inner(
             completion,
             Some(installed_mods),
             Some(replaced_file_paths),
+            Some(dependency_sets),
             None,
         )
         .await
@@ -418,7 +428,7 @@ impl Database {
         completion: CompletedInstall,
         update: CompletedModpackUpdate,
     ) -> Result<(), StorageError> {
-        self.complete_instance_install_inner(completion, None, None, Some(update))
+        self.complete_instance_install_inner(completion, None, None, None, Some(update))
             .await
     }
 
@@ -427,6 +437,7 @@ impl Database {
         completion: CompletedInstall,
         installed_mods: Option<Vec<NewInstanceMod>>,
         replaced_mod_paths: Option<Vec<String>>,
+        dependency_sets: Option<Vec<NewInstanceModDependencySet>>,
         modpack_update: Option<CompletedModpackUpdate>,
     ) -> Result<(), StorageError> {
         let now = now_rfc3339()?;
@@ -483,6 +494,22 @@ impl Database {
                 .ok_or(StorageError::RevisionNotFound)?;
         if let Some(replaced_mod_paths) = replaced_mod_paths {
             for file_path in replaced_mod_paths {
+                sqlx::query(
+                    "DELETE FROM instance_mod_dependencies WHERE instance_id = ? AND (\
+                     EXISTS (SELECT 1 FROM instance_mods m WHERE m.instance_id = ? \
+                     AND m.file_path = ? AND m.provider = root_provider \
+                     AND m.project_id = root_project_id) OR \
+                     EXISTS (SELECT 1 FROM instance_mods m WHERE m.instance_id = ? \
+                     AND m.file_path = ? AND m.provider = dependency_provider \
+                     AND m.project_id = dependency_project_id))",
+                )
+                .bind(&instance_id)
+                .bind(&instance_id)
+                .bind(file_path.trim())
+                .bind(&instance_id)
+                .bind(file_path.trim())
+                .execute(&mut *transaction)
+                .await?;
                 sqlx::query("DELETE FROM instance_mods WHERE instance_id = ? AND file_path = ?")
                     .bind(&instance_id)
                     .bind(file_path.trim())
@@ -515,6 +542,33 @@ impl Database {
                 .bind(&now)
                 .execute(&mut *transaction)
                 .await?;
+            }
+        }
+        if let Some(dependency_sets) = dependency_sets {
+            for dependency_set in dependency_sets {
+                sqlx::query(
+                    "DELETE FROM instance_mod_dependencies WHERE instance_id = ? \
+                     AND root_provider = ? AND root_project_id = ?",
+                )
+                .bind(&instance_id)
+                .bind(dependency_set.root_provider.as_str())
+                .bind(dependency_set.root_project_id.trim())
+                .execute(&mut *transaction)
+                .await?;
+                for dependency in dependency_set.dependencies {
+                    sqlx::query(
+                        "INSERT OR IGNORE INTO instance_mod_dependencies \
+                         (instance_id, root_provider, root_project_id, dependency_provider, \
+                          dependency_project_id) VALUES (?, ?, ?, ?, ?)",
+                    )
+                    .bind(&instance_id)
+                    .bind(dependency_set.root_provider.as_str())
+                    .bind(dependency_set.root_project_id.trim())
+                    .bind(dependency.provider.as_str())
+                    .bind(dependency.project_id.trim())
+                    .execute(&mut *transaction)
+                    .await?;
+                }
             }
         }
         if let Some(update) = modpack_update {

@@ -18,7 +18,8 @@ pub use installations::{
     InstalledRuntime, JobState, PendingInstall,
 };
 pub use instance_mods::{
-    InstanceModEnabledChange, InstanceModRecord, InstanceModTarget, NewInstanceMod,
+    InstanceModDependency, InstanceModDependencyRecord, InstanceModEnabledChange,
+    InstanceModRecord, InstanceModTarget, NewInstanceMod, NewInstanceModDependencySet,
 };
 pub use instance_settings::{
     InstanceSettingsRecord, InstanceWindowMode, JavaSelectionMode, LauncherBehavior, MemoryMode,

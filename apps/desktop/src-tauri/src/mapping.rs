@@ -128,6 +128,8 @@ pub(super) fn instance_mod_summary(
             origin: InstanceModOriginDto::Added,
             file_size: file.size,
             icon_url: None,
+            dependencies: Vec::new(),
+            required_by: Vec::new(),
         },
         None => InstanceModSummary {
             provider: None,
@@ -141,6 +143,8 @@ pub(super) fn instance_mod_summary(
             origin: untracked_origin,
             file_size: file.size,
             icon_url: None,
+            dependencies: Vec::new(),
+            required_by: Vec::new(),
         },
     }
 }

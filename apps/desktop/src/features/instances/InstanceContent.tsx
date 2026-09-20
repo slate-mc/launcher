@@ -38,13 +38,12 @@ import { contentErrorMessage } from "./instanceContentFormat";
 import {
   ContentNavigation,
   ContentSelect,
-  InstalledModRow,
   InstalledModSkeletons,
   InstanceFileContent,
   ModResultSkeletons,
   ModSearchResult,
-  ModTableSortHeader,
 } from "./InstanceContentComponents";
+import { InstalledModRow, InstalledModTableHeader } from "./InstalledModRow";
 import {
   compareInstalledMods,
   modProviderName,
@@ -839,53 +838,10 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                     <col className="w-[14%]" />
                     <col className="w-[12%]" />
                   </colgroup>
-                  <thead className="bg-app-bg/35">
-                    <tr className="border-b border-app-separator/55">
-                      <ModTableSortHeader
-                        label="Mod"
-                        sortKey="name"
-                        sort={installedSort}
-                        onSort={updateInstalledSort}
-                      />
-                      <ModTableSortHeader
-                        label="Source"
-                        sortKey="source"
-                        sort={installedSort}
-                        onSort={updateInstalledSort}
-                      />
-                      <ModTableSortHeader
-                        label="Version"
-                        sortKey="version"
-                        sort={installedSort}
-                        onSort={updateInstalledSort}
-                      />
-                      <ModTableSortHeader
-                        label="Status"
-                        sortKey="status"
-                        sort={installedSort}
-                        onSort={updateInstalledSort}
-                      />
-                      <ModTableSortHeader
-                        label="Size"
-                        sortKey="size"
-                        sort={installedSort}
-                        onSort={updateInstalledSort}
-                        align="right"
-                      />
-                      <ModTableSortHeader
-                        label="Installed"
-                        sortKey="installed"
-                        sort={installedSort}
-                        onSort={updateInstalledSort}
-                      />
-                      <th
-                        scope="col"
-                        className="px-4 py-2.5 text-right text-[9px] font-bold tracking-[.08em] text-app-muted uppercase"
-                      >
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
+                  <InstalledModTableHeader
+                    sort={installedSort}
+                    onSort={updateInstalledSort}
+                  />
                   <tbody>
                     {pagedInstalled.map((item) => (
                       <InstalledModRow

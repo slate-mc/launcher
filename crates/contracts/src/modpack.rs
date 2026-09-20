@@ -193,6 +193,14 @@ pub enum InstanceModOriginDto {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InstanceModReferenceSummary {
+    pub provider: Provider,
+    pub project_id: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstanceModSummary {
     pub provider: Option<Provider>,
     pub project_id: Option<String>,
@@ -205,6 +213,8 @@ pub struct InstanceModSummary {
     pub origin: InstanceModOriginDto,
     pub file_size: u64,
     pub icon_url: Option<String>,
+    pub dependencies: Vec<InstanceModReferenceSummary>,
+    pub required_by: Vec<InstanceModReferenceSummary>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

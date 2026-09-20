@@ -57,8 +57,10 @@ pub(super) async fn instance_mod_install_inner(
     let mut merged_plan: Option<InstallPlan> = None;
     let mut pending_by_identity = BTreeMap::<String, NewInstanceMod>::new();
     let mut planned_destinations = BTreeMap::<String, PlannedModDestination>::new();
+    let mut dependency_sets = Vec::new();
     for selection in &request.mods {
         let root_identity = format!("{}:{}", selection.provider, selection.project_id.trim());
+        let mut dependencies = BTreeMap::<String, InstanceModDependency>::new();
         if installed.identities.contains(&root_identity) {
             return Err(AppError::new(
                 "mod.already_installed",
@@ -98,6 +100,15 @@ pub(super) async fn instance_mod_install_inner(
                     )
                 })?;
             let dependency_identity = format!("{provider}:{project_id}");
+            if dependency_identity != root_identity {
+                dependencies.insert(
+                    dependency_identity.clone(),
+                    InstanceModDependency {
+                        provider,
+                        project_id: project_id.clone(),
+                    },
+                );
+            }
             if installed.identities.contains(&dependency_identity) {
                 continue;
             }
@@ -205,6 +216,11 @@ pub(super) async fn instance_mod_install_inner(
             );
             accepted_downloads.push(download);
         }
+        dependency_sets.push(NewInstanceModDependencySet {
+            root_provider: selection.provider,
+            root_project_id: selection.project_id.trim().to_owned(),
+            dependencies: dependencies.into_values().collect(),
+        });
         plan.downloads = accepted_downloads;
         if let Some(merged) = &mut merged_plan {
             merged.downloads.extend(plan.downloads);
@@ -240,6 +256,7 @@ pub(super) async fn instance_mod_install_inner(
         PendingModChanges {
             installed: pending_by_identity.into_values().collect(),
             replaced_paths: Vec::new(),
+            dependency_sets,
         },
         None,
         RetryableInstallOperation::ModInstall { mods: request.mods },
@@ -420,6 +437,7 @@ pub(super) async fn instance_mod_update_inner(
     let mut pending_by_identity = BTreeMap::<String, NewInstanceMod>::new();
     let mut planned_destinations = BTreeMap::<String, PlannedModDestination>::new();
     let mut replaced_paths = BTreeSet::<String>::new();
+    let mut dependencies = BTreeMap::<String, InstanceModDependency>::new();
     for mut download in plan.downloads {
         let (provider, project_id, version_id) =
             parse_mod_download_id(&download.id).ok_or_else(|| {
@@ -437,6 +455,14 @@ pub(super) async fn instance_mod_update_inner(
                     "The selected mod version could not be confirmed. Nothing was changed.",
                 ));
             }
+        } else {
+            dependencies.insert(
+                identity.clone(),
+                InstanceModDependency {
+                    provider,
+                    project_id: project_id.clone(),
+                },
+            );
         }
         let existing = records_by_identity.get(&identity).copied();
         let existing_version = if identity == root_identity {
@@ -593,6 +619,11 @@ pub(super) async fn instance_mod_update_inner(
         PendingModChanges {
             installed: pending_by_identity.into_values().collect(),
             replaced_paths: replaced_paths.into_iter().collect(),
+            dependency_sets: vec![NewInstanceModDependencySet {
+                root_provider: request.provider,
+                root_project_id: request.project_id.trim().to_owned(),
+                dependencies: dependencies.into_values().collect(),
+            }],
         },
         None,
         RetryableInstallOperation::ModUpdate {

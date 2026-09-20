@@ -95,11 +95,11 @@ use slate_contracts::{
     InstallQueueDirectionDto, InstanceArtworkAsset, InstanceArtworkKindDto,
     InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
     InstanceDirectoryKindDto, InstanceGameOptionsSummary, InstanceModOriginDto,
-    InstanceModResolution, InstanceModSummary, InstanceModVersionsRequest, InstanceModeDto,
-    InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
-    InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, InstanceWorldsRequest,
-    JavaRuntimeSummary, JavaSelectionModeDto, LaunchInstanceRequest, LauncherBehaviorDto,
-    LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto,
+    InstanceModReferenceSummary, InstanceModResolution, InstanceModSummary,
+    InstanceModVersionsRequest, InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto,
+    InstanceWorldsRequest, JavaRuntimeSummary, JavaSelectionModeDto, LaunchInstanceRequest,
+    LauncherBehaviorDto, LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto,
     MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
     MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
     ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
@@ -152,12 +152,12 @@ use slate_process::{
 };
 use slate_storage::{
     AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, CompletedInstall,
-    CompletedModpackUpdate, Database, InstallJobRecord, InstalledRuntime, InstanceModEnabledChange,
-    InstanceModRecord, InstanceModTarget, InstanceRecord, InstanceSnapshotRecord,
-    InstanceWindowMode, JavaSelectionMode, JobState, LauncherBehavior, MemoryMode, NewInstance,
-    NewInstanceMod, NewModpackSource, NewSavedServer, PerformancePreset, ProcessPriority,
-    ReduceMotionPreference, SavedServerRecord, StorageError, ThemePreference,
-    TrashedInstanceRecord, UpdateInstanceSettings,
+    CompletedModpackUpdate, Database, InstallJobRecord, InstalledRuntime, InstanceModDependency,
+    InstanceModEnabledChange, InstanceModRecord, InstanceModTarget, InstanceRecord,
+    InstanceSnapshotRecord, InstanceWindowMode, JavaSelectionMode, JobState, LauncherBehavior,
+    MemoryMode, NewInstance, NewInstanceMod, NewInstanceModDependencySet, NewModpackSource,
+    NewSavedServer, PerformancePreset, ProcessPriority, ReduceMotionPreference, SavedServerRecord,
+    StorageError, ThemePreference, TrashedInstanceRecord, UpdateInstanceSettings,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;

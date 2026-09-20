@@ -30,6 +30,29 @@ pub struct InstanceModRecord {
     pub installed_at: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NewInstanceModDependencySet {
+    pub root_provider: Provider,
+    pub root_project_id: String,
+    pub dependencies: Vec<InstanceModDependency>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstanceModDependency {
+    pub provider: Provider,
+    pub project_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstanceModDependencyRecord {
+    pub root_provider: Provider,
+    pub root_project_id: String,
+    pub root_display_name: Option<String>,
+    pub dependency_provider: Provider,
+    pub dependency_project_id: String,
+    pub dependency_display_name: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InstanceModTarget<'a> {
     pub provider: Option<Provider>,
@@ -75,6 +98,47 @@ impl Database {
                     enabled: row.try_get::<i64, _>("enabled")? != 0,
                     pinned: row.try_get::<i64, _>("pinned")? != 0,
                     installed_at: row.try_get("installed_at")?,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn list_instance_mod_dependencies(
+        &self,
+        instance_id: InstanceId,
+    ) -> Result<Vec<InstanceModDependencyRecord>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT d.root_provider, d.root_project_id, rm.display_name AS root_display_name, \
+             d.dependency_provider, d.dependency_project_id, \
+             dm.display_name AS dependency_display_name \
+             FROM instance_mod_dependencies d LEFT JOIN instance_mods rm \
+             ON rm.instance_id = d.instance_id AND rm.provider = d.root_provider \
+             AND rm.project_id = d.root_project_id LEFT JOIN instance_mods dm \
+             ON dm.instance_id = d.instance_id AND dm.provider = d.dependency_provider \
+             AND dm.project_id = d.dependency_project_id WHERE d.instance_id = ? \
+             ORDER BY d.root_provider, d.root_project_id, \
+             COALESCE(dm.display_name, d.dependency_project_id) COLLATE NOCASE",
+        )
+        .bind(instance_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                let root_provider: String = row.try_get("root_provider")?;
+                let dependency_provider: String = row.try_get("dependency_provider")?;
+                Ok(InstanceModDependencyRecord {
+                    root_provider: parse_stored_provider(
+                        "instance_mod_dependencies.root_provider",
+                        root_provider,
+                    )?,
+                    root_project_id: row.try_get("root_project_id")?,
+                    root_display_name: row.try_get("root_display_name")?,
+                    dependency_provider: parse_stored_provider(
+                        "instance_mod_dependencies.dependency_provider",
+                        dependency_provider,
+                    )?,
+                    dependency_project_id: row.try_get("dependency_project_id")?,
+                    dependency_display_name: row.try_get("dependency_display_name")?,
                 })
             })
             .collect()
@@ -134,6 +198,18 @@ impl Database {
             .begin_content_mutation(instance_id, expected_revision)
             .await?;
         if let (Some(provider), Some(project_id)) = (target.provider, target.project_id) {
+            sqlx::query(
+                "DELETE FROM instance_mod_dependencies WHERE instance_id = ? AND \
+                 ((root_provider = ? AND root_project_id = ?) OR \
+                  (dependency_provider = ? AND dependency_project_id = ?))",
+            )
+            .bind(instance_id.to_string())
+            .bind(provider.as_str())
+            .bind(project_id)
+            .bind(provider.as_str())
+            .bind(project_id)
+            .execute(&mut *transaction)
+            .await?;
             sqlx::query(
                 "UPDATE instance_mods SET pinned = ? WHERE instance_id = ? AND file_path = ? \
                  AND provider = ? AND project_id = ?",
@@ -257,6 +333,10 @@ impl Database {
     }
 }
 
+fn parse_stored_provider(field: &'static str, value: String) -> Result<Provider, StorageError> {
+    Provider::from_str(&value).map_err(|_| StorageError::InvalidStoredValue { field, value })
+}
+
 async fn insert_content_audit(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     instance_id: InstanceId,
@@ -284,8 +364,9 @@ async fn insert_content_audit(
 #[cfg(test)]
 mod tests {
     use crate::{
-        CompletedInstall, Database, InstalledRuntime, InstanceModEnabledChange, InstanceModTarget,
-        NewInstance, NewInstanceMod, StorageError,
+        CompletedInstall, Database, InstalledRuntime, InstanceModDependency,
+        InstanceModEnabledChange, InstanceModTarget, NewInstance, NewInstanceMod,
+        NewInstanceModDependencySet, StorageError,
     };
     use slate_domain::{InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId};
     use slate_modpack_api_contracts::{Hashes, Provider};
@@ -380,12 +461,24 @@ mod tests {
                         pinned: false,
                     },
                 ],
+                vec![NewInstanceModDependencySet {
+                    root_provider: Provider::Modrinth,
+                    root_project_id: "AANobbMI".to_owned(),
+                    dependencies: vec![InstanceModDependency {
+                        provider: Provider::CurseForge,
+                        project_id: "394468".to_owned(),
+                    }],
+                }],
             )
             .await?;
 
         let mods = database.list_instance_mods(instance.id).await?;
         assert_eq!(mods.len(), 2);
         assert_eq!(mods[0].display_name, "Sodium");
+        let dependencies = database.list_instance_mod_dependencies(instance.id).await?;
+        assert_eq!(dependencies.len(), 1);
+        assert_eq!(dependencies[0].root_project_id, "AANobbMI");
+        assert_eq!(dependencies[0].dependency_project_id, "394468");
 
         let installed = database.get_instance(instance.id).await?;
         database
@@ -450,6 +543,7 @@ mod tests {
                     pinned: true,
                 }],
                 vec!["mods/sodium.jar.disabled".to_owned()],
+                Vec::new(),
             )
             .await?;
         let updated = database.list_instance_mods(instance.id).await?;
@@ -458,6 +552,12 @@ mod tests {
         assert_eq!(updated[0].file_path, "mods/sodium-2.jar.disabled");
         assert!(!updated[0].enabled);
         assert!(updated[0].pinned);
+        assert!(
+            database
+                .list_instance_mod_dependencies(instance.id)
+                .await?
+                .is_empty()
+        );
 
         let updated_instance = database.get_instance(instance.id).await?;
         database

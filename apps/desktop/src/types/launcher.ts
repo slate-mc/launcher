@@ -584,6 +584,12 @@ export const modpackUpdateSummarySchema = z.object({
   latestVersionName: z.string().min(1).optional(),
 });
 
+export const instanceModReferenceSchema = z.object({
+  provider: z.enum(["curseforge", "modrinth"]),
+  projectId: z.string().min(1),
+  displayName: z.string().min(1).nullable(),
+});
+
 export const instanceModSchema = z.object({
   provider: z.enum(["curseforge", "modrinth"]).nullable(),
   projectId: z.string().min(1).nullable(),
@@ -596,6 +602,8 @@ export const instanceModSchema = z.object({
   origin: z.enum(["added", "modpack", "local"]),
   fileSize: z.number().int().nonnegative(),
   iconUrl: z.string().url().nullable(),
+  dependencies: z.array(instanceModReferenceSchema).default([]),
+  requiredBy: z.array(instanceModReferenceSchema).default([]),
 });
 
 export const instanceModListSchema = z.array(instanceModSchema);
