@@ -14,6 +14,7 @@ import {
   instanceSummaryListSchema,
   instanceSummarySchema,
   modpackInstallStartedSchema,
+  modpackUpdateSummarySchema,
   modpackProjectSchema,
   modpackProvidersSchema,
   modpackSearchResultSchema,
@@ -30,6 +31,7 @@ import {
   type LoaderKind,
   type ContentLoader,
   type ModpackInstallStarted,
+  type ModpackUpdateSummary,
   type ModpackProject,
   type ModpackProviders,
   type ModpackSearchResult,
@@ -340,6 +342,26 @@ export async function installModpack(input: {
   requireNativeContent();
   return modpackInstallStartedSchema.parse(
     await invoke("modpack_install", { request: input }),
+  );
+}
+
+export async function checkModpackUpdate(
+  instanceId: string,
+): Promise<ModpackUpdateSummary> {
+  requireNativeContent();
+  return modpackUpdateSummarySchema.parse(
+    await invoke("modpack_update_check", { request: { instanceId } }),
+  );
+}
+
+export async function applyModpackUpdate(input: {
+  instanceId: string;
+  expectedRevision: number;
+  targetVersionId: string;
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("modpack_update_apply", { request: input }),
   );
 }
 

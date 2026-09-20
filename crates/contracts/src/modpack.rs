@@ -66,6 +66,30 @@ pub struct InstallModpackRequest {
     pub include_optional: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckModpackUpdateRequest {
+    pub instance_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyModpackUpdateRequest {
+    pub instance_id: Uuid,
+    pub expected_revision: u64,
+    pub target_version_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackUpdateSummary {
+    pub update_available: bool,
+    pub current_version_id: String,
+    pub current_version_name: Option<String>,
+    pub latest_version_id: Option<String>,
+    pub latest_version_name: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModSearchRequest {

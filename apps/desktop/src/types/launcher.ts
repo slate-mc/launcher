@@ -548,6 +548,14 @@ export const modpackInstallStartedSchema = z.object({
   job: installJobSchema,
 });
 
+export const modpackUpdateSummarySchema = z.object({
+  updateAvailable: z.boolean(),
+  currentVersionId: z.string().min(1),
+  currentVersionName: z.string().min(1).optional(),
+  latestVersionId: z.string().min(1).optional(),
+  latestVersionName: z.string().min(1).optional(),
+});
+
 export const instanceModSchema = z.object({
   provider: z.enum(["curseforge", "modrinth"]).nullable(),
   projectId: z.string().min(1).nullable(),
@@ -637,6 +645,7 @@ export type ModpackVersionSummary = z.infer<typeof modpackVersionSummarySchema>;
 export type ModpackVersion = z.infer<typeof modpackVersionSchema>;
 export type ModpackProviders = z.infer<typeof modpackProvidersSchema>;
 export type ModpackInstallStarted = z.infer<typeof modpackInstallStartedSchema>;
+export type ModpackUpdateSummary = z.infer<typeof modpackUpdateSummarySchema>;
 export type InstanceMod = z.infer<typeof instanceModSchema>;
 export type InstanceModResolution = z.infer<typeof instanceModResolutionSchema>;
 export type InstanceContentKind = z.infer<typeof instanceContentKindSchema>;

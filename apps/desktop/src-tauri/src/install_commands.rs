@@ -1,5 +1,11 @@
 use super::*;
 
+#[derive(Clone, Debug)]
+pub(super) struct PendingModpackUpdate {
+    version_id: String,
+    loader_version: Option<String>,
+}
+
 #[tauri::command]
 pub(super) async fn instance_install(
     state: tauri::State<'_, DesktopState>,
@@ -23,6 +29,7 @@ pub(super) async fn instance_install(
         request.expected_revision,
         plan,
         Vec::new(),
+        None,
     )
     .await
 }
@@ -33,6 +40,7 @@ pub(super) async fn queue_instance_install(
     expected_revision: u64,
     mut modpack_plan: Option<InstallPlan>,
     pending_mods: Vec<NewInstanceMod>,
+    modpack_update: Option<PendingModpackUpdate>,
 ) -> Result<InstallJobSummary, AppError> {
     let instance_id = instance.id;
     if state
@@ -92,6 +100,10 @@ pub(super) async fn queue_instance_install(
         .map_err(|error| map_storage_error(error, "slate could not queue the installation."))?;
     let response = install_job_summary(pending.job.clone());
     let install_paths = paths_for_instance(state, &instance);
+    let target_loader_version = modpack_update.as_ref().map_or_else(
+        || instance.loader_version.clone(),
+        |update| update.loader_version.clone(),
+    );
     let task_state = state.clone();
     tauri::async_runtime::spawn(async move {
         let (progress_tx, mut progress_rx) =
@@ -156,7 +168,7 @@ pub(super) async fn queue_instance_install(
                     revision_id: pending.revision_id,
                     minecraft_version: instance.minecraft_version,
                     loader_kind: instance.loader_kind,
-                    loader_version: instance.loader_version,
+                    loader_version: target_loader_version,
                     modpack_plan,
                     download_concurrency: preferences.download_concurrency,
                     paths: install_paths,
@@ -178,7 +190,12 @@ pub(super) async fn queue_instance_install(
                     executable_ref: outcome.runtime.executable.to_string_lossy().into_owned(),
                     source_digest: outcome.runtime.package_sha256,
                 };
-                let message = if !pending_mods.is_empty() {
+                let message = if let Some(update) = &modpack_update {
+                    format!(
+                        "Updated the pack to {} with {} verified content files",
+                        update.version_id, outcome.installed_content_files
+                    )
+                } else if !pending_mods.is_empty() {
                     format!(
                         "Installed {} verified mod files without reinstalling the base instance",
                         outcome.installed_content_files
@@ -196,7 +213,25 @@ pub(super) async fn queue_instance_install(
                         outcome.downloaded_artifacts, outcome.reused_artifacts
                     )
                 };
-                let completion = if pending_mods.is_empty() {
+                let completion = if let Some(update) = modpack_update {
+                    task_state
+                        .database
+                        .complete_instance_modpack_update(
+                            CompletedInstall {
+                                job_id: pending.job.id,
+                                revision_id: pending.revision_id,
+                                manifest_digest: outcome.manifest_digest,
+                                client_version: outcome.resolved_version_id,
+                                runtime,
+                                message,
+                            },
+                            CompletedModpackUpdate {
+                                version_id: update.version_id,
+                                loader_version: update.loader_version,
+                            },
+                        )
+                        .await
+                } else if pending_mods.is_empty() {
                     task_state
                         .database
                         .complete_instance_install(
@@ -268,6 +303,187 @@ pub(super) async fn fetch_instance_modpack_plan(
         )
         .await
         .map_err(modpack_api_error)
+}
+
+#[tauri::command]
+pub(super) async fn modpack_update_check(
+    state: tauri::State<'_, DesktopState>,
+    request: CheckModpackUpdateRequest,
+) -> Result<ModpackUpdateSummary, AppError> {
+    let instance = state
+        .database
+        .get_instance(InstanceId::from_uuid(request.instance_id))
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let source = instance.modpack_source.as_ref().ok_or_else(|| {
+        AppError::new(
+            "modpack.not_managed",
+            "This instance is not linked to an installed modpack.",
+        )
+    })?;
+    let response = state
+        .modpacks
+        .update(
+            source.provider,
+            &source.project_id,
+            &source.version_id,
+            &instance.minecraft_version,
+            modpack_loader_kind(instance.loader_kind)?,
+        )
+        .await
+        .map_err(modpack_api_error)?;
+    Ok(ModpackUpdateSummary {
+        update_available: response.update_available,
+        current_version_id: source.version_id.clone(),
+        current_version_name: response.current.map(|version| version.name),
+        latest_version_id: response.latest.as_ref().map(|version| version.id.clone()),
+        latest_version_name: response.latest.map(|version| version.name),
+    })
+}
+
+#[tauri::command]
+pub(super) async fn modpack_update_apply(
+    state: tauri::State<'_, DesktopState>,
+    request: ApplyModpackUpdateRequest,
+) -> Result<InstallJobSummary, AppError> {
+    refresh_exited_sessions(state.inner()).await;
+    if request.target_version_id.trim().is_empty() || request.target_version_id.len() > 128 {
+        return Err(AppError::new(
+            "modpack.invalid_version",
+            "The selected pack version is invalid.",
+        ));
+    }
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    let source = instance.modpack_source.clone().ok_or_else(|| {
+        AppError::new(
+            "modpack.not_managed",
+            "This instance is not linked to an installed modpack.",
+        )
+    })?;
+    let available = state
+        .modpacks
+        .update(
+            source.provider,
+            &source.project_id,
+            &source.version_id,
+            &instance.minecraft_version,
+            modpack_loader_kind(instance.loader_kind)?,
+        )
+        .await
+        .map_err(modpack_api_error)?;
+    let latest = available
+        .latest
+        .ok_or_else(|| AppError::new("modpack.no_update", "This modpack is already up to date."))?;
+    if !available.update_available || latest.id != request.target_version_id {
+        return Err(AppError::new(
+            "modpack.update_changed",
+            "A newer pack version became available. Check for updates again.",
+        ));
+    }
+
+    let current_version = state
+        .modpacks
+        .version(source.provider, &source.project_id, &source.version_id)
+        .await
+        .map_err(modpack_api_error)?;
+    let target_version = state
+        .modpacks
+        .version(source.provider, &source.project_id, &latest.id)
+        .await
+        .map_err(modpack_api_error)?;
+    let mut plan = state
+        .modpacks
+        .install_plan(
+            source.provider,
+            &source.project_id,
+            &latest.id,
+            &InstallPlanRequest {
+                platform: current_modpack_platform(),
+                arch: current_modpack_architecture()?,
+                include_optional: source.selected_optional.clone(),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)?;
+    if target_version.provider != source.provider
+        || target_version.project_id != source.project_id
+        || target_version.id != latest.id
+        || target_version.minecraft.version != instance.minecraft_version
+        || target_version.loader != plan.runtime.loader
+        || plan.instance.provider != source.provider
+        || plan.instance.project_id != source.project_id
+        || plan.instance.version_id != latest.id
+        || plan.runtime.minecraft != instance.minecraft_version
+    {
+        return Err(AppError::new(
+            "modpack.resolution_mismatch",
+            "The updated pack does not match this instance. Nothing was changed.",
+        ));
+    }
+    let target_loader = launcher_loader_kind(target_version.loader.kind)?;
+    let configured_loader = launcher_loader_kind(modpack_loader_kind(instance.loader_kind)?)?;
+    if target_loader != configured_loader {
+        return Err(AppError::new(
+            "modpack.incompatible_update",
+            "The updated pack requires a different mod loader.",
+        ));
+    }
+    let target_loader_version = validate_selected_loader_version(
+        &instance.minecraft_version,
+        target_loader,
+        target_version.loader.version.as_deref(),
+    )
+    .await?;
+
+    let user_mod_paths = state
+        .database
+        .list_instance_mods(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not check installed mods."))?
+        .into_iter()
+        .map(|item| normalized_content_path(&item.file_path))
+        .collect::<HashSet<_>>();
+    let target_paths = target_version
+        .files
+        .iter()
+        .filter(|file| file.side != Side::Server)
+        .map(|file| normalized_content_path(&file.path))
+        .collect::<HashSet<_>>();
+    for file in current_version.files {
+        let normalized = normalized_content_path(&file.path);
+        if file.side != Side::Server
+            && !target_paths.contains(&normalized)
+            && !user_mod_paths.contains(&normalized)
+        {
+            plan.delete.push(file.path);
+        }
+    }
+    plan.delete.sort();
+    plan.delete.dedup();
+
+    queue_instance_install(
+        state.inner(),
+        instance,
+        request.expected_revision,
+        Some(plan),
+        Vec::new(),
+        Some(PendingModpackUpdate {
+            version_id: latest.id,
+            loader_version: target_loader_version,
+        }),
+    )
+    .await
+}
+
+fn modpack_loader_kind(loader: LoaderFamily) -> Result<LoaderKind, AppError> {
+    match loader {
+        LoaderFamily::Vanilla => Ok(LoaderKind::Vanilla),
+        LoaderFamily::Fabric => Ok(LoaderKind::Fabric),
+        LoaderFamily::NeoForge => Ok(LoaderKind::NeoForge),
+    }
 }
 
 #[tauri::command]
@@ -367,6 +583,7 @@ pub(super) async fn modpack_install(
         record.revision,
         Some(plan),
         Vec::new(),
+        None,
     )
     .await
     {
@@ -607,6 +824,7 @@ pub(super) async fn instance_mod_install(
         request.expected_revision,
         Some(plan),
         pending_by_identity.into_values().collect(),
+        None,
     )
     .await
 }

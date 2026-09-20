@@ -13,8 +13,8 @@ mod snapshots;
 pub use accounts::{AccountRecord, AccountStatus, AuthenticatedAccount, LaunchAccount};
 pub use database::{Database, StorageError};
 pub use installations::{
-    CompletedInstall, InstallJobRecord, InstalledRevisionRecord, InstalledRuntime, JobState,
-    PendingInstall,
+    CompletedInstall, CompletedModpackUpdate, InstallJobRecord, InstalledRevisionRecord,
+    InstalledRuntime, JobState, PendingInstall,
 };
 pub use instance_mods::{
     InstanceModEnabledChange, InstanceModRecord, InstanceModTarget, NewInstanceMod,

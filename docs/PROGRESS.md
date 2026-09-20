@@ -27,6 +27,9 @@ Last updated: September 20, 2026
 - Discover-to-install modpack flow plus compatible CurseForge/Modrinth mod search inside an
   instance, multi-select installation, required dependency installation, duplicate reuse, installed
   mod resolution, icons, enable/disable, removal, and version pinning.
+- Compatible modpack update checks and transactional in-place updates with automatic snapshots,
+  obsolete pack-file removal, preservation of user-added mods and atomic pack/loader version
+  changes.
 - Instance content inventory for mods, resource packs, shader packs, and world data packs, including
   pack-vs-user ownership, enable/disable behavior where supported, and recoverable removal.
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
@@ -41,10 +44,10 @@ Last updated: September 20, 2026
 Verified on Windows on September 20, 2026:
 
 - Frontend lint passes with zero warnings.
-- 10 Vitest/Testing Library tests pass.
+- 11 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes. It still reports a large initial JavaScript chunk.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-targets` passes: 112 tests passed and one process test is ignored.
+- `cargo test --workspace --all-targets` passes: 116 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -52,9 +55,8 @@ Verified on Windows on September 20, 2026:
 
 1. **Onboarding:** there is no first-run flow for account connection, storage choice, Java readiness,
    and first-instance creation.
-2. **Content updates:** the API exposes modpack update checks, but the desktop has no end-to-end
-   modpack updater. Per-mod update, downgrade, dependency/dependent views, and rollback are also not
-   complete; pinning alone is not an updater.
+2. **Content updates:** modpack updates work end to end. Per-mod update, downgrade,
+   dependency/dependent views, and rollback are not complete; pinning alone is not an updater.
 3. **Import coverage:** slate portable archives work, but importing CurseForge/Modrinth packs,
    importing from other launchers, and adding a local JAR through a file picker are not complete.
 4. **Download controls:** installation progress and restart recovery work, but user cancellation,
@@ -111,9 +113,7 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Implement desktop modpack updates using the existing
-`/v1/modpacks/:provider/:project_id/update` contract. In parallel, establish the structured `tracing`
-foundation and bounded local diagnostics. Those are prerequisites for useful Sentry, OpenTelemetry,
-analytics, and support-report integrations.
+Establish the structured `tracing` foundation and bounded local diagnostics. Those are prerequisites
+for useful Sentry, OpenTelemetry, analytics, and support-report integrations.
 Add native clean-install smoke coverage so release claims are evidence-based rather than inferred
 from unit tests.

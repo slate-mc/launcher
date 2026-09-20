@@ -47,11 +47,12 @@ pub use launch::{
     SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
 };
 pub use modpack::{
-    InstallModRequest, InstallModSelection, InstallModpackRequest, InstanceContentFileSummary,
-    InstanceContentFilesRequest, InstanceContentKindDto, InstanceModOriginDto,
-    InstanceModResolution, InstanceModSummary, InstanceModsRequest, ModSearchRequest,
-    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackVersionRequest,
-    ModpackVersionsRequest, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
+    ApplyModpackUpdateRequest, CheckModpackUpdateRequest, InstallModRequest, InstallModSelection,
+    InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
+    InstanceContentKindDto, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
+    InstanceModsRequest, ModSearchRequest, ModpackProjectRequest, ModpackSearchRequest,
+    ModpackSortDto, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
     SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest,
 };

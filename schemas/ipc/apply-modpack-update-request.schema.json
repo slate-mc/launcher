@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ApplyModpackUpdateRequest",
+  "type": "object",
+  "properties": {
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "targetVersionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "instanceId",
+    "expectedRevision",
+    "targetVersionId"
+  ]
+}

@@ -4,7 +4,7 @@ use reqwest::{Method, StatusCode};
 use slate_modpack_api_contracts::{
     ApiEnvelope, ApiErrorCode, CategoriesResponse, InstallPlan, InstallPlanRequest, LoaderKind,
     ModInstallPlanRequest, Modpack, ModpackVersion, Provider, ProvidersResponse, ReleaseType,
-    ResolveModsRequest, ResolveModsResponse, SearchResponse, VersionPage,
+    ResolveModsRequest, ResolveModsResponse, SearchResponse, UpdateResponse, VersionPage,
 };
 use std::time::Duration;
 use url::Url;
@@ -182,6 +182,23 @@ impl ModpackApiClient {
             version_id,
         ])?)
         .await
+    }
+
+    pub async fn update(
+        &self,
+        provider: Provider,
+        project_id: &str,
+        current_version: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+    ) -> Result<UpdateResponse, ClientError> {
+        let mut url =
+            self.endpoint(&["v1", "modpacks", provider.as_str(), project_id, "update"])?;
+        url.query_pairs_mut()
+            .append_pair("current_version", current_version)
+            .append_pair("minecraft_version", minecraft_version)
+            .append_pair("loader", loader_name(loader));
+        self.get(url).await
     }
 
     pub async fn install_plan(

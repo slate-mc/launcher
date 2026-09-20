@@ -1,15 +1,16 @@
 use crate::{
-    AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
-    ClearStorageCategoryRequest, CreateInstanceRequest, CreateInstanceSnapshotRequest,
-    CreateSavedServerRequest, DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest,
-    DuplicateInstanceRequest, EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest,
-    GameSessionSummary, GetInstanceArtworkRequest, GetInstanceGameOptionsRequest,
-    ImportInstanceRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
-    InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
-    InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary, InstanceModsRequest,
-    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
-    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
+    AppError, AppPreferencesDto, ApplyModpackUpdateRequest, AuthFlowStatus, AuthStartResponse,
+    BootstrapResponse, CheckModpackUpdateRequest, ClearStorageCategoryRequest,
+    CreateInstanceRequest, CreateInstanceSnapshotRequest, CreateSavedServerRequest,
+    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
+    EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest, GameSessionSummary,
+    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
+    InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceGameOptionsSummary,
+    InstanceModResolution, InstanceModSummary, InstanceModsRequest, InstanceSnapshotSummary,
+    InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
+    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModSearchRequest,
+    ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackUpdateSummary,
     ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
     OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
     RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
@@ -222,6 +223,15 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             "modpack-install-started",
             schema_for!(ModpackInstallStarted),
         ),
+        (
+            "check-modpack-update-request",
+            schema_for!(CheckModpackUpdateRequest),
+        ),
+        (
+            "apply-modpack-update-request",
+            schema_for!(ApplyModpackUpdateRequest),
+        ),
+        ("modpack-update-summary", schema_for!(ModpackUpdateSummary)),
         ("mod-search-request", schema_for!(ModSearchRequest)),
         ("install-mod-request", schema_for!(InstallModRequest)),
         ("instance-mods-request", schema_for!(InstanceModsRequest)),
@@ -290,7 +300,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 78);
+        assert_eq!(schemas.len(), 81);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

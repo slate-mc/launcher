@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModpackUpdateSummary",
+  "type": "object",
+  "properties": {
+    "currentVersionId": {
+      "type": "string"
+    },
+    "currentVersionName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latestVersionId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latestVersionName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updateAvailable": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "updateAvailable",
+    "currentVersionId"
+  ]
+}

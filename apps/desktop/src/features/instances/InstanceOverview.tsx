@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  ArrowUpCircle,
   Download,
   Heart,
   LoaderCircle,
   Play,
+  RefreshCw,
   Save,
   Settings2,
   Square,
@@ -17,6 +19,9 @@ import { InstallProgressIndicator } from "../../components/InstallProgressIndica
 import { SessionLogPanel } from "../../components/SessionLogPanel";
 import { InlineNotice } from "../../components/PageScaffold";
 import {
+  applyModpackUpdate,
+  bridgeMode,
+  checkModpackUpdate,
   forceStopGameSession,
   installInstance,
   launchInstance,
@@ -57,6 +62,16 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
   const installJob = jobsQuery.data?.find(
     (job) => job.instanceId === instance.id,
   );
+  const packUpdateQuery = useQuery({
+    queryKey: ["modpack-update", instance.id, instance.modpackSource?.versionId],
+    queryFn: () => checkModpackUpdate(instance.id),
+    enabled:
+      bridgeMode === "native" &&
+      Boolean(instance.modpackSource) &&
+      instance.setupState === "ready",
+    staleTime: 2 * 60_000,
+    refetchOnWindowFocus: false,
+  });
 
   const refresh = async (updated?: LauncherInstance) => {
     if (updated) {
@@ -108,6 +123,16 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
       await queryClient.invalidateQueries({ queryKey: ["game-sessions"] });
     },
   });
+  const packUpdateMutation = useMutation({
+    mutationFn: applyModpackUpdate,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+        queryClient.invalidateQueries({ queryKey: ["install-jobs"] }),
+      ]);
+    },
+  });
 
   const readyAccounts = (accountsQuery.data ?? []).filter(
     (account) => account.status === "ready",
@@ -131,6 +156,9 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
         queryKey: ["instance", instance.id],
       });
       void queryClient.invalidateQueries({ queryKey: ["instances"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["modpack-update", instance.id],
+      });
     }
   }, [installJob?.state, instance.id, queryClient]);
 
@@ -388,6 +416,113 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
       </div>
 
       <aside className="grid content-start gap-5">
+        {instance.modpackSource ? (
+          <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="m-0 text-[10px] font-bold tracking-[.08em] text-app-muted uppercase">
+                  Pack version
+                </p>
+                <h2 className="mt-2 mb-0 text-[15px] font-bold tracking-[-.015em]">
+                  {instance.modpackSource.displayName}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-compact border border-app-separator bg-app-bg text-app-secondary hover:text-app-text disabled:opacity-45"
+                disabled={packUpdateQuery.isFetching || installing}
+                title="Check for updates"
+                aria-label="Check for pack updates"
+                onClick={() => void packUpdateQuery.refetch()}
+              >
+                <RefreshCw
+                  size={14}
+                  className={packUpdateQuery.isFetching ? "animate-spin" : undefined}
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+            {packUpdateQuery.isPending ? (
+              <p className="mt-3 mb-0 text-xs text-app-secondary">
+                Checking for a compatible update…
+              </p>
+            ) : packUpdateQuery.isError ? (
+              <p className="mt-3 mb-0 text-xs/[18px] text-app-danger" role="alert">
+                Updates could not be checked right now.
+              </p>
+            ) : packUpdateQuery.data?.updateAvailable &&
+              packUpdateQuery.data.latestVersionId ? (
+              <>
+                <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-compact bg-app-bg px-3 py-2.5">
+                  <span className="min-w-0">
+                    <span className="block text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+                      Installed
+                    </span>
+                    <span className="block truncate font-mono text-[11px] text-app-secondary">
+                      {packUpdateQuery.data.currentVersionName ??
+                        packUpdateQuery.data.currentVersionId}
+                    </span>
+                  </span>
+                  <span className="text-app-muted" aria-hidden="true">
+                    →
+                  </span>
+                  <span className="min-w-0 text-right">
+                    <span className="block text-[10px] font-bold tracking-[.06em] text-app-accent uppercase">
+                      Available
+                    </span>
+                    <span className="block truncate font-mono text-[11px] text-app-text">
+                      {packUpdateQuery.data.latestVersionName ??
+                        packUpdateQuery.data.latestVersionId}
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-3 mb-0 text-[11px]/[17px] text-app-muted">
+                  Your worlds and added mods stay in place. A snapshot is made
+                  before pack files change.
+                </p>
+                <button
+                  type="button"
+                  className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-control bg-app-accent text-xs font-bold text-app-on-accent hover:brightness-105 disabled:opacity-50"
+                  disabled={
+                    Boolean(activeSession) ||
+                    installing ||
+                    packUpdateMutation.isPending
+                  }
+                  onClick={() =>
+                    packUpdateMutation.mutate({
+                      instanceId: instance.id,
+                      expectedRevision: instance.revision,
+                      targetVersionId:
+                        packUpdateQuery.data.latestVersionId as string,
+                    })
+                  }
+                >
+                  {packUpdateMutation.isPending ? (
+                    <LoaderCircle
+                      className="animate-spin"
+                      size={15}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <ArrowUpCircle size={15} aria-hidden="true" />
+                  )}
+                  {packUpdateMutation.isPending ? "Preparing…" : "Update pack"}
+                </button>
+              </>
+            ) : (
+              <div className="mt-4 flex items-center gap-2 rounded-compact bg-app-bg px-3 py-2.5 text-xs text-app-secondary">
+                <span className="size-1.5 rounded-full bg-app-accent" />
+                Up to date
+              </div>
+            )}
+            {packUpdateMutation.isError ? (
+              <p className="mt-3 mb-0 text-xs/[18px] text-app-danger" role="alert">
+                The update could not be started. Check again and retry.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
           <h2 className="m-0 text-[15px] font-bold tracking-[-.015em]">
             Setup details

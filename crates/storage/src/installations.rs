@@ -99,6 +99,12 @@ pub struct CompletedInstall {
     pub message: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompletedModpackUpdate {
+    pub version_id: String,
+    pub loader_version: Option<String>,
+}
+
 impl Database {
     pub async fn has_active_install_jobs(&self) -> Result<bool, StorageError> {
         Ok(sqlx::query_scalar(
@@ -302,6 +308,7 @@ impl Database {
                 message: message.to_owned(),
             },
             None,
+            None,
         )
         .await
     }
@@ -311,7 +318,16 @@ impl Database {
         completion: CompletedInstall,
         installed_mods: Vec<NewInstanceMod>,
     ) -> Result<(), StorageError> {
-        self.complete_instance_install_inner(completion, Some(installed_mods))
+        self.complete_instance_install_inner(completion, Some(installed_mods), None)
+            .await
+    }
+
+    pub async fn complete_instance_modpack_update(
+        &self,
+        completion: CompletedInstall,
+        update: CompletedModpackUpdate,
+    ) -> Result<(), StorageError> {
+        self.complete_instance_install_inner(completion, None, Some(update))
             .await
     }
 
@@ -319,6 +335,7 @@ impl Database {
         &self,
         completion: CompletedInstall,
         installed_mods: Option<Vec<NewInstanceMod>>,
+        modpack_update: Option<CompletedModpackUpdate>,
     ) -> Result<(), StorageError> {
         let now = now_rfc3339()?;
         let runtime_id = Uuid::new_v4().to_string();
@@ -395,6 +412,35 @@ impl Database {
                 .execute(&mut *transaction)
                 .await?;
             }
+        }
+        if let Some(update) = modpack_update {
+            let updated_source = sqlx::query(
+                "UPDATE instance_modpacks SET version_id = ?, updated_at = ? WHERE instance_id = ?",
+            )
+            .bind(update.version_id.trim())
+            .bind(&now)
+            .bind(&instance_id)
+            .execute(&mut *transaction)
+            .await?;
+            if updated_source.rows_affected() != 1 {
+                transaction.rollback().await?;
+                return Err(StorageError::InvalidStoredValue {
+                    field: "instance_modpacks.instance_id",
+                    value: instance_id,
+                });
+            }
+            sqlx::query(
+                "UPDATE instance_configuration SET loader_version = ? WHERE instance_id = ?",
+            )
+            .bind(update.loader_version.as_deref())
+            .bind(&instance_id)
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query("UPDATE instance_revisions SET loader_version = ? WHERE id = ?")
+                .bind(update.loader_version.as_deref())
+                .bind(completion.revision_id.to_string())
+                .execute(&mut *transaction)
+                .await?;
         }
         sqlx::query(
             "UPDATE instance_revisions SET manifest_digest = ?, client_version = ?, \
@@ -717,11 +763,12 @@ fn parse_uuid(value: String, field: &'static str) -> Result<Uuid, StorageError> 
 
 #[cfg(test)]
 mod tests {
-    use super::{InstalledRuntime, JobState};
-    use crate::{AuthenticatedAccount, Database, NewInstance};
+    use super::{CompletedInstall, CompletedModpackUpdate, InstalledRuntime, JobState};
+    use crate::{AuthenticatedAccount, Database, NewInstance, NewModpackSource};
     use slate_domain::{
         InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId, SessionId,
     };
+    use slate_modpack_api_contracts::Provider;
     use uuid::Uuid;
 
     #[test]
@@ -731,6 +778,77 @@ mod tests {
             JobState::try_from("succeeded").ok(),
             Some(JobState::Succeeded)
         );
+    }
+
+    #[tokio::test]
+    async fn completed_modpack_update_advances_source_and_loader_together()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let instance = database
+            .create_instance(NewInstance {
+                name: InstanceName::parse("Updated Pack")?,
+                mode: InstanceMode::Modded,
+                management_mode: ManagementMode::Local,
+                root_id: root,
+                minecraft_version: "1.21.1".to_owned(),
+                loader_kind: LoaderFamily::NeoForge,
+                loader_version: Some("21.1.100".to_owned()),
+                memory_mb: 8192,
+                modpack_source: Some(NewModpackSource {
+                    provider: Provider::CurseForge,
+                    project_id: "123".to_owned(),
+                    version_id: "old".to_owned(),
+                    selected_optional: Vec::new(),
+                    display_name: "Updated Pack".to_owned(),
+                    icon_url: None,
+                    banner_url: None,
+                }),
+            })
+            .await?;
+        let pending = database
+            .begin_instance_install(instance.id, instance.revision, RequestId::new())
+            .await?;
+
+        database
+            .complete_instance_modpack_update(
+                CompletedInstall {
+                    job_id: pending.job.id,
+                    revision_id: pending.revision_id,
+                    manifest_digest: "manifest-digest".to_owned(),
+                    client_version: "1.21.1-neoforge-21.1.200".to_owned(),
+                    runtime: InstalledRuntime {
+                        vendor: "test".to_owned(),
+                        release_name: "java-21".to_owned(),
+                        java_version: "21.0.1".to_owned(),
+                        major: 21,
+                        os: "windows".to_owned(),
+                        arch: "x86_64".to_owned(),
+                        executable_ref: "C:/slate/runtimes/java.exe".to_owned(),
+                        source_digest: "runtime-digest".to_owned(),
+                    },
+                    message: "Updated".to_owned(),
+                },
+                CompletedModpackUpdate {
+                    version_id: "new".to_owned(),
+                    loader_version: Some("21.1.200".to_owned()),
+                },
+            )
+            .await?;
+
+        let updated = database.get_instance(instance.id).await?;
+        assert_eq!(updated.loader_version.as_deref(), Some("21.1.200"));
+        assert_eq!(
+            updated
+                .modpack_source
+                .as_ref()
+                .map(|source| source.version_id.as_str()),
+            Some("new")
+        );
+        assert_eq!(updated.setup_state, slate_domain::InstanceSetupState::Ready);
+        database.close().await;
+        Ok(())
     }
 
     #[tokio::test]
