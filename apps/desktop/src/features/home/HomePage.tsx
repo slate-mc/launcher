@@ -12,7 +12,6 @@ import {
   Plus,
   RotateCcw,
   Server,
-  Signal,
   Square,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -25,7 +24,7 @@ import {
   listAccounts,
   listGameSessions,
   listInstances,
-  previewServers,
+  listSavedServers,
   previewUpdates,
 } from "../../lib/bridge";
 import { cn } from "../../lib/cn";
@@ -37,7 +36,7 @@ import { MinecraftHead } from "../../components/MinecraftHead";
 import type {
   LauncherInstance,
   LauncherUpdate,
-  ServerPreview,
+  SavedServer,
 } from "../../types/launcher";
 
 type Filter = "all" | "modded" | "vanilla";
@@ -71,6 +70,10 @@ export function HomePage() {
     queryKey: ["game-sessions"],
     queryFn: listGameSessions,
     refetchInterval: 750,
+  });
+  const savedServersQuery = useQuery({
+    queryKey: ["saved-servers"],
+    queryFn: listSavedServers,
   });
   const launchMutation = useMutation({
     mutationFn: ({
@@ -515,8 +518,8 @@ export function HomePage() {
             subtitle="Your saved servers, one click away."
             to="/servers"
           >
-            {bridgeMode === "preview" ? (
-              previewServers.map((server) => (
+            {savedServersQuery.data?.length ? (
+              savedServersQuery.data.slice(0, 2).map((server) => (
                 <ServerRow key={server.id} server={server} />
               ))
             ) : (
@@ -664,9 +667,9 @@ function SummarySection({
   );
 }
 
-function ServerRow({ server }: { server: ServerPreview }) {
+function ServerRow({ server }: { server: SavedServer }) {
   return (
-    <div className="grid min-h-[52px] grid-cols-[36px_minmax(0,1fr)_auto_22px_auto] items-center gap-[9px] py-[5px]">
+    <div className="grid min-h-[52px] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-[9px] py-[5px]">
       <span className="inline-flex size-9 items-center justify-center rounded-lg bg-[#2c4939] text-[#b5e5c9]">
         <Server size={19} aria-hidden="true" />
       </span>
@@ -678,23 +681,12 @@ function ServerRow({ server }: { server: ServerPreview }) {
           {server.address}
         </small>
       </span>
-      <span className="font-mono text-[10px] text-app-secondary">
-        {server.players}
-      </span>
-      <span
-        className="inline-flex text-app-accent"
-        aria-label="Strong connection"
+      <Link
+        to="/servers"
+        className="inline-flex h-[34px] items-center justify-center rounded-[7px] border border-app-separator bg-app-raised px-3 text-[11px] font-bold text-app-secondary no-underline hover:border-app-secondary hover:text-app-text"
       >
-        <Signal size={18} aria-hidden="true" />
-      </span>
-      <button
-        className="inline-flex h-[34px] items-center justify-center rounded-[7px] border border-app-separator bg-app-raised px-[18px] text-[11px] font-bold text-app-muted opacity-75"
-        type="button"
-        disabled
-        title="Server joining is not connected in preview."
-      >
-        Join
-      </button>
+        Open
+      </Link>
     </div>
   );
 }

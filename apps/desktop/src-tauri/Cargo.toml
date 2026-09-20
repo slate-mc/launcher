@@ -10,6 +10,7 @@ tauri-build.workspace = true
 
 [dependencies]
 base64.workspace = true
+hickory-resolver.workspace = true
 slate-auth = { path = "../../../crates/auth" }
 slate-contracts = { path = "../../../crates/contracts" }
 slate-domain = { path = "../../../crates/domain" }

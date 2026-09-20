@@ -58,7 +58,7 @@ pub use modpack::{
 pub use schema::schema_documents;
 pub use server::{
     CreateSavedServerRequest, PingServerRequest, RemoveSavedServerRequest, SavedServerSummary,
-    ServerStatusSummary, UpdateSavedServerRequest,
+    ServerStatusSummary, ServerTextSegment, UpdateSavedServerRequest,
 };
 pub use settings::{
     AppPreferencesDto, ReduceMotionPreferenceDto, ThemePreferenceDto, UpdateAppPreferencesRequest,

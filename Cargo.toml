@@ -46,6 +46,7 @@ async-trait = "=0.1.92"
 axum = "=0.8.9"
 directories = "=6.0.0"
 futures-util = "=0.3.32"
+hickory-resolver = { version = "=0.26.3", default-features = false, features = ["system-config", "tokio"] }
 keyring = "=4.2.0"
 proptest = "=1.11.0"
 regex = "=1.13.1"

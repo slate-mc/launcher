@@ -12,6 +12,18 @@
         "null"
       ]
     },
+    "descriptionSegments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ServerTextSegment"
+      }
+    },
+    "favicon": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "latencyMs": {
       "type": [
         "integer",
@@ -56,5 +68,39 @@
   "required": [
     "address",
     "online"
-  ]
+  ],
+  "$defs": {
+    "ServerTextSegment": {
+      "type": "object",
+      "properties": {
+        "bold": {
+          "type": "boolean"
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "obfuscated": {
+          "type": "boolean"
+        },
+        "strikethrough": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        },
+        "underlined": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  }
 }

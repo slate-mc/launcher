@@ -12,12 +12,12 @@ import { LibraryPage } from "../features/library/LibraryPage";
 import { NewInstancePage } from "../features/library/NewInstancePage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { StorageSettingsPage } from "../features/settings/StorageSettingsPage";
+import { ServersPage } from "../features/servers/ServersPage";
 import {
   AccountsPage,
   ActivityPage,
   DownloadsPage,
   HelpPage,
-  ServersPage,
 } from "../features/system/SystemPages";
 
 const rootRoute = createRootRoute({

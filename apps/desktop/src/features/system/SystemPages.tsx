@@ -8,7 +8,6 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
-  Server,
   ShieldX,
   Trash2,
   UserRound,
@@ -33,7 +32,6 @@ import {
   listGameSessions,
   listInstallJobs,
   listInstances,
-  previewServers,
   refreshMinecraftAccount,
   removeMinecraftAccount,
   setDefaultMinecraftAccount,
@@ -500,65 +498,6 @@ export function AccountsPage() {
         </section>
 
       </div>
-    </div>
-  );
-}
-
-export function ServersPage() {
-  return (
-    <div className="min-h-full bg-app-bg">
-      <PageHeader
-        eyebrow="Servers"
-        title="Saved servers"
-        description="Keep favorite servers here and choose which instance to use when joining."
-        actions={
-          <button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-control bg-app-raised px-4 text-xs font-bold text-app-muted opacity-60"
-            disabled
-            title="Saving servers is not available yet."
-          >
-            <Plus size={16} aria-hidden="true" />
-            Add server
-          </button>
-        }
-      />
-      {bridgeMode === "preview" ? (
-        <div className="px-8 py-7">
-          <InlineNotice title="Preview-only server rows">
-            These sample entries appear only in the browser preview and cannot
-            be joined.
-          </InlineNotice>
-          <div className="mt-5 overflow-hidden rounded-control border border-app-separator/70">
-            {previewServers.map((server) => (
-              <div
-                key={server.id}
-                className="grid min-h-16 grid-cols-[38px_minmax(0,1fr)_120px] items-center gap-3 border-t border-app-separator/45 bg-app-surface px-4 first:border-0"
-              >
-                <span className="inline-flex size-9 items-center justify-center rounded-lg bg-app-raised text-app-accent">
-                  <Server size={18} aria-hidden="true" />
-                </span>
-                <span className="min-w-0">
-                  <strong className="block text-xs font-bold">
-                    {server.name}
-                  </strong>
-                  <small className="font-mono text-[10px] text-app-muted">
-                    {server.address}
-                  </small>
-                </span>
-                <span className="text-right font-mono text-[10px] text-app-secondary">
-                  {server.players}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <EmptyState
-          title="No saved servers"
-          description="Saving and joining servers is not available yet."
-        />
-      )}
     </div>
   );
 }

@@ -12,10 +12,13 @@ import { bridgeMode } from "./bridgeRuntime";
 export async function launchInstance(
   id: string,
   accountId?: string,
+  serverAddress?: string,
 ): Promise<GameSession> {
   if (bridgeMode === "native") {
     return gameSessionSchema.parse(
-      await invoke("instance_launch", { request: { id, accountId } }),
+      await invoke("instance_launch", {
+        request: { id, accountId, serverAddress },
+      }),
     );
   }
   throw new Error(
@@ -64,4 +67,3 @@ export async function subscribeSessionLog(
     });
   };
 }
-

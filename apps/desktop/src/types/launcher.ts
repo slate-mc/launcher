@@ -249,6 +249,40 @@ export const preflightSchema = z.object({
   launchImplemented: z.boolean(),
 });
 
+export const savedServerSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(80),
+  address: z.string().min(1).max(255),
+  preferredInstanceId: z.string().uuid().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const savedServerListSchema = z.array(savedServerSchema);
+
+export const serverTextSegmentSchema = z.object({
+  text: z.string(),
+  color: z.string().regex(/^#[0-9A-F]{6}$/).optional(),
+  bold: z.boolean().default(false),
+  italic: z.boolean().default(false),
+  underlined: z.boolean().default(false),
+  strikethrough: z.boolean().default(false),
+  obfuscated: z.boolean().default(false),
+});
+
+export const serverStatusSchema = z.object({
+  address: z.string().min(1),
+  online: z.boolean(),
+  latencyMs: z.number().int().nonnegative().optional(),
+  versionName: z.string().optional(),
+  protocol: z.number().int().optional(),
+  playersOnline: z.number().int().nonnegative().optional(),
+  playersMax: z.number().int().nonnegative().optional(),
+  description: z.string().optional(),
+  descriptionSegments: z.array(serverTextSegmentSchema).default([]),
+  favicon: z.string().startsWith("data:image/png;base64,").optional(),
+});
+
 export const storageCategorySchema = z.enum([
   "instances",
   "temporaryFiles",
@@ -573,6 +607,9 @@ export type CreateInstanceInput = z.infer<typeof createInstanceSchema>;
 export type LoaderKind = z.infer<typeof loaderKindSchema>;
 export type AppPreferences = z.infer<typeof preferencesSchema>;
 export type Preflight = z.infer<typeof preflightSchema>;
+export type SavedServer = z.infer<typeof savedServerSchema>;
+export type ServerTextSegment = z.infer<typeof serverTextSegmentSchema>;
+export type ServerStatus = z.infer<typeof serverStatusSchema>;
 export type StorageCategory = z.infer<typeof storageCategorySchema>;
 export type StorageCategorySummary = z.infer<typeof storageCategorySummarySchema>;
 export type TrashedInstance = z.infer<typeof trashedInstanceSchema>;
@@ -604,14 +641,6 @@ export type InstanceMod = z.infer<typeof instanceModSchema>;
 export type InstanceModResolution = z.infer<typeof instanceModResolutionSchema>;
 export type InstanceContentKind = z.infer<typeof instanceContentKindSchema>;
 export type InstanceContentFile = z.infer<typeof instanceContentFileSchema>;
-
-export type ServerPreview = {
-  id: string;
-  name: string;
-  address: string;
-  players: string;
-  latencyBars: number;
-};
 
 export type LauncherUpdate = {
   id: string;

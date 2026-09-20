@@ -45,7 +45,6 @@ import {
   type InstanceGameOptions,
   type InstanceSnapshot,
   type Preflight,
-  type ServerPreview,
 } from "../types/launcher";
 
 import {
@@ -81,6 +80,13 @@ export {
   listGameSessions,
   subscribeSessionLog,
 } from "./bridgeSessions";
+export {
+  createSavedServer,
+  listSavedServers,
+  pingServer,
+  removeSavedServer,
+  updateSavedServer,
+} from "./bridgeServers";
 
 const previewStorageKey = "slate.preview.instances.v2";
 const previewPreferencesKey = "slate.preview.preferences.v1";
@@ -190,23 +196,6 @@ let previewInstances = loadPreviewInstances();
 let previewPreferences = loadPreviewPreferences();
 const previewInstallJobs: InstallJob[] = [];
 
-export const previewServers: ServerPreview[] = [
-  {
-    id: "blockhaven",
-    name: "Blockhaven SMP",
-    address: "play.blockhaven.gg",
-    players: "42 / 100",
-    latencyBars: 4,
-  },
-  {
-    id: "pixelrealms",
-    name: "PixelRealms",
-    address: "mc.pixelrealms.net",
-    players: "128 / 500",
-    latencyBars: 4,
-  },
-];
-
 export const previewUpdates: LauncherUpdate[] = [
   {
     id: "minecraft-release",
@@ -224,7 +213,7 @@ export async function getBootstrap(): Promise<Bootstrap> {
   return bootstrapSchema.parse({
     productName: "slate",
     ipcSchemaVersion: 1,
-    databaseSchemaVersion: 5,
+    databaseSchemaVersion: 9,
     capabilities: [
       { id: "instance.library", available: true },
       { id: "instance.create", available: true },

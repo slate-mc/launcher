@@ -62,4 +62,30 @@ pub struct ServerStatusSummary {
     pub players_max: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub description_segments: Vec<ServerTextSegment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub favicon: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerTextSegment {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bold: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub italic: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub underlined: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub strikethrough: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub obfuscated: bool,
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
 }

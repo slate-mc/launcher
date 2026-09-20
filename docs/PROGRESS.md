@@ -29,6 +29,9 @@ Last updated: September 20, 2026
   mod resolution, icons, enable/disable, removal, and version pinning.
 - Instance content inventory for mods, resource packs, shader packs, and world data packs, including
   pack-vs-user ownership, enable/disable behavior where supported, and recoverable removal.
+- Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
+  formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
+  authenticated quick join.
 - Separate Downloads and Activity destinations. Normal product copy no longer exposes internal IDs,
   paths, backend terminology, or raw Rust/HTTP errors; technical output remains in the Minecraft log
   view where it is useful.
@@ -49,24 +52,22 @@ Verified on Windows on September 20, 2026:
 
 1. **Onboarding:** there is no first-run flow for account connection, storage choice, Java readiness,
    and first-instance creation.
-2. **Servers:** storage primitives exist, but the desktop still lacks real saved-server CRUD, ping,
-   compatibility selection, join, and quick-join history. The current page is intentionally inert.
-3. **Content updates:** the API exposes modpack update checks, but the desktop has no end-to-end
+2. **Content updates:** the API exposes modpack update checks, but the desktop has no end-to-end
    modpack updater. Per-mod update, downgrade, dependency/dependent views, and rollback are also not
    complete; pinning alone is not an updater.
-4. **Import coverage:** slate portable archives work, but importing CurseForge/Modrinth packs,
+3. **Import coverage:** slate portable archives work, but importing CurseForge/Modrinth packs,
    importing from other launchers, and adding a local JAR through a file picker are not complete.
-5. **Download controls:** installation progress and restart recovery work, but user cancellation,
+4. **Download controls:** installation progress and restart recovery work, but user cancellation,
    retry from the Downloads page, queue ordering, pause/resume, and bandwidth controls are missing.
-6. **Resource content workflows:** resource packs, shaders, and data packs can be inventoried and
+5. **Resource content workflows:** resource packs, shaders, and data packs can be inventoried and
    managed after they exist, but browsing, importing, updating, and ordering them are incomplete.
-7. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
+6. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
-8. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
+7. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-9. **Operational readiness:** crash reporting, privacy-aware product analytics, remote feature
+8. **Operational readiness:** crash reporting, privacy-aware product analytics, remote feature
    controls, backend telemetry, bounded offline diagnostics, and the in-app support-report pipeline
    still need production implementations.
 
@@ -110,9 +111,9 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Finish the F1 server workflow (saved-server CRUD, ping, instance compatibility choice, and join), then
-implement desktop modpack updates using the existing `/v1/modpacks/:provider/:project_id/update`
-contract. In parallel, establish the structured `tracing` foundation and bounded local diagnostics;
-those are prerequisites for useful Sentry, OpenTelemetry, analytics, and support-report integrations.
+Implement desktop modpack updates using the existing
+`/v1/modpacks/:provider/:project_id/update` contract. In parallel, establish the structured `tracing`
+foundation and bounded local diagnostics. Those are prerequisites for useful Sentry, OpenTelemetry,
+analytics, and support-report integrations.
 Add native clean-install smoke coverage so release claims are evidence-based rather than inferred
 from unit tests.
