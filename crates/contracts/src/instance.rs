@@ -167,6 +167,7 @@ pub struct InstanceSettingsSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quick_play_server: Option<String>,
     pub process_priority: ProcessPriorityDto,
+    pub cpu_affinity: Vec<u16>,
     pub memory_mode: MemoryModeDto,
     pub initial_memory_mb: u32,
     pub effective_memory_mb: u32,
@@ -285,6 +286,8 @@ pub struct UpdateInstanceSettingsRequest {
     #[serde(default)]
     pub quick_play_server: Option<String>,
     pub process_priority: ProcessPriorityDto,
+    #[serde(default)]
+    pub cpu_affinity: Vec<u16>,
     pub memory_mode: MemoryModeDto,
     pub initial_memory_mb: u32,
     pub maximum_memory_mb: u32,

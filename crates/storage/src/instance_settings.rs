@@ -85,6 +85,7 @@ pub struct InstanceSettingsRecord {
     pub game_language: String,
     pub quick_play_server: Option<String>,
     pub process_priority: ProcessPriority,
+    pub cpu_affinity: Vec<u16>,
     pub memory_mode: MemoryMode,
     pub initial_memory_mb: u32,
     pub java_mode: JavaSelectionMode,
@@ -114,6 +115,7 @@ pub struct UpdateInstanceSettings {
     pub game_language: String,
     pub quick_play_server: Option<String>,
     pub process_priority: ProcessPriority,
+    pub cpu_affinity: Vec<u16>,
     pub memory_mode: MemoryMode,
     pub initial_memory_mb: u32,
     pub maximum_memory_mb: u32,
@@ -154,12 +156,12 @@ impl Database {
              (instance_id, description, notes, tags_json, icon_mime, banner_mime, \
               banner_position_x, banner_position_y, window_mode, resolution_width, \
               resolution_height, launcher_behavior, game_language, quick_play_server, \
-              process_priority, memory_mode, initial_memory_mb, java_mode, custom_java_path, \
+              process_priority, cpu_affinity_json, memory_mode, initial_memory_mb, java_mode, custom_java_path, \
               custom_java_label, performance_preset, jvm_arguments_json, environment_json, \
               backup_before_changes, backup_retention, log_retention_days, created_at, updated_at) \
              SELECT ?, description, notes, tags_json, icon_mime, banner_mime, banner_position_x, \
               banner_position_y, window_mode, resolution_width, resolution_height, \
-              launcher_behavior, game_language, quick_play_server, process_priority, memory_mode, \
+              launcher_behavior, game_language, quick_play_server, process_priority, cpu_affinity_json, memory_mode, \
               initial_memory_mb, java_mode, custom_java_path, custom_java_label, \
               performance_preset, jvm_arguments_json, environment_json, backup_before_changes, \
               backup_retention, log_retention_days, ?, ? FROM instance_settings WHERE instance_id = ?",
@@ -255,7 +257,7 @@ impl Database {
             "UPDATE instance_settings SET description = ?, notes = ?, tags_json = ?, \
              banner_position_x = ?, banner_position_y = ?, window_mode = ?, \
              resolution_width = ?, resolution_height = ?, launcher_behavior = ?, \
-             game_language = ?, quick_play_server = ?, process_priority = ?, memory_mode = ?, \
+             game_language = ?, quick_play_server = ?, process_priority = ?, cpu_affinity_json = ?, memory_mode = ?, \
              initial_memory_mb = ?, java_mode = ?, performance_preset = ?, \
              jvm_arguments_json = ?, environment_json = ?, backup_before_changes = ?, \
              backup_retention = ?, log_retention_days = ?, updated_at = ? WHERE instance_id = ?",
@@ -272,6 +274,7 @@ impl Database {
         .bind(settings.game_language)
         .bind(settings.quick_play_server)
         .bind(settings.process_priority.as_storage_value())
+        .bind(serde_json::to_string(&settings.cpu_affinity)?)
         .bind(settings.memory_mode.as_storage_value())
         .bind(i64::from(settings.initial_memory_mb))
         .bind(settings.java_mode.as_storage_value())
@@ -418,6 +421,9 @@ pub(crate) fn settings_from_row(
         game_language: row.try_get("settings_game_language")?,
         quick_play_server: row.try_get("settings_quick_play_server")?,
         process_priority: stored_enum(row, "settings_process_priority")?,
+        cpu_affinity: serde_json::from_str(
+            &row.try_get::<String, _>("settings_cpu_affinity_json")?,
+        )?,
         memory_mode: stored_enum(row, "settings_memory_mode")?,
         initial_memory_mb: bounded_integer(row, "settings_initial_memory_mb")?,
         java_mode: stored_enum(row, "settings_java_mode")?,

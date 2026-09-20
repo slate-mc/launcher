@@ -24,6 +24,16 @@
       "maximum": 255,
       "minimum": 0
     },
+    "cpuAffinity": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "integer",
+        "format": "uint16",
+        "maximum": 65535,
+        "minimum": 0
+      }
+    },
     "description": {
       "type": "string"
     },

@@ -217,6 +217,7 @@ impl Database {
              s.game_language AS settings_game_language, \
              s.quick_play_server AS settings_quick_play_server, \
              s.process_priority AS settings_process_priority, \
+             s.cpu_affinity_json AS settings_cpu_affinity_json, \
              s.memory_mode AS settings_memory_mode, \
              s.initial_memory_mb AS settings_initial_memory_mb, \
              s.java_mode AS settings_java_mode, s.custom_java_path AS settings_custom_java_path, \
@@ -273,6 +274,7 @@ impl Database {
              s.game_language AS settings_game_language, \
              s.quick_play_server AS settings_quick_play_server, \
              s.process_priority AS settings_process_priority, \
+             s.cpu_affinity_json AS settings_cpu_affinity_json, \
              s.memory_mode AS settings_memory_mode, \
              s.initial_memory_mb AS settings_initial_memory_mb, \
              s.java_mode AS settings_java_mode, s.custom_java_path AS settings_custom_java_path, \

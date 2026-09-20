@@ -81,7 +81,7 @@ pub(crate) fn now_rfc3339() -> Result<String, StorageError> {
 pub enum StorageError {
     #[error("database parent directory does not exist: {0}")]
     DatabaseParentMissing(PathBuf),
-    #[error("database migration failed")]
+    #[error("database migration failed: {0}")]
     Migration(#[from] MigrateError),
     #[error("database operation failed")]
     Database(#[from] sqlx::Error),

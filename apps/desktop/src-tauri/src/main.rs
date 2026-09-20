@@ -146,6 +146,8 @@ struct PortableInstanceSettings {
     game_language: String,
     quick_play_server: Option<String>,
     process_priority: ProcessPriorityDto,
+    #[serde(default)]
+    cpu_affinity: Vec<u16>,
     memory_mode: MemoryModeDto,
     initial_memory_mb: u32,
     performance_preset: PerformancePresetDto,
@@ -3418,6 +3420,7 @@ async fn instance_launch(
         &preparation.plan,
         log_path,
         child_process_priority(instance.settings.process_priority),
+        &instance.settings.cpu_affinity,
     ) {
         Ok(started) => started,
         Err(error) => {
@@ -3666,6 +3669,7 @@ fn portable_manifest(instance: &InstanceRecord) -> PortableInstanceManifest {
             game_language: settings.game_language.clone(),
             quick_play_server: settings.quick_play_server.clone(),
             process_priority: process_priority_dto(settings.process_priority),
+            cpu_affinity: settings.cpu_affinity.clone(),
             memory_mode: memory_mode_dto(settings.memory_mode),
             initial_memory_mb: settings.initial_memory_mb,
             performance_preset: performance_preset_dto(settings.performance_preset),
@@ -3710,6 +3714,7 @@ fn portable_settings_request(
         game_language: settings.game_language,
         quick_play_server: settings.quick_play_server,
         process_priority: settings.process_priority,
+        cpu_affinity: settings.cpu_affinity,
         memory_mode: settings.memory_mode,
         initial_memory_mb: settings.initial_memory_mb,
         maximum_memory_mb: instance.memory_mb,
@@ -3869,6 +3874,7 @@ fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
             game_language: settings.game_language,
             quick_play_server: settings.quick_play_server,
             process_priority: process_priority_dto(settings.process_priority),
+            cpu_affinity: settings.cpu_affinity,
             memory_mode: memory_mode_dto(settings.memory_mode),
             initial_memory_mb: settings.initial_memory_mb,
             effective_memory_mb: record.memory_mb,
@@ -4371,6 +4377,23 @@ fn validated_instance_settings(
         ));
     }
     let quick_play_server = validated_optional_server(request.quick_play_server)?;
+    let mut cpu_affinity = request.cpu_affinity;
+    cpu_affinity.sort_unstable();
+    cpu_affinity.dedup();
+    let logical_cpu_count = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1)
+        .min(64);
+    if cpu_affinity.len() > 64
+        || cpu_affinity
+            .iter()
+            .any(|cpu| usize::from(*cpu) >= logical_cpu_count)
+    {
+        return Err(settings_validation_error(
+            "cpuAffinity",
+            "Choose logical CPU indices available on this computer, or leave the field empty to use every CPU.",
+        ));
+    }
 
     if !(256..=32_768).contains(&request.initial_memory_mb) {
         return Err(settings_validation_error(
@@ -4449,6 +4472,7 @@ fn validated_instance_settings(
             ProcessPriorityDto::AboveNormal => ProcessPriority::AboveNormal,
             ProcessPriorityDto::High => ProcessPriority::High,
         },
+        cpu_affinity,
         memory_mode: match request.memory_mode {
             MemoryModeDto::Auto => MemoryMode::Auto,
             MemoryModeDto::Custom => MemoryMode::Custom,
@@ -4969,6 +4993,11 @@ fn process_start_error(error: slate_process::ProcessError) -> AppError {
         AppError::new(
             "local.instance_running",
             "Minecraft is already running for this instance.",
+        )
+    } else if matches!(error, slate_process::ProcessError::AffinityUnavailable) {
+        AppError::new(
+            "local.cpu_affinity_unavailable",
+            "slate could not apply this instance's CPU affinity. Clear the advanced CPU affinity setting and try again.",
         )
     } else {
         AppError::new(

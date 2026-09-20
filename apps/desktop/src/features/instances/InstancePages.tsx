@@ -2428,6 +2428,7 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
         gameLanguage: draft.gameLanguage,
         quickPlayServer: cleanOptional(draft.quickPlayServer),
         processPriority: draft.processPriority,
+        cpuAffinity: parseCpuAffinity(draft.cpuAffinity),
         memoryMode: draft.memoryMode,
         initialMemoryMb: draft.initialMemoryMb,
         maximumMemoryMb: draft.maximumMemoryMb,
@@ -2837,6 +2838,12 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
                   <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-bold"><ChevronDown size={14} />Advanced launch overrides</summary>
                   <p className="mt-2 text-[11px] text-app-secondary">One argument or KEY=value environment override per line. slate rejects memory, classpath, agent, path, and Java control variables.</p>
                   <div className="grid grid-cols-2 gap-5">
+                    <Field label="CPU affinity">
+                      <input className={`${inputClass} font-mono text-[11px]`} value={draft.cpuAffinity} placeholder="0, 1, 2, 3 (empty uses all CPUs)" onChange={(event) => setDraft({ ...draft, cpuAffinity: event.target.value })} />
+                    </Field>
+                    <div className="flex items-end pb-3 text-[11px] leading-5 text-app-secondary">
+                      Restrict Minecraft to selected logical CPU indices. Leave empty unless diagnosing performance or compatibility issues.
+                    </div>
                     <Field label="Additional JVM arguments">
                       <textarea className={`${inputClass} h-32 resize-y py-3 font-mono text-[11px]`} value={draft.jvmArguments} placeholder="-Dexample=value" onChange={(event) => setDraft({ ...draft, jvmArguments: event.target.value })} />
                     </Field>
@@ -3326,6 +3333,7 @@ type InstanceSettingsDraft = {
   gameLanguage: string;
   quickPlayServer: string;
   processPriority: LauncherInstance["settings"]["processPriority"];
+  cpuAffinity: string;
   memoryMode: LauncherInstance["settings"]["memoryMode"];
   initialMemoryMb: number;
   maximumMemoryMb: number;
@@ -3356,6 +3364,7 @@ function instanceSettingsDraft(instance: LauncherInstance): InstanceSettingsDraf
     gameLanguage: settings.gameLanguage,
     quickPlayServer: settings.quickPlayServer ?? "",
     processPriority: settings.processPriority,
+    cpuAffinity: settings.cpuAffinity.join(", "),
     memoryMode: settings.memoryMode,
     initialMemoryMb: settings.initialMemoryMb,
     maximumMemoryMb: instance.memoryMb,
@@ -3399,6 +3408,18 @@ function parseEnvironmentOverrides(value: string) {
     result[key] = itemValue;
   }
   return result;
+}
+
+function parseCpuAffinity(value: string) {
+  if (!value.trim()) return [];
+  const cpus = value.split(",").map((rawCpu, index) => {
+    const cpu = Number(rawCpu.trim());
+    if (!Number.isInteger(cpu) || cpu < 0 || cpu > 63) {
+      throw new Error(`CPU affinity item ${index + 1} must be an integer from 0 through 63.`);
+    }
+    return cpu;
+  });
+  return [...new Set(cpus)].sort((left, right) => left - right);
 }
 
 function requiredJavaLabel(version: string) {

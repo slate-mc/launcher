@@ -154,6 +154,7 @@ impl ProcessSupervisor {
         plan: &LaunchPlan,
         log_path: PathBuf,
         priority: ChildProcessPriority,
+        cpu_affinity: &[u16],
     ) -> Result<StartedProcess, ProcessError> {
         let mut children = self
             .children
@@ -172,10 +173,14 @@ impl ProcessSupervisor {
         let mut command = plan.command();
         apply_process_priority(&mut command, priority);
         command.stdout(Stdio::from(log)).stderr(Stdio::from(stderr));
-        let child = tokio::process::Command::from(command)
+        let mut child = tokio::process::Command::from(command)
             .kill_on_drop(false)
             .spawn()?;
         let pid = child.id().ok_or(ProcessError::PidUnavailable)?;
+        if let Err(error) = apply_process_affinity(pid, cpu_affinity) {
+            let _ = child.start_kill();
+            return Err(error);
+        }
         children.insert(
             instance_id,
             SupervisedProcess {
@@ -332,6 +337,56 @@ fn apply_process_priority(command: &mut std::process::Command, priority: ChildPr
 #[cfg(not(windows))]
 fn apply_process_priority(_: &mut std::process::Command, _: ChildProcessPriority) {}
 
+#[cfg(windows)]
+fn apply_process_affinity(pid: u32, cpu_affinity: &[u16]) -> Result<(), ProcessError> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    if cpu_affinity.is_empty() {
+        return Ok(());
+    }
+    let mut mask = 0_u64;
+    for cpu in cpu_affinity {
+        let bit = u32::from(*cpu);
+        if bit >= 64 {
+            return Err(ProcessError::AffinityUnavailable);
+        }
+        mask |= 1_u64 << bit;
+    }
+    let signed_mask = mask as i64;
+    let script = format!(
+        "$process = Get-Process -Id {pid} -ErrorAction Stop; $process.ProcessorAffinity = [IntPtr]({signed_mask})"
+    );
+    let mut command = std::process::Command::new("powershell.exe");
+    command
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &script,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW);
+    let status = command.status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(ProcessError::AffinityUnavailable)
+    }
+}
+
+#[cfg(not(windows))]
+fn apply_process_affinity(_: u32, cpu_affinity: &[u16]) -> Result<(), ProcessError> {
+    if cpu_affinity.is_empty() {
+        Ok(())
+    } else {
+        Err(ProcessError::AffinityUnavailable)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExitedProcess {
     pub instance_id: InstanceId,
@@ -353,6 +408,8 @@ pub enum ProcessError {
     LogParentMissing,
     #[error("the operating system did not return a process id")]
     PidUnavailable,
+    #[error("the operating system could not apply the requested CPU affinity")]
+    AffinityUnavailable,
     #[error("process I/O failed")]
     Io(#[from] std::io::Error),
 }
@@ -445,6 +502,7 @@ mod tests {
             &plan,
             directory.path().join("session.log"),
             ChildProcessPriority::Normal,
+            &[],
         )?;
 
         assert_eq!(
@@ -466,6 +524,7 @@ mod tests {
                 &plan,
                 directory.path().join("duplicate.log"),
                 ChildProcessPriority::Normal,
+                &[],
             ),
             Err(ProcessError::InstanceAlreadyRunning)
         ));
