@@ -1512,6 +1512,7 @@ async fn modpack_install(
                 selected_optional: request.include_optional,
                 display_name: project.name,
                 icon_url: project.icon_url,
+                banner_url: project.banner_url,
             }),
         })
         .await
@@ -2219,6 +2220,7 @@ fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
             version_id: source.version_id,
             display_name: source.display_name,
             icon_url: source.icon_url,
+            banner_url: source.banner_url,
         }),
         created_at: record.created_at,
         updated_at: record.updated_at,

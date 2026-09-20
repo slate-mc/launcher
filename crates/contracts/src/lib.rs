@@ -49,7 +49,7 @@ pub use settings::{
 pub use system::{JavaRuntimeSummary, PreflightSummary};
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 4;
+pub const DATABASE_SCHEMA_VERSION: u32 = 5;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

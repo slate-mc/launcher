@@ -1,25 +1,9 @@
 import { useState } from "react";
 import { cn } from "../lib/cn";
 
-const fallbackArtwork = [
-  "/artwork/alpine-lake.webp",
-  "/artwork/verdant-workshop.webp",
-  "/artwork/ember-citadel.webp",
-] as const;
-
-function fallbackArtworkFor(stableKey: string) {
-  let hash = 2166136261;
-  for (const character of stableKey) {
-    hash ^= character.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 16777619);
-  }
-  return fallbackArtwork[(hash >>> 0) % fallbackArtwork.length];
-}
-
 export function ContentArtwork({
   src,
   name,
-  stableKey = name,
   className,
   imageClassName,
   eager = false,
@@ -33,7 +17,6 @@ export function ContentArtwork({
 }) {
   const [failedSource, setFailedSource] = useState<string>();
   const remoteSource = src && src !== failedSource ? src : undefined;
-  const source = remoteSource ?? fallbackArtworkFor(stableKey);
 
   return (
     <span
@@ -43,17 +26,28 @@ export function ContentArtwork({
       )}
       title={name}
     >
-      <img
-        src={source}
-        alt=""
-        className={cn("size-full object-cover", imageClassName)}
-        loading={eager ? "eager" : "lazy"}
-        decoding="async"
-        referrerPolicy="no-referrer"
-        onError={() => {
-          if (remoteSource) setFailedSource(remoteSource);
-        }}
-      />
+      {remoteSource ? (
+        <img
+          src={remoteSource}
+          alt=""
+          className={cn("size-full object-cover", imageClassName)}
+          loading={eager ? "eager" : "lazy"}
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedSource(remoteSource)}
+        />
+      ) : (
+        <img
+          src="/brand/slate-symbol-jade.svg"
+          alt=""
+          className={cn(
+            "size-full object-contain p-[24%] opacity-55",
+            imageClassName,
+          )}
+          loading={eager ? "eager" : "lazy"}
+          decoding="async"
+        />
+      )}
     </span>
   );
 }

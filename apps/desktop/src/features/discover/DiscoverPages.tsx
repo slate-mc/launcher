@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ContentArtwork } from "../../components/ContentArtwork";
+import { ContentBanner } from "../../components/ContentBanner";
 import {
   EmptyState,
   InlineNotice,
@@ -400,10 +401,10 @@ export function ModpackDetailPage() {
   return (
     <div className="min-h-full bg-app-bg">
       <header className="relative isolate overflow-hidden border-b border-app-separator/55 px-8 py-7">
-        <ContentArtwork
-          src={project.banner_url}
+        <ContentBanner
+          bannerSrc={project.banner_url}
+          iconSrc={project.icon_url}
           name={`${project.name} banner`}
-          stableKey={`${project.provider}:${project.id}`}
           eager
           className="absolute inset-0 -z-30 size-full rounded-none opacity-45"
           imageClassName="scale-[1.02]"

@@ -111,6 +111,12 @@
     "ModpackSourceSummary": {
       "type": "object",
       "properties": {
+        "bannerUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "displayName": {
           "type": "string"
         },

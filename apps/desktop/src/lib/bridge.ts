@@ -190,7 +190,7 @@ export async function getBootstrap(): Promise<Bootstrap> {
   return bootstrapSchema.parse({
     productName: "slate",
     ipcSchemaVersion: 1,
-    databaseSchemaVersion: 4,
+    databaseSchemaVersion: 5,
     capabilities: [
       { id: "instance.library", available: true },
       { id: "instance.create", available: true },

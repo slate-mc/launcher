@@ -43,6 +43,7 @@ export const modpackSourceSchema = z.object({
   versionId: z.string().min(1),
   displayName: z.string().min(1),
   iconUrl: z.string().url().optional(),
+  bannerUrl: z.string().url().optional(),
 });
 
 export const instanceSummarySchema = z.object({

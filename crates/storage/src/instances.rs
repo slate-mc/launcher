@@ -31,6 +31,7 @@ pub struct NewModpackSource {
     pub selected_optional: Vec<String>,
     pub display_name: String,
     pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -41,6 +42,7 @@ pub struct ModpackSourceRecord {
     pub selected_optional: Vec<String>,
     pub display_name: String,
     pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -160,8 +162,8 @@ impl Database {
             sqlx::query(
                 "INSERT INTO instance_modpacks \
                  (instance_id, provider, project_id, version_id, selected_optional_json, \
-                  display_name, icon_url, created_at, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  display_name, icon_url, banner_url, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(id.to_string())
             .bind(source.provider.as_str())
@@ -170,6 +172,7 @@ impl Database {
             .bind(serde_json::to_string(&source.selected_optional)?)
             .bind(source.display_name.trim())
             .bind(source.icon_url.as_deref())
+            .bind(source.banner_url.as_deref())
             .bind(&now)
             .bind(&now)
             .execute(&mut *transaction)
@@ -187,7 +190,8 @@ impl Database {
              c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
              m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
              m.version_id AS modpack_version_id, m.selected_optional_json, \
-             m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url \
+             m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url, \
+             m.banner_url AS modpack_banner_url \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.id = ? AND i.trashed_at IS NULL",
@@ -211,7 +215,8 @@ impl Database {
              c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
              m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
              m.version_id AS modpack_version_id, m.selected_optional_json, \
-             m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url \
+             m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url, \
+             m.banner_url AS modpack_banner_url \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.trashed_at IS NULL \
@@ -451,6 +456,7 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
                 )?,
                 display_name: row.try_get("modpack_display_name")?,
                 icon_url: row.try_get("modpack_icon_url")?,
+                banner_url: row.try_get("modpack_banner_url")?,
             })
         })
         .transpose()?;
@@ -585,11 +591,16 @@ mod tests {
             selected_optional: vec!["optional-shaders".to_owned()],
             display_name: "Example Pack".to_owned(),
             icon_url: Some("https://cdn.modrinth.com/icon.png".to_owned()),
+            banner_url: Some("https://cdn.modrinth.com/banner.png".to_owned()),
         });
         let created = database.create_instance(instance).await?;
         let source = created.modpack_source.ok_or("missing source")?;
         assert_eq!(source.provider, Provider::Modrinth);
         assert_eq!(source.selected_optional, ["optional-shaders"]);
+        assert_eq!(
+            source.banner_url.as_deref(),
+            Some("https://cdn.modrinth.com/banner.png")
+        );
 
         let updated = database
             .update_instance_configuration(
@@ -623,6 +634,7 @@ mod tests {
             selected_optional: Vec::new(),
             display_name: "Example Pack".to_owned(),
             icon_url: None,
+            banner_url: None,
         });
         let created = database.create_instance(instance).await?;
         sqlx::query(

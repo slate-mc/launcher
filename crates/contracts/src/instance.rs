@@ -126,6 +126,8 @@ pub struct ModpackSourceSummary {
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub banner_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

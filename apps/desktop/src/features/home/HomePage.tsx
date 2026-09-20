@@ -20,6 +20,7 @@ import {
   bridgeMode,
   forceStopGameSession,
   getBootstrap,
+  getModpack,
   launchInstance,
   listAccounts,
   listGameSessions,
@@ -29,6 +30,7 @@ import {
 } from "../../lib/bridge";
 import { cn } from "../../lib/cn";
 import { ContentArtwork } from "../../components/ContentArtwork";
+import { ContentBanner } from "../../components/ContentBanner";
 import { MinecraftHead } from "../../components/MinecraftHead";
 import type {
   LauncherInstance,
@@ -91,6 +93,21 @@ export function HomePage() {
   const instances = instancesQuery.data ?? emptyInstances;
   const selected =
     instances.find((instance) => instance.id === selectedId) ?? instances[0];
+  const selectedPackSource = selected?.modpackSource;
+  const selectedPackArtworkQuery = useQuery({
+    queryKey: [
+      "modpack",
+      selectedPackSource?.provider,
+      selectedPackSource?.projectId,
+    ],
+    queryFn: () =>
+      getModpack(
+        selectedPackSource?.provider ?? "modrinth",
+        selectedPackSource?.projectId ?? "",
+      ),
+    enabled: Boolean(selectedPackSource && !selectedPackSource.bannerUrl),
+    staleTime: 6 * 60 * 60_000,
+  });
   const filteredInstances = useMemo(
     () =>
       instances.filter((instance) => {
@@ -177,27 +194,45 @@ export function HomePage() {
         className="relative isolate min-h-[360px] overflow-hidden border-b border-app-separator/55 bg-[#18221d]"
         aria-labelledby="continue-heading"
       >
-        <ContentArtwork
-          name={`${selected.name} landscape`}
-          stableKey={selected.id}
+        <ContentBanner
+          bannerSrc={
+            selected.modpackSource?.bannerUrl ??
+            selectedPackArtworkQuery.data?.banner_url
+          }
+          iconSrc={
+            selected.modpackSource?.iconUrl ??
+            selectedPackArtworkQuery.data?.icon_url
+          }
+          name={`${selected.name} banner`}
           eager
           className="absolute inset-0 -z-30 size-full rounded-none opacity-[.86]"
         />
         <div className="hero-shade absolute inset-0 -z-20" aria-hidden="true" />
-        <div className="absolute top-[72px] left-8 max-w-[520px]">
-          <p className={eyebrowClass}>Continue playing</p>
-          <h1
-            id="continue-heading"
-            className="m-0 text-[34px]/[40px] font-bold tracking-[-.035em]"
-          >
-            {selected.name}
-          </h1>
-          <p className="mt-2.5 mb-0 text-base/[22px] text-app-text">
-            {instanceTechnicalLine(selected)}
-          </p>
-          <p className="mt-1 mb-0 text-[13px] text-app-secondary">
-            Last played {selected.lastPlayed ?? "not yet"}
-          </p>
+        <div className="absolute top-[68px] left-8 flex max-w-[620px] items-start gap-5">
+          <ContentArtwork
+            src={
+              selected.modpackSource?.iconUrl ??
+              selectedPackArtworkQuery.data?.icon_url
+            }
+            name={selected.name}
+            className="mt-1 size-[72px] rounded-control border border-app-separator/80 shadow-[0_12px_30px_rgb(0_0_0_/_28%)]"
+            eager
+          />
+          <div className="min-w-0">
+            <p className={eyebrowClass}>Continue playing</p>
+            <h1
+              id="continue-heading"
+              className="m-0 text-[34px]/[40px] font-bold tracking-[-.035em]"
+            >
+              {selected.name}
+            </h1>
+            <p className="mt-2.5 mb-0 text-base/[22px] text-app-text">
+              {instanceTechnicalLine(selected)}
+            </p>
+            <p className="mt-1 mb-0 text-[13px] text-app-secondary">
+              Last played {selected.lastPlayed ?? "not yet"}
+            </p>
+          </div>
         </div>
 
         <div className="absolute top-14 right-8 grid w-60 gap-2">
