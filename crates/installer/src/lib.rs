@@ -471,6 +471,12 @@ where
         .into_iter()
         .map(|artifact| (artifact.relative_path.clone(), artifact))
         .collect::<BTreeMap<_, _>>();
+    remove_deleted_content_artifacts(
+        &mut content_by_path,
+        &request.plan.delete,
+        &game_directory,
+        request.paths.storage_root(),
+    )?;
     for artifact in added_content {
         content_by_path.insert(artifact.relative_path.clone(), artifact);
     }
@@ -501,6 +507,19 @@ where
         reused_artifacts: 0,
         installed_content_files,
     })
+}
+
+fn remove_deleted_content_artifacts(
+    content_by_path: &mut BTreeMap<String, InstalledArtifactDigest>,
+    deleted_paths: &[String],
+    game_directory: &Path,
+    storage_root: &Path,
+) -> Result<(), InstallError> {
+    for deleted in deleted_paths {
+        let stored_path = relative_artifact_path(storage_root, &game_directory.join(deleted))?;
+        content_by_path.remove(&stored_path);
+    }
+    Ok(())
 }
 
 fn clone_directory_tree(source: &Path, destination: &Path) -> Result<(), std::io::Error> {

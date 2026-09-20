@@ -1,7 +1,7 @@
 use super::{
     InstallError, InstallRequest, InstalledArtifactDigest, clone_directory_tree,
-    load_installed_revision, relative_artifact_path, validate_installed_artifact_declarations,
-    validate_request,
+    load_installed_revision, relative_artifact_path, remove_deleted_content_artifacts,
+    validate_installed_artifact_declarations, validate_request,
 };
 use slate_domain::{InstanceId, LoaderFamily, RevisionId};
 use slate_platform::AppPaths;
@@ -78,5 +78,41 @@ fn content_updates_clone_revision_native_files() -> Result<(), Box<dyn std::erro
         std::fs::read(destination.join("nested/helper.dll"))?,
         b"native-two"
     );
+    Ok(())
+}
+
+#[test]
+fn content_updates_remove_deleted_files_from_the_verified_index()
+-> Result<(), Box<dyn std::error::Error>> {
+    let storage_root = PathBuf::from("C:/slate/storage");
+    let game_directory = storage_root.join("instances/example/game");
+    let removed_path = "instances/example/game/mods/old.jar".to_owned();
+    let retained_path = "instances/example/game/mods/kept.jar".to_owned();
+    let mut artifacts = std::collections::BTreeMap::from([
+        (
+            removed_path.clone(),
+            InstalledArtifactDigest {
+                relative_path: removed_path,
+                sha256: "a".repeat(64),
+            },
+        ),
+        (
+            retained_path.clone(),
+            InstalledArtifactDigest {
+                relative_path: retained_path.clone(),
+                sha256: "b".repeat(64),
+            },
+        ),
+    ]);
+
+    remove_deleted_content_artifacts(
+        &mut artifacts,
+        &["mods/old.jar".to_owned()],
+        &game_directory,
+        &storage_root,
+    )?;
+
+    assert_eq!(artifacts.len(), 1);
+    assert!(artifacts.contains_key(&retained_path));
     Ok(())
 }
