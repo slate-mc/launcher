@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CancelInstallJobRequest",
+  "type": "object",
+  "properties": {
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "revisionId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "jobId",
+    "revisionId"
+  ]
+}

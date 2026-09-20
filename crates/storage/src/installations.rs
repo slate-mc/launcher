@@ -530,6 +530,68 @@ impl Database {
         Ok(())
     }
 
+    pub async fn cancel_instance_install(
+        &self,
+        job_id: JobId,
+        revision_id: RevisionId,
+        message: &str,
+    ) -> Result<(), StorageError> {
+        let now = now_rfc3339()?;
+        let mut transaction = self.pool.begin().await?;
+        let instance_id: Option<String> = sqlx::query_scalar(
+            "SELECT entity_id FROM jobs WHERE id = ? AND state IN ('queued', 'running') \
+             AND json_extract(progress_json, '$.revisionId') = ?",
+        )
+        .bind(job_id.to_string())
+        .bind(revision_id.to_string())
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let Some(instance_id) = instance_id else {
+            transaction.rollback().await?;
+            return Err(StorageError::InstallNoLongerActive);
+        };
+        sqlx::query("UPDATE instance_revisions SET status = 'failed' WHERE id = ?")
+            .bind(revision_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "UPDATE instance_configuration SET setup_state = \
+             CASE WHEN EXISTS(SELECT 1 FROM instances WHERE id = ? \
+             AND active_revision_id IS NOT NULL) THEN 'ready' ELSE 'configured' END \
+             WHERE instance_id = ?",
+        )
+        .bind(&instance_id)
+        .bind(&instance_id)
+        .execute(&mut *transaction)
+        .await?;
+        update_job_transaction(
+            &mut transaction,
+            job_id,
+            JobState::Cancelled,
+            "cancelled",
+            message,
+            &now,
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn get_install_job(&self, job_id: JobId) -> Result<InstallJobRecord, StorageError> {
+        let row = sqlx::query(
+            "SELECT j.id, j.entity_id, j.state, j.phase, j.progress_json, j.created_at, \
+             j.updated_at, json_extract(j.progress_json, '$.revisionId') AS revision_id, \
+             json_extract(j.progress_json, '$.completedItems') AS completed_items, \
+             json_extract(j.progress_json, '$.totalItems') AS total_items \
+             FROM jobs j WHERE j.kind = 'instance_install' AND j.id = ?",
+        )
+        .bind(job_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(StorageError::InstallNoLongerActive)?;
+        row_to_install_job(&row)
+    }
+
     pub async fn list_install_jobs(
         &self,
         limit: u32,
@@ -937,6 +999,49 @@ mod tests {
             .ok_or("missing install job")?;
         assert_eq!(job.state, JobState::Cancelled);
         assert_eq!(job.phase, "cancelled");
+        database.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancelling_an_install_restores_a_retryable_instance_state()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let instance = database
+            .create_instance(NewInstance {
+                name: InstanceName::parse("Cancelled")?,
+                mode: InstanceMode::Vanilla,
+                management_mode: ManagementMode::Local,
+                root_id: root,
+                minecraft_version: "1.21.1".to_owned(),
+                loader_kind: LoaderFamily::Vanilla,
+                loader_version: None,
+                memory_mb: 4096,
+                modpack_source: None,
+            })
+            .await?;
+        let pending = database
+            .begin_instance_install(instance.id, instance.revision, RequestId::new())
+            .await?;
+
+        database
+            .cancel_instance_install(
+                pending.job.id,
+                pending.revision_id,
+                "Installation cancelled",
+            )
+            .await?;
+
+        let job = database.get_install_job(pending.job.id).await?;
+        let updated = database.get_instance(instance.id).await?;
+        assert_eq!(job.state, JobState::Cancelled);
+        assert_eq!(job.phase, "cancelled");
+        assert_eq!(
+            updated.setup_state,
+            slate_domain::InstanceSetupState::Configured
+        );
         database.close().await;
         Ok(())
     }

@@ -27,7 +27,8 @@ pub use catalog::{
 pub use error::{AppError, FieldError};
 pub use events::EventEnvelope;
 pub use install::{
-    InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, ModpackInstallStarted,
+    CancelInstallJobRequest, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
+    ModpackInstallStarted,
 };
 pub use instance::{
     CreateInstanceRequest, CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest,

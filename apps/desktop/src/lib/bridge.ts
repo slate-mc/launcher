@@ -936,6 +936,16 @@ export async function listInstallJobs(): Promise<InstallJob[]> {
   return structuredClone(previewInstallJobs);
 }
 
+export async function cancelInstallJob(input: {
+  jobId: string;
+  revisionId: string;
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("install_job_cancel", { request: input }),
+  );
+}
+
 export async function getPreferences(): Promise<AppPreferences> {
   if (bridgeMode === "native") {
     return preferencesSchema.parse(await invoke("preferences_get"));

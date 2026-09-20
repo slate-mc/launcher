@@ -8,6 +8,7 @@ mod content_commands;
 mod diagnostics;
 mod game_options;
 mod install_commands;
+mod install_supervisor;
 mod instance_commands;
 mod instance_content;
 mod instance_files;
@@ -41,6 +42,7 @@ use content_commands::*;
 use diagnostics::init_diagnostics;
 use game_options::{prepare_options_update, read_recognized_options};
 use install_commands::*;
+use install_supervisor::InstallSupervisor;
 use instance_commands::*;
 use instance_content::{
     FileMove, InstanceContentFile, InstanceContentKind, InstanceModFile, scan_instance_content,
@@ -72,41 +74,41 @@ use slate_auth::{
 };
 use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, ApplyModpackUpdateRequest, AuthCancelRequest,
-    AuthFlowStateDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary,
-    CheckModpackUpdateRequest, ClearStorageCategoryRequest, CreateInstanceRequest,
-    CreateInstanceSnapshotRequest, CreateSavedServerRequest, CreateSupportReportRequest,
-    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
-    EmptyInstanceTrashRequest, ExportInstanceRequest, GameSessionStateDto, GameSessionSummary,
-    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
-    InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, InstallModRequest,
-    InstallModpackRequest, InstanceArtworkAsset, InstanceArtworkKindDto,
-    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
-    InstanceDirectoryKindDto, InstanceGameOptionsSummary, InstanceModOriginDto,
-    InstanceModResolution, InstanceModSummary, InstanceModeDto, InstanceModsRequest,
-    InstanceSettingsSummary, InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary,
-    InstanceWindowModeDto, JavaRuntimeSummary, JavaSelectionModeDto, LaunchInstanceRequest,
-    LauncherBehaviorDto, LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto,
-    MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
-    MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
-    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
-    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
-    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
-    PerformancePresetDto, PingServerRequest, PreflightSummary, ProcessPriorityDto,
-    ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
-    RemoveSavedServerRequest, RenameInstanceRequest, RestoreInstanceSnapshotRequest,
-    RestoreTrashedInstanceRequest, SavedServerSummary, SelectInstanceArtworkRequest,
-    SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto,
-    SessionLogSubscription, SetDefaultAccountRequest, SetFavoriteRequest,
-    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
-    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
-    StorageCategoryDto, StorageCategorySummary, StorageCleanupResult, StorageOverview,
-    SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview, ThemePreferenceDto,
-    TrashInstanceRequest, TrashedInstanceSummary, UnsubscribeSessionLogRequest,
+    AuthFlowStateDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
+    CancelInstallJobRequest, CapabilitySummary, CheckModpackUpdateRequest,
+    ClearStorageCategoryRequest, CreateInstanceRequest, CreateInstanceSnapshotRequest,
+    CreateSavedServerRequest, CreateSupportReportRequest, DeleteInstanceSnapshotRequest,
+    DeleteTrashedInstanceRequest, DuplicateInstanceRequest, EmptyInstanceTrashRequest,
+    ExportInstanceRequest, GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
+    GetInstanceGameOptionsRequest, ImportInstanceRequest, InstallInstanceRequest,
+    InstallJobStateDto, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceContentFileSummary,
+    InstanceContentFilesRequest, InstanceContentKindDto, InstanceDirectoryKindDto,
+    InstanceGameOptionsSummary, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
+    InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
+    InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, JavaRuntimeSummary,
+    JavaSelectionModeDto, LaunchInstanceRequest, LauncherBehaviorDto, LoaderKindDto,
+    LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto, MinecraftAccountStatusDto,
+    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
+    MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackUpdateSummary,
+    ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
+    OnboardingStateSummary, OpenInstanceDirectoryRequest, PerformancePresetDto, PingServerRequest,
+    PreflightSummary, ProcessPriorityDto, ReduceMotionPreferenceDto,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
+    RenameInstanceRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
+    SetDefaultAccountRequest, SetFavoriteRequest, SetInstanceContentFileEnabledRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
+    StopGameSessionRequest, StorageCategoryDto, StorageCategorySummary, StorageCleanupResult,
+    StorageOverview, SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview,
+    ThemePreferenceDto, TrashInstanceRequest, TrashedInstanceSummary, UnsubscribeSessionLogRequest,
     UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
     UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use slate_domain::{
-    AccountId, InstanceId, InstanceName, InstanceNameError, LoaderFamily, ManagementMode,
+    AccountId, InstanceId, InstanceName, InstanceNameError, JobId, LoaderFamily, ManagementMode,
     RequestId, RevisionId, ServerId, SessionId, StorageRootId,
 };
 use slate_installer::{
@@ -175,6 +177,7 @@ struct DesktopState {
     credential_vault: CredentialVault,
     auth_flows: AuthCoordinator,
     log_streams: SessionLogCoordinator,
+    installs: InstallSupervisor,
     modpacks: ModpackApiClient,
 }
 
@@ -647,6 +650,7 @@ fn main() {
                 credential_vault: CredentialVault,
                 auth_flows: AuthCoordinator::default(),
                 log_streams: SessionLogCoordinator::default(),
+                installs: InstallSupervisor::default(),
                 modpacks,
             };
             app.manage(state.clone());
@@ -695,6 +699,7 @@ fn main() {
             trashed_instance_delete,
             trashed_instances_empty,
             instance_install,
+            install_job_cancel,
             install_jobs_list,
             instance_launch,
             sessions_list,

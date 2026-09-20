@@ -98,6 +98,7 @@ pub(super) async fn queue_instance_install(
         .begin_instance_install(instance_id, expected_revision, RequestId::new())
         .await
         .map_err(|error| map_storage_error(error, "slate could not queue the installation."))?;
+    let cancellation = state.installs.register(pending.job.id);
     tracing::info!(
         instance_id = %instance_id,
         job_id = %pending.job.id,
@@ -157,42 +158,63 @@ pub(super) async fn queue_instance_install(
                 let _ = progress_tx.send(progress);
             }
         };
-        let result = if let Some((parent, plan)) = content_update {
-            update_content_with_progress(
-                ContentUpdateRequest {
-                    instance_id,
-                    revision_id: pending.revision_id,
-                    parent_revision_id: parent.id,
-                    parent_manifest_digest: parent.manifest_digest,
-                    minecraft_version: instance.minecraft_version,
-                    loader_kind: instance.loader_kind,
-                    loader_version: instance.loader_version,
-                    plan,
-                    download_concurrency: preferences.download_concurrency,
-                    paths: install_paths.clone(),
-                },
-                progress_callback,
-            )
-            .await
-        } else {
-            install_with_progress(
-                NativeInstallRequest {
-                    instance_id,
-                    revision_id: pending.revision_id,
-                    minecraft_version: instance.minecraft_version,
-                    loader_kind: instance.loader_kind,
-                    loader_version: target_loader_version,
-                    modpack_plan,
-                    download_concurrency: preferences.download_concurrency,
-                    paths: install_paths,
-                },
-                progress_callback,
-            )
-            .await
+        let result = {
+            let installation = async {
+                if let Some((parent, plan)) = content_update {
+                    update_content_with_progress(
+                        ContentUpdateRequest {
+                            instance_id,
+                            revision_id: pending.revision_id,
+                            parent_revision_id: parent.id,
+                            parent_manifest_digest: parent.manifest_digest,
+                            minecraft_version: instance.minecraft_version,
+                            loader_kind: instance.loader_kind,
+                            loader_version: instance.loader_version,
+                            plan,
+                            download_concurrency: preferences.download_concurrency,
+                            paths: install_paths.clone(),
+                        },
+                        progress_callback,
+                    )
+                    .await
+                } else {
+                    install_with_progress(
+                        NativeInstallRequest {
+                            instance_id,
+                            revision_id: pending.revision_id,
+                            minecraft_version: instance.minecraft_version,
+                            loader_kind: instance.loader_kind,
+                            loader_version: target_loader_version,
+                            modpack_plan,
+                            download_concurrency: preferences.download_concurrency,
+                            paths: install_paths,
+                        },
+                        progress_callback,
+                    )
+                    .await
+                }
+            };
+            tokio::pin!(installation);
+            tokio::select! {
+                biased;
+                _ = cancellation => None,
+                result = &mut installation => Some(result),
+            }
         };
         let _ = progress_task.await;
         match result {
-            Ok(outcome) => {
+            None => {
+                let _ = task_state
+                    .database
+                    .cancel_instance_install(
+                        pending.job.id,
+                        pending.revision_id,
+                        "Installation cancelled",
+                    )
+                    .await;
+                tracing::info!(job_id = %pending.job.id, instance_id = %instance_id, "installation cancelled");
+            }
+            Some(Ok(outcome)) => {
                 let runtime = InstalledRuntime {
                     vendor: outcome.runtime.vendor,
                     release_name: outcome.runtime.release_name.clone(),
@@ -289,7 +311,7 @@ pub(super) async fn queue_instance_install(
                     );
                 }
             }
-            Err(error) => {
+            Some(Err(error)) => {
                 tracing::error!(
                     job_id = %pending.job.id,
                     instance_id = %instance_id,
@@ -303,8 +325,43 @@ pub(super) async fn queue_instance_install(
                     .await;
             }
         }
+        task_state.installs.finish(pending.job.id);
     });
     Ok(response)
+}
+
+#[tauri::command]
+pub(super) async fn install_job_cancel(
+    state: tauri::State<'_, DesktopState>,
+    request: CancelInstallJobRequest,
+) -> Result<InstallJobSummary, AppError> {
+    let job_id = JobId::from_uuid(request.job_id);
+    let revision_id = RevisionId::from_uuid(request.revision_id);
+    let job = state
+        .database
+        .get_install_job(job_id)
+        .await
+        .map_err(|error| map_storage_error(error, "That installation is no longer active."))?;
+    if job.revision_id != revision_id
+        || !matches!(job.state, JobState::Queued | JobState::Running)
+        || !state.installs.cancel(job_id)
+    {
+        return Err(AppError::new(
+            "local.install_not_active",
+            "That installation has already finished.",
+        ));
+    }
+    state
+        .database
+        .cancel_instance_install(job_id, revision_id, "Installation cancelled")
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not cancel that installation."))?;
+    state
+        .database
+        .get_install_job(job_id)
+        .await
+        .map(install_job_summary)
+        .map_err(|error| map_storage_error(error, "slate could not reload that installation."))
 }
 
 pub(super) async fn fetch_instance_modpack_plan(

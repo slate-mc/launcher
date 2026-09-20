@@ -20,6 +20,13 @@ pub struct InstallInstanceRequest {
     pub expected_revision: u64,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelInstallJobRequest {
+    pub job_id: Uuid,
+    pub revision_id: Uuid,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallJobSummary {

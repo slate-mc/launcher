@@ -11,6 +11,7 @@ import {
   ShieldX,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -26,6 +27,7 @@ import {
 } from "../../lib/installJobPresentation";
 import {
   bridgeMode,
+  cancelInstallJob,
   cancelMinecraftAuth,
   getMinecraftAuthStatus,
   listAccounts,
@@ -41,12 +43,22 @@ import { getUserFacingError } from "../../lib/userFacingError";
 import { SupportReportPanel } from "./SupportReportPanel";
 
 export function DownloadsPage() {
+  const queryClient = useQueryClient();
   const jobsQuery = useQuery({
     queryKey: ["install-jobs"],
     queryFn: listInstallJobs,
     refetchInterval: 1_000,
   });
   const jobs = jobsQuery.data ?? [];
+  const cancelMutation = useMutation({
+    mutationFn: cancelInstallJob,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["install-jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      ]);
+    },
+  });
 
   return (
     <div className="min-h-full bg-app-bg">
@@ -55,6 +67,16 @@ export function DownloadsPage() {
         title="Installation queue"
         description="Track base-game, loader, modpack, and mod installation work."
       />
+      {cancelMutation.isError ? (
+        <div className="mx-auto max-w-[940px] px-8 pt-6">
+          <InlineNotice tone="danger" title="Installation was not cancelled">
+            {getUserFacingError(
+              cancelMutation.error,
+              "The installation may have already finished. Refresh and try again.",
+            )}
+          </InlineNotice>
+        </div>
+      ) : null}
       {jobsQuery.isPending ? (
         <div
           className="mx-auto grid max-w-[940px] gap-3 px-8 py-7"
@@ -77,16 +99,17 @@ export function DownloadsPage() {
       ) : (
         <div className="mx-auto max-w-[940px] px-8 py-7">
           <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
-            <div className="grid grid-cols-[minmax(0,1fr)_130px_150px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+            <div className="grid grid-cols-[minmax(0,1fr)_115px_145px_90px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
               <span>Installation</span>
               <span>State</span>
               <span>Updated</span>
+              <span className="text-right">Action</span>
             </div>
             <div className="divide-y divide-app-separator/55">
               {jobs.map((job) => (
                 <div
                   key={job.id}
-                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_130px_150px] items-center gap-4 px-5 py-3"
+                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_115px_145px_90px] items-center gap-4 px-5 py-3"
                 >
                   <span className="min-w-0">
                     <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
@@ -114,6 +137,42 @@ export function DownloadsPage() {
                   <time className="text-[11px] text-app-secondary">
                     {new Date(job.updatedAt).toLocaleString()}
                   </time>
+                  {job.state === "queued" || job.state === "running" ? (
+                    <button
+                      type="button"
+                      className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
+                      disabled={
+                        cancelMutation.isPending &&
+                        cancelMutation.variables?.jobId === job.id
+                      }
+                      onClick={() =>
+                        cancelMutation.mutate({
+                          jobId: job.id,
+                          revisionId: job.revisionId,
+                        })
+                      }
+                    >
+                      {cancelMutation.isPending &&
+                      cancelMutation.variables?.jobId === job.id ? (
+                        <LoaderCircle
+                          className="animate-spin"
+                          size={13}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <X size={13} aria-hidden="true" />
+                      )}
+                      Cancel
+                    </button>
+                  ) : (
+                    <Link
+                      to="/instances/$instanceId/overview"
+                      params={{ instanceId: job.instanceId }}
+                      className="ml-auto text-[10px] font-bold text-app-accent no-underline hover:underline"
+                    >
+                      Open instance
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>
