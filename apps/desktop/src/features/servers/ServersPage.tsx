@@ -29,7 +29,6 @@ import {
   removeSavedServer,
   updateSavedServer,
 } from "../../lib/bridge";
-import { cn } from "../../lib/cn";
 import { loaderLabel } from "../../lib/format";
 import { getUserFacingError } from "../../lib/userFacingError";
 import type {
@@ -143,7 +142,7 @@ export function ServersPage() {
         ) : servers.length === 0 && !editingId ? (
           <EmptyState
             title="No saved servers"
-            description="Add a server once, then choose a compatible instance whenever you want to join."
+            description="Add a server once, then choose which instance to use whenever you join."
             action={
               <button
                 type="button"
@@ -334,26 +333,7 @@ function SavedServerRow({
     () => instances.filter((instance) => instance.setupState === "ready"),
     [instances],
   );
-  const compatibleInstances = useMemo(
-    () =>
-      readyInstances.filter((instance) =>
-        serverMatchesInstance(statusQuery.data, instance),
-      ),
-    [readyInstances, statusQuery.data],
-  );
-  const orderedInstances = useMemo(
-    () => [
-      ...compatibleInstances,
-      ...readyInstances.filter(
-        (instance) =>
-          !compatibleInstances.some(
-            (compatible) => compatible.id === instance.id,
-          ),
-      ),
-    ],
-    [compatibleInstances, readyInstances],
-  );
-  const automaticInstance = compatibleInstances[0] ?? readyInstances[0];
+  const automaticInstance = readyInstances[0];
   const [selectedOverride, setSelectedOverride] = useState(
     server.preferredInstanceId ?? "",
   );
@@ -398,9 +378,6 @@ function SavedServerRow({
   const selectedInstance = instances.find(
     (instance) => instance.id === selectedInstanceId,
   );
-  const selectedCompatible = selectedInstance
-    ? serverMatchesInstance(statusQuery.data, selectedInstance)
-    : false;
   const running = selectedInstanceId
     ? runningInstanceIds.has(selectedInstanceId)
     : false;
@@ -492,31 +469,17 @@ function SavedServerRow({
             {readyInstances.length === 0 ? (
               <option value="">No playable instances</option>
             ) : null}
-            {orderedInstances.map((instance) => (
+            {readyInstances.map((instance) => (
               <option key={instance.id} value={instance.id}>
                 {instance.name} · {instance.minecraftVersion}
-                {serverMatchesInstance(statusQuery.data, instance)
-                  ? " · Reported match"
-                  : ""}
               </option>
             ))}
           </select>
 
           <div className="mt-2 flex min-h-4 items-center justify-between gap-3">
-            {selectedInstance && statusQuery.data?.versionName ? (
-              <span
-                className={cn(
-                  "text-[10px]",
-                  selectedCompatible ? "text-app-accent" : "text-app-muted",
-                )}
-              >
-                {selectedCompatible
-                  ? "Reported version match"
-                  : `Server reports ${statusQuery.data.versionName}`}
-              </span>
-            ) : (
-              <span />
-            )}
+            <span className="text-[10px] text-app-muted">
+              Any playable instance can be used
+            </span>
             {selectedInstance ? (
               <span className="truncate font-mono text-[10px] text-app-muted">
                 {loaderLabel(selectedInstance.loaderKind)}
@@ -734,24 +697,6 @@ function ServerStatusPill({
     return <StatusPill tone="danger">Offline</StatusPill>;
   }
   return <StatusPill tone="positive">Online</StatusPill>;
-}
-
-function serverMatchesInstance(
-  status: ServerStatus | undefined,
-  instance: LauncherInstance,
-) {
-  if (!status?.versionName) return true;
-  const versions: string[] =
-    status.versionName.match(/\d+\.\d+(?:\.\d+)?/g) ?? [];
-  return (
-    versions.length === 0 ||
-    versions.some(
-      (version) =>
-        version === instance.minecraftVersion ||
-        (version.split(".").length === 2 &&
-          instance.minecraftVersion.startsWith(`${version}.`)),
-    )
-  );
 }
 
 function joinReason({
