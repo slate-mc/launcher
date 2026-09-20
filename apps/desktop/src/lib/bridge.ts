@@ -906,6 +906,20 @@ export async function importInstance(): Promise<LauncherInstance | undefined> {
   return response === null ? undefined : instanceSummarySchema.parse(response);
 }
 
+export async function importLauncherInstance(): Promise<
+  LauncherInstance | undefined
+> {
+  if (bridgeMode !== "native") {
+    throw new Error(
+      "Launcher imports are available only in the slate desktop app.",
+    );
+  }
+  const response = await invoke<unknown>("instance_import_from_launcher", {
+    request: {},
+  });
+  return response === null ? undefined : instanceSummarySchema.parse(response);
+}
+
 export async function listInstanceSnapshots(
   id: string,
 ): Promise<InstanceSnapshot[]> {

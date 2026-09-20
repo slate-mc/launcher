@@ -6,6 +6,7 @@ mod auth_support;
 mod catalog_commands;
 mod content_commands;
 mod diagnostics;
+mod external_instance_import;
 mod game_options;
 mod install_commands;
 mod install_supervisor;
@@ -44,6 +45,9 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use catalog_commands::*;
 use content_commands::*;
 use diagnostics::init_diagnostics;
+use external_instance_import::{
+    ExternalImportError, copy_external_game_directory, inspect_external_instance,
+};
 use game_options::{prepare_options_update, read_recognized_options};
 use install_commands::*;
 use install_supervisor::{InstallSupervisor, QueueDirection};
@@ -572,7 +576,9 @@ fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
         })
         .unwrap_or_else(|| record.phase.clone());
     let operation = match record.operation.as_deref() {
-        Some("instance_install") => Some(InstallOperationDto::InstanceInstall),
+        Some("instance_install" | "external_instance_import" | "imported_pack_install") => {
+            Some(InstallOperationDto::InstanceInstall)
+        }
         Some("mod_install") => Some(InstallOperationDto::ModInstall),
         Some("mod_update") => Some(InstallOperationDto::ModUpdate),
         Some("modpack_update") => Some(InstallOperationDto::ModpackUpdate),
@@ -735,6 +741,7 @@ fn main() {
             instance_move_storage,
             instance_export,
             instance_import,
+            instance_import_from_launcher,
             instance_snapshots_list,
             instance_snapshot_create,
             instance_snapshot_restore,

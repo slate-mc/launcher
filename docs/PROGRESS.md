@@ -22,8 +22,8 @@ Last updated: September 20, 2026
 - Instance library, favorites, profile text/tags/notes, icon/banner selection and positioning,
   per-instance account/window/language/quick-play/performance/Java settings, common Minecraft game
   options, folder shortcuts, relocation, duplication, portable slate import/export, CurseForge ZIP
-  and Modrinth `.mrpack` import, snapshots, recoverable trash, permanent deletion, retention, and
-  storage cleanup.
+  and Modrinth `.mrpack` import, Prism Launcher/MultiMC, CurseForge app, and ATLauncher instance
+  folder import, snapshots, recoverable trash, permanent deletion, retention, and storage cleanup.
 - Axum modpack API and desktop client for CurseForge, Modrinth, and FTB modpack search, project and
   release details, pagination, normalized install plans, dependency resolution, caching, retries,
   rate limits, structured response envelopes, and health/readiness routes. Development uses
@@ -65,24 +65,22 @@ Verified on Windows on September 20, 2026:
 - 15 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 138 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 142 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
 ## F1 release blockers
 
-1. **Import coverage:** slate portable archives, CurseForge ZIPs, Modrinth `.mrpack` files, and
-   local mod JARs work. Importing existing instances from other launchers remains incomplete.
-2. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
+1. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
    validated local ZIP import and can be inventoried and managed after installation. Provider
    browsing, updates, and ordering remain incomplete.
-3. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
+2. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
-4. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
+3. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-5. **Operational readiness:** structured local tracing and local support-report export are active.
+4. **Operational readiness:** structured local tracing and local support-report export are active.
    Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
    telemetry, offline delivery, and private support-report submission still need production
    implementations.
@@ -126,6 +124,6 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Import existing instances from Prism Launcher/MultiMC, the CurseForge app, and ATLauncher, then add
-native clean-install smoke coverage so release claims are evidence-based rather than inferred from
-unit tests.
+Add provider-backed resource pack and shader browsing, compatibility-safe installation, update
+management, and ordering where the game supports it. Then add native clean-install smoke coverage
+so release claims are evidence-based rather than inferred from unit tests.

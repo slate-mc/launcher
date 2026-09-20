@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import {
   ChevronRight,
   FolderInput,
+  FolderOpen,
   Plus,
   RotateCcw,
   Search,
@@ -18,6 +19,7 @@ import {
 } from "../../components/PageScaffold";
 import {
   importInstance,
+  importLauncherInstance,
   listInstances,
   setInstanceFavorite,
 } from "../../lib/bridge";
@@ -60,6 +62,20 @@ export function LibraryPage() {
       );
     },
   });
+  const launcherImportMutation = useMutation({
+    mutationFn: importLauncherInstance,
+    onMutate: () => setImportedMessage(undefined),
+    onSuccess: async (instance) => {
+      if (!instance) return;
+      await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      setImportedMessage(
+        `${instance.name} was copied. Installation is running.`,
+      );
+    },
+  });
+  const importPending =
+    importMutation.isPending || launcherImportMutation.isPending;
+  const importError = importMutation.error ?? launcherImportMutation.error;
 
   const instances = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
@@ -85,7 +101,7 @@ export function LibraryPage() {
             <button
               type="button"
               className="inline-flex h-10 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text hover:border-app-secondary disabled:opacity-50"
-              disabled={importMutation.isPending}
+              disabled={importPending}
               onClick={() => importMutation.mutate()}
             >
               {importMutation.isPending ? (
@@ -97,7 +113,24 @@ export function LibraryPage() {
               ) : (
                 <FolderInput size={16} aria-hidden="true" />
               )}
-              Import…
+              Import pack…
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-10 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text hover:border-app-secondary disabled:opacity-50"
+              disabled={importPending}
+              onClick={() => launcherImportMutation.mutate()}
+            >
+              {launcherImportMutation.isPending ? (
+                <RotateCcw
+                  className="animate-spin"
+                  size={16}
+                  aria-hidden="true"
+                />
+              ) : (
+                <FolderOpen size={16} aria-hidden="true" />
+              )}
+              Copy instance…
             </button>
             <Link
               to="/library/new"
@@ -111,12 +144,12 @@ export function LibraryPage() {
       />
 
       <div className="px-8 py-6">
-        {importMutation.isError ? (
+        {importError ? (
           <div className="mb-5">
             <InlineNotice tone="danger" title="Import did not complete">
               {getUserFacingError(
-                importMutation.error,
-                "Choose a valid CurseForge ZIP, Modrinth .mrpack, or slate instance archive.",
+                importError,
+                "Choose a supported pack archive or launcher instance folder.",
               )}
             </InlineNotice>
           </div>
@@ -221,11 +254,20 @@ export function LibraryPage() {
                   <button
                     type="button"
                     className="inline-flex h-9 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text disabled:opacity-50"
-                    disabled={importMutation.isPending}
+                    disabled={importPending}
                     onClick={() => importMutation.mutate()}
                   >
                     <FolderInput size={16} aria-hidden="true" />
-                    Import
+                    Import pack
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text disabled:opacity-50"
+                    disabled={importPending}
+                    onClick={() => launcherImportMutation.mutate()}
+                  >
+                    <FolderOpen size={16} aria-hidden="true" />
+                    Copy instance
                   </button>
                   <Link
                     to="/library/new"

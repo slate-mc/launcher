@@ -21,6 +21,27 @@ pub(super) fn pack_import_error() -> AppError {
     )
 }
 
+pub(super) fn external_import_error(error: ExternalImportError) -> AppError {
+    match error {
+        ExternalImportError::UnsupportedLoader => AppError::new(
+            "local.instance_import_loader_unsupported",
+            "This instance uses a mod loader that slate cannot launch yet.",
+        ),
+        ExternalImportError::InvalidInstance | ExternalImportError::Json(_) => AppError::new(
+            "local.launcher_instance_invalid",
+            "Choose an instance folder from Prism Launcher, MultiMC, CurseForge, or ATLauncher.",
+        ),
+        ExternalImportError::TooLarge => AppError::new(
+            "local.launcher_instance_too_large",
+            "That instance is too large to copy safely.",
+        ),
+        ExternalImportError::UnsafePath | ExternalImportError::Io(_) => AppError::new(
+            "local.launcher_instance_copy_failed",
+            "slate could not safely copy that instance. Check the folder and try again.",
+        ),
+    }
+}
+
 pub(super) async fn ensure_instance_stopped_and_current(
     state: &DesktopState,
     instance_id: InstanceId,

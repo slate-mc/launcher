@@ -279,6 +279,156 @@ pub(super) async fn instance_import(
     Ok(Some(instance_summary(instance)))
 }
 
+#[tauri::command]
+pub(super) async fn instance_import_from_launcher(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    _request: ImportInstanceRequest,
+) -> Result<Option<InstanceSummary>, AppError> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Choose a launcher instance folder")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| external_import_error(ExternalImportError::InvalidInstance))?;
+    let Some(source) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(None);
+    };
+    let source_for_inspection = source;
+    let mut imported = tauri::async_runtime::spawn_blocking(move || {
+        inspect_external_instance(&source_for_inspection)
+    })
+    .await
+    .map_err(|_| external_import_error(ExternalImportError::InvalidInstance))?
+    .map_err(external_import_error)?;
+    imported.loader_version = validate_selected_loader_version(
+        &imported.minecraft_version,
+        imported.loader_kind,
+        imported.loader_version.as_deref(),
+    )
+    .await?;
+    let mode = if imported.loader_kind == LoaderKindDto::Vanilla {
+        InstanceModeDto::Vanilla
+    } else {
+        InstanceModeDto::Modded
+    };
+    validate_instance_configuration(
+        mode,
+        &imported.minecraft_version,
+        imported.loader_kind,
+        imported.loader_version.as_deref(),
+        imported.memory_mb,
+    )
+    .map_err(configuration_app_error)?;
+    let name = parse_instance_name(&imported.name).map_err(instance_name_app_error)?;
+    let root_id = preferred_storage_root_id(state.inner()).await?;
+    let mut record = state
+        .database
+        .create_instance(NewInstance {
+            name,
+            mode: mode.into(),
+            management_mode: ManagementMode::Local,
+            root_id,
+            minecraft_version: imported.minecraft_version.clone(),
+            loader_kind: imported.loader_kind.into(),
+            loader_version: imported.loader_version.clone(),
+            memory_mb: imported.memory_mb,
+            modpack_source: None,
+        })
+        .await
+        .map_err(|error| {
+            map_storage_error(error, "slate could not create the imported instance.")
+        })?;
+    let source_game = imported.game_directory.clone();
+    let destination_game = record.storage_path.join("game");
+    let copied = tauri::async_runtime::spawn_blocking(move || {
+        copy_external_game_directory(&source_game, &destination_game)
+    })
+    .await;
+    let copy_error = match copied {
+        Ok(Ok(_)) => None,
+        Ok(Err(error)) => Some(error),
+        Err(_) => Some(ExternalImportError::InvalidInstance),
+    };
+    if let Some(error) = copy_error {
+        cleanup_failed_import(state.inner(), &record).await;
+        return Err(external_import_error(error));
+    }
+    record = restore_external_icon(state.inner(), record, imported.icon_path).await;
+    tracing::info!(
+        instance_id = %record.id,
+        source_launcher = imported.launcher.label(),
+        "external launcher instance copied"
+    );
+    if let Err(error) = queue_instance_install(
+        state.inner(),
+        record.clone(),
+        record.revision,
+        None,
+        PendingModChanges::default(),
+        None,
+        RetryableInstallOperation::ExternalInstanceImport,
+    )
+    .await
+    {
+        cleanup_failed_import(state.inner(), &record).await;
+        return Err(error);
+    }
+    state
+        .database
+        .get_instance(record.id)
+        .await
+        .map(instance_summary)
+        .map(Some)
+        .map_err(|error| map_storage_error(error, "slate could not reload the imported instance."))
+}
+
+async fn restore_external_icon(
+    state: &DesktopState,
+    record: InstanceRecord,
+    icon_path: Option<PathBuf>,
+) -> InstanceRecord {
+    let Some(icon_path) = icon_path else {
+        return record;
+    };
+    let image = tauri::async_runtime::spawn_blocking(move || {
+        let metadata = std::fs::symlink_metadata(&icon_path).ok()?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 2_097_152 {
+            return None;
+        }
+        let bytes = std::fs::read(icon_path).ok()?;
+        let mime = image_mime(&bytes)?.to_owned();
+        Some((bytes, mime))
+    })
+    .await
+    .ok()
+    .flatten();
+    let Some((bytes, mime)) = image else {
+        return record;
+    };
+    let destination = instance_artwork_path(&state.paths, record.id, InstanceArtworkKindDto::Icon);
+    let Ok(replacement) = replace_managed_file(destination, bytes).await else {
+        return record;
+    };
+    if state
+        .database
+        .set_instance_artwork_mime(record.id, record.revision, "icon_mime", Some(&mime))
+        .await
+        .is_err()
+    {
+        replacement.rollback().await;
+        return record;
+    }
+    replacement.commit().await;
+    state
+        .database
+        .get_instance(record.id)
+        .await
+        .unwrap_or(record)
+}
+
 async fn import_portable_instance(
     state: &DesktopState,
     source: PathBuf,

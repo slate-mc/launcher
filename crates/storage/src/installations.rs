@@ -48,6 +48,18 @@ impl TryFrom<&str> for JobState {
     }
 }
 
+fn valid_install_operation(operation: &str) -> bool {
+    matches!(
+        operation,
+        "instance_install"
+            | "external_instance_import"
+            | "imported_pack_install"
+            | "mod_install"
+            | "mod_update"
+            | "modpack_update"
+    )
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallJobRecord {
     pub id: JobId,
@@ -144,10 +156,7 @@ impl Database {
         operation: &str,
         retry_payload: Option<serde_json::Value>,
     ) -> Result<PendingInstall, StorageError> {
-        if !matches!(
-            operation,
-            "instance_install" | "mod_install" | "modpack_update"
-        ) {
+        if !valid_install_operation(operation) {
             return Err(StorageError::InvalidStoredValue {
                 field: "jobs.operation",
                 value: operation.to_owned(),
@@ -1028,7 +1037,10 @@ fn parse_uuid(value: String, field: &'static str) -> Result<Uuid, StorageError> 
 
 #[cfg(test)]
 mod tests {
-    use super::{CompletedInstall, CompletedModpackUpdate, InstalledRuntime, JobState};
+    use super::{
+        CompletedInstall, CompletedModpackUpdate, InstalledRuntime, JobState,
+        valid_install_operation,
+    };
     use crate::{AuthenticatedAccount, Database, NewInstance, NewModpackSource};
     use slate_domain::{
         InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId, SessionId,
@@ -1044,6 +1056,21 @@ mod tests {
             JobState::try_from("succeeded").ok(),
             Some(JobState::Succeeded)
         );
+    }
+
+    #[test]
+    fn install_operations_cover_every_retryable_job() {
+        for operation in [
+            "instance_install",
+            "external_instance_import",
+            "imported_pack_install",
+            "mod_install",
+            "mod_update",
+            "modpack_update",
+        ] {
+            assert!(valid_install_operation(operation), "rejected {operation}");
+        }
+        assert!(!valid_install_operation("unknown"));
     }
 
     #[tokio::test]

@@ -23,6 +23,7 @@ pub(super) struct PendingImportedOverrides {
 #[derive(Clone, Debug)]
 pub(super) enum RetryableInstallOperation {
     InstanceInstall,
+    ExternalInstanceImport,
     ModInstall {
         mods: Vec<InstallModSelection>,
     },
@@ -46,6 +47,7 @@ impl RetryableInstallOperation {
     const fn storage_name(&self) -> &'static str {
         match self {
             Self::InstanceInstall => "instance_install",
+            Self::ExternalInstanceImport => "external_instance_import",
             Self::ModInstall { .. } => "mod_install",
             Self::ModUpdate { .. } => "mod_update",
             Self::ModpackUpdate { .. } => "modpack_update",
@@ -55,7 +57,7 @@ impl RetryableInstallOperation {
 
     fn payload(&self) -> Option<serde_json::Value> {
         match self {
-            Self::InstanceInstall => None,
+            Self::InstanceInstall | Self::ExternalInstanceImport => None,
             Self::ModInstall { mods } => Some(serde_json::json!({ "mods": mods })),
             Self::ModUpdate {
                 provider,
@@ -81,6 +83,10 @@ impl RetryableInstallOperation {
                 "overridePrefixes": override_prefixes,
             })),
         }
+    }
+
+    const fn skips_automatic_snapshot(&self) -> bool {
+        matches!(self, Self::ExternalInstanceImport)
     }
 }
 
@@ -159,7 +165,9 @@ pub(super) async fn queue_instance_install(
             "That instance changed in another view. Reload it and try again.",
         ));
     }
-    create_automatic_snapshot_if_enabled(state, &instance).await?;
+    if !operation.skips_automatic_snapshot() {
+        create_automatic_snapshot_if_enabled(state, &instance).await?;
+    }
     let content_update = if pending_mods.is_empty() {
         None
     } else {

@@ -25,7 +25,7 @@ pub(super) async fn install_job_retry(
     let expected_revision = instance.revision;
 
     match job.operation.as_deref() {
-        Some("instance_install") => {
+        Some("instance_install" | "external_instance_import") => {
             instance_install_inner(
                 state.inner(),
                 InstallInstanceRequest {
