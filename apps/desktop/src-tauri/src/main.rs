@@ -8,7 +8,9 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use game_options::{prepare_options_update, read_recognized_options};
 use instance_content::{
-    FileMove, InstanceModFile, scan_instance_mods, set_instance_mod_enabled, trash_instance_mod,
+    FileMove, InstanceContentFile, InstanceContentKind, InstanceModFile, scan_instance_content,
+    scan_instance_mods, set_instance_content_enabled, set_instance_mod_enabled,
+    trash_instance_content, trash_instance_mod,
 };
 use instance_files::{
     copy_duplicate_personal_data, create_snapshot, export_portable_archive,
@@ -27,7 +29,8 @@ use slate_contracts::{
     ExportInstanceRequest, GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
     GetInstanceGameOptionsRequest, ImportInstanceRequest, InstallInstanceRequest,
     InstallJobStateDto, InstallJobSummary, InstallModRequest, InstallModpackRequest,
-    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceDirectoryKindDto,
+    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceContentFileSummary,
+    InstanceContentFilesRequest, InstanceContentKindDto, InstanceDirectoryKindDto,
     InstanceGameOptionsSummary, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
     InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
     InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, JavaRuntimeSummary,
@@ -38,11 +41,12 @@ use slate_contracts::{
     ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackVersionRequest,
     ModpackVersionsRequest, MoveInstanceStorageRequest, OpenInstanceDirectoryRequest,
     PerformancePresetDto, PreflightSummary, ProcessPriorityDto, ReduceMotionPreferenceDto,
-    RemoveInstanceModRequest, RenameInstanceRequest, RestoreInstanceSnapshotRequest,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, SessionLogEvent,
-    SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest, SetFavoriteRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
-    StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RenameInstanceRequest,
+    RestoreInstanceSnapshotRequest, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest,
+    SetFavoriteRequest, SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
     UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
     UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest,
 };
@@ -487,6 +491,117 @@ async fn instance_mods_list(
 }
 
 #[tauri::command]
+async fn instance_content_files_list(
+    state: tauri::State<'_, DesktopState>,
+    request: InstanceContentFilesRequest,
+) -> Result<Vec<InstanceContentFileSummary>, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let internal_kind = content_kind(request.kind);
+    let paths = paths_for_instance(state.inner(), &instance);
+    let files = tokio::task::spawn_blocking(move || {
+        scan_instance_content(&paths, instance_id, internal_kind)
+    })
+    .await
+    .map_err(|_| content_file_error())?
+    .map_err(|_| content_file_error())?;
+    let mut managed_paths = HashSet::new();
+    if let Some(source) = &instance.modpack_source {
+        match state
+            .modpacks
+            .version(source.provider, &source.project_id, &source.version_id)
+            .await
+        {
+            Ok(version) => {
+                for file in version.files {
+                    if pack_file_matches_content(file.kind, request.kind) {
+                        managed_paths.insert(normalized_content_path(&file.path));
+                    }
+                }
+            }
+            Err(error) => tracing::warn!(
+                instance_id = %instance_id,
+                error = %error,
+                "could not resolve pack-managed content paths"
+            ),
+        }
+    }
+    Ok(files
+        .into_iter()
+        .map(|file| content_file_summary(file, request.kind, &managed_paths))
+        .collect())
+}
+
+#[tauri::command]
+async fn instance_content_file_set_enabled(
+    state: tauri::State<'_, DesktopState>,
+    request: SetInstanceContentFileEnabledRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    let paths = paths_for_instance(state.inner(), &instance);
+    let file_path = request.file_path.clone();
+    let kind = content_kind(request.kind);
+    let enabled = request.enabled;
+    let file_move = tokio::task::spawn_blocking(move || {
+        set_instance_content_enabled(&paths, instance_id, kind, &file_path, enabled)
+    })
+    .await
+    .map_err(|_| content_file_error())?
+    .map_err(|_| content_file_error())?;
+    let database_result = state
+        .database
+        .advance_instance_revision(instance_id, request.expected_revision)
+        .await;
+    finish_instance_content_change(
+        state.inner(),
+        instance_id,
+        file_move,
+        database_result,
+        "slate could not update that content file.",
+    )
+    .await
+}
+
+#[tauri::command]
+async fn instance_content_file_remove(
+    state: tauri::State<'_, DesktopState>,
+    request: RemoveInstanceContentFileRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    let paths = paths_for_instance(state.inner(), &instance);
+    let file_path = request.file_path.clone();
+    let kind = content_kind(request.kind);
+    let file_move = tokio::task::spawn_blocking(move || {
+        trash_instance_content(&paths, instance_id, kind, &file_path)
+    })
+    .await
+    .map_err(|_| content_file_error())?
+    .map_err(|_| content_file_error())?;
+    let database_result = state
+        .database
+        .advance_instance_revision(instance_id, request.expected_revision)
+        .await;
+    finish_instance_content_change(
+        state.inner(),
+        instance_id,
+        file_move,
+        database_result,
+        "slate could not remove that content file.",
+    )
+    .await
+}
+
+#[tauri::command]
 async fn instance_mods_resolve(
     state: tauri::State<'_, DesktopState>,
     request: InstanceModsRequest,
@@ -792,7 +907,7 @@ async fn finish_instance_content_change(
         if !matches!(rollback, Ok(Ok(()))) {
             return Err(AppError::new(
                 "local.content_rollback_failed",
-                "slate could not restore the mod after the change failed. The instance needs attention.",
+                "slate could not restore the content file after the change failed. The instance needs attention.",
             ));
         }
         return Err(map_storage_error(error, fallback));
@@ -805,15 +920,15 @@ async fn finish_instance_content_change(
         .map_err(|error| {
             map_storage_error(
                 error,
-                "slate changed the mod but could not refresh the instance.",
+                "slate changed the content file but could not refresh the instance.",
             )
         })
 }
 
 fn content_file_error() -> AppError {
     AppError::new(
-        "local.mod_file_change_failed",
-        "slate could not safely change that mod file.",
+        "local.content_file_change_failed",
+        "slate could not safely change that content file.",
     )
 }
 
@@ -3865,6 +3980,51 @@ fn instance_mod_summary(
     }
 }
 
+const fn content_kind(kind: InstanceContentKindDto) -> InstanceContentKind {
+    match kind {
+        InstanceContentKindDto::ResourcePack => InstanceContentKind::ResourcePack,
+        InstanceContentKindDto::ShaderPack => InstanceContentKind::ShaderPack,
+        InstanceContentKindDto::DataPack => InstanceContentKind::DataPack,
+    }
+}
+
+const fn pack_file_matches_content(
+    file_kind: PackFileType,
+    content_kind: InstanceContentKindDto,
+) -> bool {
+    matches!(
+        (file_kind, content_kind),
+        (
+            PackFileType::ResourcePack,
+            InstanceContentKindDto::ResourcePack
+        ) | (PackFileType::ShaderPack, InstanceContentKindDto::ShaderPack)
+            | (PackFileType::DataPack, InstanceContentKindDto::DataPack)
+    )
+}
+
+fn content_file_summary(
+    file: InstanceContentFile,
+    kind: InstanceContentKindDto,
+    managed_paths: &HashSet<String>,
+) -> InstanceContentFileSummary {
+    let origin = if managed_paths.contains(&normalized_content_path(&file.file_path)) {
+        InstanceModOriginDto::Modpack
+    } else {
+        InstanceModOriginDto::Local
+    };
+    InstanceContentFileSummary {
+        display_name: file.display_name,
+        file_path: file.file_path,
+        kind,
+        enabled: file.enabled,
+        can_toggle: file.can_toggle,
+        origin,
+        file_size: file.size,
+        modified_at: file.modified_at,
+        world_name: file.world_name,
+    }
+}
+
 fn normalized_content_path(value: &str) -> String {
     let normalized = value.replace('\\', "/").to_ascii_lowercase();
     normalized
@@ -5379,6 +5539,9 @@ fn main() {
             modpack_install,
             instance_mods_list,
             instance_mods_resolve,
+            instance_content_files_list,
+            instance_content_file_set_enabled,
+            instance_content_file_remove,
             instance_mod_set_enabled,
             instance_mod_set_pinned,
             instance_mod_remove,

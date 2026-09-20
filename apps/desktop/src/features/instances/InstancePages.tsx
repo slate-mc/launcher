@@ -59,11 +59,13 @@ import {
   launchInstance,
   listAccounts,
   listGameSessions,
+  listInstanceContentFiles,
   listInstallJobs,
   listInstanceMods,
   listInstanceSnapshots,
   moveInstanceStorage,
   openInstanceDirectory,
+  removeInstanceContentFile,
   removeInstanceMod,
   renameInstance,
   resetInstanceArtwork,
@@ -72,6 +74,7 @@ import {
   selectInstanceArtwork,
   selectInstanceJava,
   setInstanceSnapshotPinned,
+  setInstanceContentFileEnabled,
   setInstanceModEnabled,
   setInstanceModPinned,
   setInstanceFavorite,
@@ -90,6 +93,8 @@ import {
 } from "../../lib/format";
 import type {
   GameSession,
+  InstanceContentFile,
+  InstanceContentKind,
   InstanceMod,
   LauncherInstance,
   LoaderKind,
@@ -720,6 +725,7 @@ function Overview({ instance }: { instance: LauncherInstance }) {
 
 function Content({ instance }: { instance: LauncherInstance }) {
   const queryClient = useQueryClient();
+  const [contentKind, setContentKind] = useState<"mods" | InstanceContentKind>("mods");
   const [browserOpen, setBrowserOpen] = useState(false);
   const [installedFilter, setInstalledFilter] = useState("");
   const [installedStatus, setInstalledStatus] = useState<
@@ -1030,38 +1036,24 @@ function Content({ instance }: { instance: LauncherInstance }) {
     setInstalledPage(1);
   };
 
+  if (contentKind !== "mods") {
+    return (
+      <InstanceFileContent
+        instance={instance}
+        kind={contentKind}
+        modCount={installed.length}
+        onKindChange={setContentKind}
+      />
+    );
+  }
+
   return (
     <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6">
-      <nav
-        className="rounded-control border border-app-separator/70 bg-app-surface p-2"
-        aria-label="Content types"
-      >
-        {[
-          ["Mods", installed.length],
-          ["Resource packs", 0],
-          ["Shaders", 0],
-          ["Data packs", 0],
-        ].map(([label, count], index) => (
-          <button
-            key={label}
-            type="button"
-            className={`flex h-10 w-full items-center justify-between rounded-compact border-0 px-3 text-left text-xs font-bold ${
-              index === 0
-                ? "bg-app-raised text-app-text"
-                : "bg-transparent text-app-muted"
-            }`}
-            disabled={index !== 0}
-            title={
-              index === 0
-                ? undefined
-                : "This content inventory is not implemented yet."
-            }
-          >
-            {label}
-            <span className="font-mono text-[10px]">{count}</span>
-          </button>
-        ))}
-      </nav>
+      <ContentNavigation
+        active="mods"
+        counts={{ mods: installed.length }}
+        onChange={setContentKind}
+      />
       <section className="min-w-0 rounded-control border border-app-separator/70 bg-app-surface">
         <div className="flex items-center justify-between border-b border-app-separator/55 px-5 py-4">
           <div>
@@ -1600,6 +1592,271 @@ function Content({ instance }: { instance: LauncherInstance }) {
       </section>
     </div>
   );
+}
+
+type ContentSectionKind = "mods" | InstanceContentKind;
+
+function ContentNavigation({
+  active,
+  counts,
+  onChange,
+}: {
+  active: ContentSectionKind;
+  counts: Partial<Record<ContentSectionKind, number>>;
+  onChange: (kind: ContentSectionKind) => void;
+}) {
+  const items: Array<[ContentSectionKind, string]> = [
+    ["mods", "Mods"],
+    ["resourcePack", "Resource packs"],
+    ["shaderPack", "Shaders"],
+    ["dataPack", "Data packs"],
+  ];
+  return (
+    <nav
+      className="rounded-control border border-app-separator/70 bg-app-surface p-2"
+      aria-label="Content types"
+    >
+      {items.map(([kind, label]) => (
+        <button
+          key={kind}
+          type="button"
+          className={`flex h-10 w-full items-center justify-between rounded-compact border-0 px-3 text-left text-xs font-bold ${active === kind ? "bg-app-raised text-app-text" : "bg-transparent text-app-secondary hover:bg-app-raised/60 hover:text-app-text"}`}
+          onClick={() => onChange(kind)}
+        >
+          {label}
+          <span className="font-mono text-[10px] text-app-muted">
+            {counts[kind] ?? "—"}
+          </span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function InstanceFileContent({
+  instance,
+  kind,
+  modCount,
+  onKindChange,
+}: {
+  instance: LauncherInstance;
+  kind: InstanceContentKind;
+  modCount: number;
+  onKindChange: (kind: ContentSectionKind) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [removeTarget, setRemoveTarget] = useState<string>();
+  const [notice, setNotice] = useState<{
+    tone: "positive" | "danger";
+    title: string;
+    message: string;
+  }>();
+  const query = useQuery({
+    queryKey: ["instance-content-files", instance.id, kind],
+    queryFn: () => listInstanceContentFiles(instance.id, kind),
+  });
+  const refresh = async (updated: LauncherInstance, message: string) => {
+    queryClient.setQueryData(["instance", instance.id], updated);
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["instance-content-files", instance.id, kind],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["instances"] }),
+    ]);
+    setNotice({ tone: "positive", title: "Content updated", message });
+  };
+  const toggleMutation = useMutation({
+    mutationFn: ({ file, enabled }: { file: InstanceContentFile; enabled: boolean }) =>
+      setInstanceContentFileEnabled({
+        instanceId: instance.id,
+        kind,
+        filePath: file.filePath,
+        enabled,
+        expectedRevision: instance.revision,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, variables) =>
+      refresh(
+        updated,
+        `${variables.file.displayName} is ${variables.enabled ? "enabled" : "disabled"}.`,
+      ),
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Content was not changed",
+        message: contentErrorMessage(error),
+      }),
+  });
+  const removeMutation = useMutation({
+    mutationFn: (file: InstanceContentFile) =>
+      removeInstanceContentFile({
+        instanceId: instance.id,
+        kind,
+        filePath: file.filePath,
+        expectedRevision: instance.revision,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, file) => {
+      setRemoveTarget(undefined);
+      return refresh(updated, `${file.displayName} was moved to slate’s recoverable trash.`);
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Content was not removed",
+        message: contentErrorMessage(error),
+      }),
+  });
+  const restoreMutation = useMutation({
+    mutationFn: () =>
+      installInstance({ id: instance.id, expectedRevision: instance.revision }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["install-jobs"] });
+      setNotice({
+        tone: "positive",
+        title: "Pack restore queued",
+        message:
+          "slate will restore pack-managed defaults and leave personal additions in place.",
+      });
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Pack restore was not queued",
+        message: contentErrorMessage(error),
+      }),
+  });
+  const files = query.data ?? [];
+  const label = contentKindLabel(kind);
+  const busy = toggleMutation.isPending || removeMutation.isPending;
+
+  return (
+    <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6">
+      <ContentNavigation
+        active={kind}
+        counts={{ mods: modCount, [kind]: files.length }}
+        onChange={onKindChange}
+      />
+      <section className="min-w-0 rounded-control border border-app-separator/70 bg-app-surface">
+        <header className="flex items-center justify-between gap-5 border-b border-app-separator/55 px-5 py-4">
+          <span>
+            <h2 className="m-0 text-[15px] font-bold">{label}</h2>
+            <p className="mt-1 mb-0 text-[11px] text-app-secondary">
+              {kind === "dataPack"
+                ? "Data packs are grouped by world. Folder packs stay controlled by Minecraft."
+                : "Archive packs can be hidden from Minecraft, restored, or moved to recoverable trash."}
+            </p>
+          </span>
+          {instance.modpackSource ? (
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              disabled={restoreMutation.isPending}
+              onClick={() => restoreMutation.mutate()}
+            >
+              {restoreMutation.isPending ? (
+                <RotateCcw className="animate-spin" size={14} />
+              ) : (
+                <RotateCcw size={14} />
+              )}
+              Restore pack defaults
+            </button>
+          ) : null}
+        </header>
+        {notice ? (
+          <div className="px-5 pt-5">
+            <InlineNotice tone={notice.tone} title={notice.title}>
+              {notice.message}
+            </InlineNotice>
+          </div>
+        ) : null}
+        {query.isPending ? (
+          <div className="grid min-h-64 place-items-center text-xs text-app-secondary">
+            <span className="inline-flex items-center gap-2">
+              <LoaderCircle className="animate-spin" size={15} />Scanning instance files…
+            </span>
+          </div>
+        ) : query.isError ? (
+          <div className="p-5">
+            <InlineNotice tone="danger" title={`${label} could not be loaded`}>
+              {contentErrorMessage(query.error)}
+            </InlineNotice>
+          </div>
+        ) : files.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-left">
+              <thead className="border-b border-app-separator/55 bg-app-bg/20 font-mono text-[9px] uppercase tracking-[0.08em] text-app-muted">
+                <tr>
+                  <th className="w-[34%] px-5 py-3 font-medium">Name</th>
+                  <th className="w-[16%] px-3 py-3 font-medium">Scope</th>
+                  <th className="w-[16%] px-3 py-3 font-medium">Ownership</th>
+                  <th className="w-[13%] px-3 py-3 font-medium">Size</th>
+                  <th className="w-[21%] px-3 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-app-separator/45">
+                {files.map((file) => (
+                  <tr key={file.filePath} className="text-[11px]">
+                    <td className="px-5 py-3">
+                      <strong className="block truncate text-xs text-app-text">{file.displayName}</strong>
+                      <span className="mt-0.5 block truncate font-mono text-[9px] text-app-muted" title={file.filePath}>{file.filePath}</span>
+                    </td>
+                    <td className="px-3 py-3 text-app-secondary">{file.worldName ?? "Instance"}</td>
+                    <td className="px-3 py-3">
+                      <span className={`rounded-full border px-2 py-1 font-mono text-[9px] ${file.origin === "modpack" ? "border-app-accent/35 text-app-accent" : "border-app-separator text-app-secondary"}`}>
+                        {file.origin === "modpack" ? "Pack-managed" : "Personal"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-[10px] text-app-secondary">{file.fileSize ? formatContentFileSize(file.fileSize) : "Folder"}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        {file.canToggle ? (
+                          <button
+                            type="button"
+                            className="h-7 rounded-control border border-app-separator px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
+                            disabled={busy}
+                            onClick={() => toggleMutation.mutate({ file, enabled: !file.enabled })}
+                          >
+                            {file.enabled ? "Hide" : "Restore"}
+                          </button>
+                        ) : (
+                          <span className="text-[9px] text-app-muted" title="Folder packs are enabled and ordered inside Minecraft.">In-game</span>
+                        )}
+                        {removeTarget === file.filePath ? (
+                          <span className="flex items-center gap-2">
+                            <button type="button" className="text-[10px] font-bold text-app-danger" disabled={busy} onClick={() => removeMutation.mutate(file)}>Confirm</button>
+                            <button type="button" className="text-[10px] text-app-secondary" onClick={() => setRemoveTarget(undefined)}>Cancel</button>
+                          </span>
+                        ) : (
+                          <button type="button" className="p-1.5 text-app-muted hover:text-app-danger" title={`Remove ${file.displayName}`} disabled={busy} onClick={() => setRemoveTarget(file.filePath)}><Trash2 size={14} /></button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            title={`No ${label.toLocaleLowerCase()} detected`}
+            description={kind === "dataPack" ? "Install or create a data pack inside a world’s datapacks folder." : `Place compatible archives in this instance’s ${label.toLocaleLowerCase()} folder.`}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function contentKindLabel(kind: InstanceContentKind) {
+  switch (kind) {
+    case "resourcePack":
+      return "Resource packs";
+    case "shaderPack":
+      return "Shader packs";
+    case "dataPack":
+      return "Data packs";
+  }
 }
 
 function ModSearchResult({
@@ -2873,6 +3130,41 @@ function LifecycleActions({ instance }: { instance: LauncherInstance }) {
   );
 }
 
+const defaultGameOptionValues: Record<string, string> = {
+  graphicsMode: "1",
+  renderDistance: "12",
+  simulationDistance: "12",
+  guiScale: "0",
+  entityDistanceScaling: "1.0",
+  particles: "0",
+  mipmapLevels: "4",
+  enableVsync: "true",
+  maxFps: "120",
+  bobView: "true",
+  mouseSensitivity: "0.5",
+  invertYMouse: "false",
+  autoJump: "false",
+  toggleCrouch: "false",
+  toggleSprint: "false",
+  showSubtitles: "false",
+  narrator: "0",
+  chatVisibility: "0",
+  chatOpacity: "1.0",
+  textBackgroundOpacity: "0.5",
+  darknessEffectScale: "1.0",
+  damageTiltStrength: "1.0",
+  directionalAudio: "false",
+  realmsNotifications: "true",
+  allowServerListing: "true",
+  chatLinks: "true",
+  chatLinksPrompt: "true",
+  soundCategory_master: "1.0",
+  soundCategory_music: "1.0",
+  soundCategory_weather: "1.0",
+  soundCategory_hostile: "1.0",
+  soundCategory_player: "1.0",
+};
+
 function GameOptionsForm({
   instance,
   fileExists,
@@ -2884,38 +3176,7 @@ function GameOptionsForm({
 }) {
   const queryClient = useQueryClient();
   const [values, setValues] = useState(() => ({
-    graphicsMode: "1",
-    renderDistance: "12",
-    simulationDistance: "12",
-    guiScale: "0",
-    entityDistanceScaling: "1.0",
-    particles: "0",
-    mipmapLevels: "4",
-    enableVsync: "true",
-    maxFps: "120",
-    bobView: "true",
-    mouseSensitivity: "0.5",
-    invertYMouse: "false",
-    autoJump: "false",
-    toggleCrouch: "false",
-    toggleSprint: "false",
-    showSubtitles: "false",
-    narrator: "0",
-    chatVisibility: "0",
-    chatOpacity: "1.0",
-    textBackgroundOpacity: "0.5",
-    darknessEffectScale: "1.0",
-    damageTiltStrength: "1.0",
-    directionalAudio: "false",
-    realmsNotifications: "true",
-    allowServerListing: "true",
-    chatLinks: "true",
-    chatLinksPrompt: "true",
-    soundCategory_master: "1.0",
-    soundCategory_music: "1.0",
-    soundCategory_weather: "1.0",
-    soundCategory_hostile: "1.0",
-    soundCategory_player: "1.0",
+    ...defaultGameOptionValues,
     ...initialValues,
   }));
   const mutation = useMutation({
@@ -2934,6 +3195,11 @@ function GameOptionsForm({
   });
   const update = (key: string, value: string) =>
     setValues((current) => ({ ...current, [key]: value }));
+  const resetCategory = (keys: string[]) =>
+    setValues((current) => ({
+      ...current,
+      ...Object.fromEntries(keys.map((key) => [key, defaultGameOptionValues[key]])),
+    }));
 
   return (
     <SettingsPanel
@@ -2946,7 +3212,7 @@ function GameOptionsForm({
           : "Minecraft has not created options.txt yet. Saving creates it with only the recognized choices below."}
       </InlineNotice>
 
-      <GameOptionSection title="Video">
+      <GameOptionSection title="Video" onReset={() => resetCategory(["graphicsMode", "renderDistance", "simulationDistance", "maxFps", "guiScale", "entityDistanceScaling", "enableVsync", "bobView"])}>
         <Field label="Graphics quality">
           <select className={inputClass} value={values.graphicsMode} onChange={(event) => update("graphicsMode", event.target.value)}>
             <option value="0">Fast</option><option value="1">Fancy</option><option value="2">Fabulous</option>
@@ -2961,7 +3227,7 @@ function GameOptionsForm({
         <GameOptionCheckbox label="View bobbing" checked={values.bobView === "true"} onChange={(checked) => update("bobView", String(checked))} />
       </GameOptionSection>
 
-      <GameOptionSection title="Audio">
+      <GameOptionSection title="Audio" onReset={() => resetCategory(["soundCategory_master", "soundCategory_music", "soundCategory_weather", "soundCategory_hostile", "soundCategory_player", "directionalAudio"])}>
         <GameOptionRange label="Master volume" value={values.soundCategory_master} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_master", value)} />
         <GameOptionRange label="Music" value={values.soundCategory_music} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_music", value)} />
         <GameOptionRange label="Weather" value={values.soundCategory_weather} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_weather", value)} />
@@ -2970,7 +3236,7 @@ function GameOptionsForm({
         <GameOptionCheckbox label="Directional audio" checked={values.directionalAudio === "true"} onChange={(checked) => update("directionalAudio", String(checked))} />
       </GameOptionSection>
 
-      <GameOptionSection title="Controls & accessibility">
+      <GameOptionSection title="Controls & accessibility" onReset={() => resetCategory(["mouseSensitivity", "chatOpacity", "darknessEffectScale", "damageTiltStrength", "autoJump", "invertYMouse", "toggleCrouch", "toggleSprint", "showSubtitles"])}>
         <GameOptionRange label="Mouse sensitivity" value={values.mouseSensitivity} min={0} max={1} step={0.01} percentage onChange={(value) => update("mouseSensitivity", value)} />
         <GameOptionRange label="Chat opacity" value={values.chatOpacity} min={0} max={1} step={0.01} percentage onChange={(value) => update("chatOpacity", value)} />
         <GameOptionRange label="Darkness pulse strength" value={values.darknessEffectScale} min={0} max={1} step={0.01} percentage onChange={(value) => update("darknessEffectScale", value)} />
@@ -2982,7 +3248,7 @@ function GameOptionsForm({
         <GameOptionCheckbox label="Show subtitles" checked={values.showSubtitles === "true"} onChange={(checked) => update("showSubtitles", String(checked))} />
       </GameOptionSection>
 
-      <GameOptionSection title="Multiplayer">
+      <GameOptionSection title="Multiplayer" onReset={() => resetCategory(["allowServerListing", "realmsNotifications", "chatLinks", "chatLinksPrompt"])}>
         <GameOptionCheckbox label="Allow server listing" checked={values.allowServerListing === "true"} onChange={(checked) => update("allowServerListing", String(checked))} />
         <GameOptionCheckbox label="Realms notifications" checked={values.realmsNotifications === "true"} onChange={(checked) => update("realmsNotifications", String(checked))} />
         <GameOptionCheckbox label="Open links in chat" checked={values.chatLinks === "true"} onChange={(checked) => update("chatLinks", String(checked))} />
@@ -3002,10 +3268,13 @@ function GameOptionsForm({
   );
 }
 
-function GameOptionSection({ title, children }: { title: string; children: ReactNode }) {
+function GameOptionSection({ title, onReset, children }: { title: string; onReset: () => void; children: ReactNode }) {
   return (
     <section className="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-app-separator/55 pt-5">
-      <h3 className="col-span-2 m-0 text-xs font-bold">{title}</h3>
+      <div className="col-span-2 flex items-center justify-between">
+        <h3 className="m-0 text-xs font-bold">{title}</h3>
+        <button type="button" className="text-[10px] font-bold text-app-secondary hover:text-app-text" onClick={onReset}>Reset category</button>
+      </div>
       {children}
     </section>
   );

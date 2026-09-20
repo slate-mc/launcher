@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Array_of_InstanceContentFileSummary",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/InstanceContentFileSummary"
+  },
+  "$defs": {
+    "InstanceContentFileSummary": {
+      "type": "object",
+      "properties": {
+        "canToggle": {
+          "type": "boolean"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "filePath": {
+          "type": "string"
+        },
+        "fileSize": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "kind": {
+          "$ref": "#/$defs/InstanceContentKindDto"
+        },
+        "modifiedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "$ref": "#/$defs/InstanceModOriginDto"
+        },
+        "worldName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "displayName",
+        "filePath",
+        "kind",
+        "enabled",
+        "canToggle",
+        "origin",
+        "fileSize"
+      ]
+    },
+    "InstanceContentKindDto": {
+      "type": "string",
+      "enum": [
+        "resourcePack",
+        "shaderPack",
+        "dataPack"
+      ]
+    },
+    "InstanceModOriginDto": {
+      "type": "string",
+      "enum": [
+        "added",
+        "modpack",
+        "local"
+      ]
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SetInstanceContentFileEnabledRequest",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "filePath": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "$ref": "#/$defs/InstanceContentKindDto"
+    }
+  },
+  "required": [
+    "instanceId",
+    "kind",
+    "filePath",
+    "enabled",
+    "expectedRevision"
+  ],
+  "$defs": {
+    "InstanceContentKindDto": {
+      "type": "string",
+      "enum": [
+        "resourcePack",
+        "shaderPack",
+        "dataPack"
+      ]
+    }
+  }
+}

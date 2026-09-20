@@ -480,6 +480,26 @@ export const instanceModSchema = z.object({
 
 export const instanceModListSchema = z.array(instanceModSchema);
 
+export const instanceContentKindSchema = z.enum([
+  "resourcePack",
+  "shaderPack",
+  "dataPack",
+]);
+
+export const instanceContentFileSchema = z.object({
+  displayName: z.string().min(1),
+  filePath: z.string().min(1),
+  kind: instanceContentKindSchema,
+  enabled: z.boolean(),
+  canToggle: z.boolean(),
+  origin: z.enum(["added", "modpack", "local"]),
+  fileSize: z.number().int().nonnegative(),
+  modifiedAt: z.string().nullable(),
+  worldName: z.string().min(1).nullable(),
+});
+
+export const instanceContentFileListSchema = z.array(instanceContentFileSchema);
+
 export const instanceModResolutionSchema = z.object({
   filePath: z.string().min(1),
   provider: z.enum(["curseforge", "modrinth"]),
@@ -527,6 +547,8 @@ export type ModpackProviders = z.infer<typeof modpackProvidersSchema>;
 export type ModpackInstallStarted = z.infer<typeof modpackInstallStartedSchema>;
 export type InstanceMod = z.infer<typeof instanceModSchema>;
 export type InstanceModResolution = z.infer<typeof instanceModResolutionSchema>;
+export type InstanceContentKind = z.infer<typeof instanceContentKindSchema>;
+export type InstanceContentFile = z.infer<typeof instanceContentFileSchema>;
 
 export type ServerPreview = {
   id: string;

@@ -1,6 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use slate_modpack_api_contracts::{LoaderKind, Provider, ReleaseType};
+use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -164,4 +165,52 @@ pub struct InstanceModResolution {
     pub version_id: Option<String>,
     pub display_name: Option<String>,
     pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstanceContentKindDto {
+    ResourcePack,
+    ShaderPack,
+    DataPack,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceContentFilesRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceContentFileSummary {
+    pub display_name: String,
+    pub file_path: String,
+    pub kind: InstanceContentKindDto,
+    pub enabled: bool,
+    pub can_toggle: bool,
+    pub origin: InstanceModOriginDto,
+    pub file_size: u64,
+    pub modified_at: Option<String>,
+    pub world_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetInstanceContentFileEnabledRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+    pub file_path: String,
+    pub enabled: bool,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveInstanceContentFileRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+    pub file_path: String,
+    pub expected_revision: u64,
 }

@@ -14,6 +14,24 @@ pub(crate) struct InstanceModFile {
     pub modified_at: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum InstanceContentKind {
+    ResourcePack,
+    ShaderPack,
+    DataPack,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct InstanceContentFile {
+    pub display_name: String,
+    pub file_path: String,
+    pub enabled: bool,
+    pub can_toggle: bool,
+    pub size: u64,
+    pub modified_at: Option<String>,
+    pub world_name: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct FileMove {
     pub from: PathBuf,
@@ -129,6 +147,224 @@ pub(crate) fn trash_instance_mod(
     })
 }
 
+pub(crate) fn scan_instance_content(
+    paths: &AppPaths,
+    instance_id: InstanceId,
+    kind: InstanceContentKind,
+) -> Result<Vec<InstanceContentFile>, io::Error> {
+    let game = paths.instance(instance_id).join("game");
+    let mut roots = Vec::new();
+    match kind {
+        InstanceContentKind::ResourcePack => {
+            roots.push((game.join("resourcepacks"), "resourcepacks".to_owned(), None));
+        }
+        InstanceContentKind::ShaderPack => {
+            roots.push((game.join("shaderpacks"), "shaderpacks".to_owned(), None));
+        }
+        InstanceContentKind::DataPack => {
+            let saves = game.join("saves");
+            let worlds = match std::fs::read_dir(saves) {
+                Ok(worlds) => worlds,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+                Err(error) => return Err(error),
+            };
+            for world in worlds {
+                let world = world?;
+                let metadata = std::fs::symlink_metadata(world.path())?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    continue;
+                }
+                let world_name = world.file_name().to_string_lossy().into_owned();
+                if !safe_component(&world_name) {
+                    continue;
+                }
+                roots.push((
+                    world.path().join("datapacks"),
+                    format!("saves/{world_name}/datapacks"),
+                    Some(world_name),
+                ));
+            }
+        }
+    }
+    let mut files = Vec::new();
+    for (root, prefix, world_name) in roots {
+        let entries = match std::fs::read_dir(root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let metadata = std::fs::symlink_metadata(entry.path())?;
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            if !safe_component(&file_name) {
+                continue;
+            }
+            let lower_name = file_name.to_ascii_lowercase();
+            let is_archive = lower_name.ends_with(".zip") || lower_name.ends_with(".zip.disabled");
+            let is_pack_directory = metadata.is_dir() && entry.path().join("pack.mcmeta").is_file();
+            if !(metadata.is_file() && is_archive || is_pack_directory) {
+                continue;
+            }
+            let enabled = !lower_name.ends_with(".disabled");
+            let modified_at = metadata
+                .modified()
+                .ok()
+                .and_then(|modified| OffsetDateTime::from(modified).format(&Rfc3339).ok());
+            files.push(InstanceContentFile {
+                display_name: display_name_from_pack(&file_name),
+                file_path: format!("{prefix}/{file_name}"),
+                enabled,
+                can_toggle: metadata.is_file(),
+                size: if metadata.is_file() {
+                    metadata.len()
+                } else {
+                    0
+                },
+                modified_at,
+                world_name: world_name.clone(),
+            });
+        }
+    }
+    files.sort_by(|left, right| {
+        left.world_name
+            .cmp(&right.world_name)
+            .then_with(|| {
+                left.display_name
+                    .to_lowercase()
+                    .cmp(&right.display_name.to_lowercase())
+            })
+            .then_with(|| left.file_path.cmp(&right.file_path))
+    });
+    Ok(files)
+}
+
+pub(crate) fn set_instance_content_enabled(
+    paths: &AppPaths,
+    instance_id: InstanceId,
+    kind: InstanceContentKind,
+    file_path: &str,
+    enabled: bool,
+) -> Result<FileMove, io::Error> {
+    let (source, file_name) = instance_content_path(paths, instance_id, kind, file_path)?;
+    let metadata = std::fs::symlink_metadata(&source)?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(invalid_mod_path());
+    }
+    let lower_name = file_name.to_ascii_lowercase();
+    let target_name = if enabled {
+        if !lower_name.ends_with(".zip.disabled") {
+            return Err(invalid_mod_path());
+        }
+        file_name[..file_name.len() - ".disabled".len()].to_owned()
+    } else {
+        if !lower_name.ends_with(".zip") {
+            return Err(invalid_mod_path());
+        }
+        format!("{file_name}.disabled")
+    };
+    let target = source.with_file_name(&target_name);
+    ensure_move_source(&source, &target)?;
+    std::fs::rename(&source, &target)?;
+    let prefix = file_path.rsplit_once('/').map_or("", |(prefix, _)| prefix);
+    Ok(FileMove {
+        from: source,
+        to: target,
+        updated_file_path: Some(format!("{prefix}/{target_name}")),
+    })
+}
+
+pub(crate) fn trash_instance_content(
+    paths: &AppPaths,
+    instance_id: InstanceId,
+    kind: InstanceContentKind,
+    file_path: &str,
+) -> Result<FileMove, io::Error> {
+    let (source, file_name) = instance_content_path(paths, instance_id, kind, file_path)?;
+    let metadata = std::fs::symlink_metadata(&source)?;
+    if metadata.file_type().is_symlink() || !(metadata.is_file() || metadata.is_dir()) {
+        return Err(invalid_mod_path());
+    }
+    let trash_root = paths.trash();
+    let content_trash = trash_root.join("instance-content");
+    let instance_trash = content_trash.join(instance_id.to_string());
+    for directory in [&trash_root, &content_trash, &instance_trash] {
+        ensure_plain_directory(directory)?;
+    }
+    let target = instance_trash.join(format!("{}-{file_name}", uuid::Uuid::new_v4()));
+    if target.exists() {
+        return Err(invalid_mod_path());
+    }
+    std::fs::rename(&source, &target)?;
+    Ok(FileMove {
+        from: source,
+        to: target,
+        updated_file_path: None,
+    })
+}
+
+fn instance_content_path(
+    paths: &AppPaths,
+    instance_id: InstanceId,
+    kind: InstanceContentKind,
+    file_path: &str,
+) -> Result<(PathBuf, String), io::Error> {
+    let components = file_path.split('/').collect::<Vec<_>>();
+    let valid_shape = match kind {
+        InstanceContentKind::ResourcePack => {
+            components.len() == 2 && components.first() == Some(&"resourcepacks")
+        }
+        InstanceContentKind::ShaderPack => {
+            components.len() == 2 && components.first() == Some(&"shaderpacks")
+        }
+        InstanceContentKind::DataPack => {
+            components.len() == 4
+                && components.first() == Some(&"saves")
+                && components.get(2) == Some(&"datapacks")
+        }
+    };
+    if !valid_shape
+        || components
+            .iter()
+            .any(|component| !safe_component(component))
+    {
+        return Err(invalid_mod_path());
+    }
+    let file_name = components.last().ok_or_else(invalid_mod_path)?.to_string();
+    let instance_root = paths.instance(instance_id);
+    let game = instance_root.join("game");
+    let source = components
+        .iter()
+        .fold(game.clone(), |path, component| path.join(component));
+    let parent = source.parent().ok_or_else(invalid_mod_path)?;
+    for directory in [&instance_root, &game, parent] {
+        let metadata = std::fs::symlink_metadata(directory)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(invalid_mod_path());
+        }
+    }
+    Ok((source, file_name))
+}
+
+fn safe_component(value: &str) -> bool {
+    !value.is_empty()
+        && !matches!(value, "." | "..")
+        && !value.contains(['/', '\\'])
+        && !value.chars().any(char::is_control)
+        && !value.contains(':')
+}
+
+fn display_name_from_pack(file_name: &str) -> String {
+    let without_disabled = file_name.strip_suffix(".disabled").unwrap_or(file_name);
+    let without_extension = without_disabled
+        .strip_suffix(".zip")
+        .unwrap_or(without_disabled);
+    without_extension.replace(['_', '-'], " ")
+}
+
 fn instance_mod_path(
     paths: &AppPaths,
     instance_id: InstanceId,
@@ -207,7 +443,11 @@ fn display_name_from_file(file_name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{scan_instance_mods, set_instance_mod_enabled, trash_instance_mod};
+    use super::{
+        InstanceContentKind, scan_instance_content, scan_instance_mods,
+        set_instance_content_enabled, set_instance_mod_enabled, trash_instance_content,
+        trash_instance_mod,
+    };
     use slate_domain::InstanceId;
     use slate_platform::AppPaths;
 
@@ -315,6 +555,80 @@ mod tests {
         ] {
             assert!(trash_instance_mod(&paths, instance_id, unsafe_path).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn inventories_pack_files_and_world_datapacks() -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = tempfile::tempdir()?;
+        let paths = AppPaths::from_roots(
+            temporary.path().join("app-data"),
+            temporary.path().join("storage"),
+        );
+        let instance_id = InstanceId::new();
+        let game = paths.instance(instance_id).join("game");
+        std::fs::create_dir_all(game.join("resourcepacks/folder-pack"))?;
+        std::fs::write(game.join("resourcepacks/folder-pack/pack.mcmeta"), b"{}")?;
+        std::fs::write(game.join("resourcepacks/slate.zip"), b"zip")?;
+        std::fs::write(game.join("resourcepacks/readme.txt"), b"ignored")?;
+        std::fs::create_dir_all(game.join("shaderpacks"))?;
+        std::fs::write(game.join("shaderpacks/complementary.zip.disabled"), b"zip")?;
+        std::fs::create_dir_all(game.join("saves/Survival/datapacks"))?;
+        std::fs::write(game.join("saves/Survival/datapacks/recipes.zip"), b"zip")?;
+
+        let resource_packs =
+            scan_instance_content(&paths, instance_id, InstanceContentKind::ResourcePack)?;
+        assert_eq!(resource_packs.len(), 2);
+        assert!(resource_packs.iter().any(|pack| !pack.can_toggle));
+        let shaders = scan_instance_content(&paths, instance_id, InstanceContentKind::ShaderPack)?;
+        assert_eq!(shaders.len(), 1);
+        assert!(!shaders[0].enabled);
+        let data_packs = scan_instance_content(&paths, instance_id, InstanceContentKind::DataPack)?;
+        assert_eq!(data_packs.len(), 1);
+        assert_eq!(data_packs[0].world_name.as_deref(), Some("Survival"));
+        Ok(())
+    }
+
+    #[test]
+    fn toggles_and_trashes_pack_archives_safely() -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = tempfile::tempdir()?;
+        let paths = AppPaths::from_roots(
+            temporary.path().join("app-data"),
+            temporary.path().join("storage"),
+        );
+        paths.ensure_base_directories()?;
+        let instance_id = InstanceId::new();
+        let packs = paths.instance(instance_id).join("game/resourcepacks");
+        std::fs::create_dir_all(&packs)?;
+        std::fs::write(packs.join("slate.zip"), b"zip")?;
+
+        let disabled = set_instance_content_enabled(
+            &paths,
+            instance_id,
+            InstanceContentKind::ResourcePack,
+            "resourcepacks/slate.zip",
+            false,
+        )?;
+        assert!(packs.join("slate.zip.disabled").exists());
+        disabled.rollback()?;
+        let removed = trash_instance_content(
+            &paths,
+            instance_id,
+            InstanceContentKind::ResourcePack,
+            "resourcepacks/slate.zip",
+        )?;
+        assert!(!packs.join("slate.zip").exists());
+        removed.rollback()?;
+        assert!(packs.join("slate.zip").exists());
+        assert!(
+            trash_instance_content(
+                &paths,
+                instance_id,
+                InstanceContentKind::ResourcePack,
+                "resourcepacks/../outside.zip",
+            )
+            .is_err()
+        );
         Ok(())
     }
 }

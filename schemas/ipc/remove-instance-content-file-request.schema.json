@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RemoveInstanceContentFileRequest",
+  "type": "object",
+  "properties": {
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "filePath": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "$ref": "#/$defs/InstanceContentKindDto"
+    }
+  },
+  "required": [
+    "instanceId",
+    "kind",
+    "filePath",
+    "expectedRevision"
+  ],
+  "$defs": {
+    "InstanceContentKindDto": {
+      "type": "string",
+      "enum": [
+        "resourcePack",
+        "shaderPack",
+        "dataPack"
+      ]
+    }
+  }
+}

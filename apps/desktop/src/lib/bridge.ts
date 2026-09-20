@@ -9,6 +9,7 @@ import {
   installJobListSchema,
   installJobSchema,
   instanceArtworkAssetSchema,
+  instanceContentFileListSchema,
   instanceGameOptionsSchema,
   instanceSnapshotListSchema,
   instanceSnapshotSchema,
@@ -56,6 +57,8 @@ import {
   type InstanceModResolution,
   type InstanceSettings,
   type InstanceArtworkKind,
+  type InstanceContentFile,
+  type InstanceContentKind,
   type InstanceGameOptions,
   type InstanceSnapshot,
   type Preflight,
@@ -509,6 +512,43 @@ export async function listInstanceMods(
   if (bridgeMode !== "native") return [];
   return instanceModListSchema.parse(
     await invoke("instance_mods_list", { request: { instanceId } }),
+  );
+}
+
+export async function listInstanceContentFiles(
+  instanceId: string,
+  kind: InstanceContentKind,
+): Promise<InstanceContentFile[]> {
+  if (bridgeMode !== "native") return [];
+  return instanceContentFileListSchema.parse(
+    await invoke("instance_content_files_list", {
+      request: { instanceId, kind },
+    }),
+  );
+}
+
+export async function setInstanceContentFileEnabled(input: {
+  instanceId: string;
+  kind: InstanceContentKind;
+  filePath: string;
+  enabled: boolean;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_content_file_set_enabled", { request: input }),
+  );
+}
+
+export async function removeInstanceContentFile(input: {
+  instanceId: string;
+  kind: InstanceContentKind;
+  filePath: string;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_content_file_remove", { request: input }),
   );
 }
 
