@@ -274,26 +274,51 @@ impl Database {
             return self.revision_error(id, expected_revision).await;
         }
 
-        sqlx::query(
-            "UPDATE instance_configuration SET minecraft_version = ?, loader_kind = ?, \
-             loader_version = ?, memory_mb = ?, setup_state = 'configured' WHERE instance_id = ?",
+        let current = sqlx::query(
+            "SELECT minecraft_version, loader_kind, loader_version \
+             FROM instance_configuration WHERE instance_id = ?",
         )
-        .bind(minecraft_version.trim())
-        .bind(loader_kind.as_storage_value())
-        .bind(loader_version.map(str::trim))
-        .bind(i64::from(memory_mb))
         .bind(id.to_string())
-        .execute(&mut *transaction)
+        .fetch_one(&mut *transaction)
         .await?;
-        // A manually changed runtime can no longer claim the source pack's exact compatibility.
-        sqlx::query("DELETE FROM instance_modpacks WHERE instance_id = ?")
+        let current_minecraft_version: String = current.try_get("minecraft_version")?;
+        let current_loader_kind: String = current.try_get("loader_kind")?;
+        let current_loader_version: Option<String> = current.try_get("loader_version")?;
+        let minecraft_version = minecraft_version.trim();
+        let loader_version = loader_version.map(str::trim);
+        let runtime_changed = current_minecraft_version != minecraft_version
+            || current_loader_kind != loader_kind.as_storage_value()
+            || current_loader_version.as_deref() != loader_version;
+
+        if runtime_changed {
+            sqlx::query(
+                "UPDATE instance_configuration SET minecraft_version = ?, loader_kind = ?, \
+                 loader_version = ?, memory_mb = ?, setup_state = 'configured' \
+                 WHERE instance_id = ?",
+            )
+            .bind(minecraft_version)
+            .bind(loader_kind.as_storage_value())
+            .bind(loader_version)
+            .bind(i64::from(memory_mb))
             .bind(id.to_string())
             .execute(&mut *transaction)
             .await?;
-        sqlx::query("DELETE FROM instance_mods WHERE instance_id = ?")
-            .bind(id.to_string())
-            .execute(&mut *transaction)
-            .await?;
+            // A manually changed runtime can no longer claim the source pack's exact compatibility.
+            sqlx::query("DELETE FROM instance_modpacks WHERE instance_id = ?")
+                .bind(id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+            sqlx::query("DELETE FROM instance_mods WHERE instance_id = ?")
+                .bind(id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+        } else {
+            sqlx::query("UPDATE instance_configuration SET memory_mb = ? WHERE instance_id = ?")
+                .bind(i64::from(memory_mb))
+                .bind(id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+        }
         transaction.commit().await?;
         self.get_instance(id).await
     }
@@ -473,7 +498,9 @@ fn parse_uuid(value: String, field: &'static str) -> Result<Uuid, StorageError> 
 mod tests {
     use super::{NewInstance, NewModpackSource};
     use crate::{Database, StorageError};
-    use slate_domain::{InstanceMode, InstanceName, LoaderFamily, ManagementMode};
+    use slate_domain::{
+        InstanceMode, InstanceName, InstanceSetupState, LoaderFamily, ManagementMode,
+    };
     use slate_modpack_api_contracts::Provider;
 
     fn vanilla(
@@ -575,6 +602,50 @@ mod tests {
             )
             .await?;
         assert!(updated.modpack_source.is_none());
+        database.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_change_preserves_ready_installation_and_modpack_source()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let mut instance = vanilla(root, "Pack")?;
+        instance.mode = InstanceMode::Modded;
+        instance.loader_kind = LoaderFamily::Fabric;
+        instance.loader_version = Some("0.18.4".to_owned());
+        instance.modpack_source = Some(NewModpackSource {
+            provider: Provider::Modrinth,
+            project_id: "pack-id".to_owned(),
+            version_id: "version-id".to_owned(),
+            selected_optional: Vec::new(),
+            display_name: "Example Pack".to_owned(),
+            icon_url: None,
+        });
+        let created = database.create_instance(instance).await?;
+        sqlx::query(
+            "UPDATE instance_configuration SET setup_state = 'ready' WHERE instance_id = ?",
+        )
+        .bind(created.id.to_string())
+        .execute(&database.pool)
+        .await?;
+
+        let updated = database
+            .update_instance_configuration(
+                created.id,
+                "1.21.1",
+                LoaderFamily::Fabric,
+                Some("0.18.4"),
+                8192,
+                created.revision,
+            )
+            .await?;
+
+        assert_eq!(updated.memory_mb, 8192);
+        assert_eq!(updated.setup_state, InstanceSetupState::Ready);
+        assert!(updated.modpack_source.is_some());
         database.close().await;
         Ok(())
     }

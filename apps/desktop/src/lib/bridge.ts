@@ -575,15 +575,26 @@ export async function updateInstanceConfiguration(input: {
   return updatePreviewInstance(
     input.id,
     input.expectedRevision,
-    (instance) => ({
-      ...instance,
-      minecraftVersion: input.minecraftVersion.trim(),
-      loaderKind: input.loaderKind,
-      loaderVersion: cleanLoaderVersion(input.loaderKind, input.loaderVersion),
-      memoryMb: input.memoryMb,
-      setupState: "configured",
-      artworkTone: toneForLoader(input.loaderKind),
-    }),
+    (instance) => {
+      const minecraftVersion = input.minecraftVersion.trim();
+      const loaderVersion = cleanLoaderVersion(
+        input.loaderKind,
+        input.loaderVersion,
+      );
+      const runtimeChanged =
+        instance.minecraftVersion !== minecraftVersion ||
+        instance.loaderKind !== input.loaderKind ||
+        instance.loaderVersion !== loaderVersion;
+      return {
+        ...instance,
+        minecraftVersion,
+        loaderKind: input.loaderKind,
+        loaderVersion,
+        memoryMb: input.memoryMb,
+        setupState: runtimeChanged ? "configured" : instance.setupState,
+        artworkTone: toneForLoader(input.loaderKind),
+      };
+    },
   );
 }
 

@@ -617,7 +617,7 @@ fn template_values(
         ),
         (
             "version_name".to_owned(),
-            TemplateValue::Public(version.id().to_owned()),
+            TemplateValue::Public(version.client_jar_version().to_owned()),
         ),
         (
             "game_directory".to_owned(),
@@ -919,6 +919,45 @@ mod tests {
             LaunchPlanner::prepare_from_metadata(vec![metadata], request(directory.path())?);
 
         assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn inherited_profiles_use_the_client_jar_version_for_version_name()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let minecraft = VersionMetadata::from_json_slice(include_bytes!(
+            "../tests/fixtures/vanilla-1.21.1.json"
+        ))?;
+        let neoforge = VersionMetadata::from_json_slice(
+            br#"{
+              "id":"neoforge-21.1.249",
+              "inheritsFrom":"1.21.1",
+              "mainClass":"cpw.mods.bootstraplauncher.BootstrapLauncher",
+              "arguments":{
+                "jvm":["-DignoreList=client-extra,${version_name}.jar"],
+                "game":[]
+              }
+            }"#,
+        )?;
+
+        let preparation = LaunchPlanner::prepare_from_metadata(
+            vec![minecraft, neoforge],
+            request(directory.path())?,
+        )?;
+        let arguments = preparation.plan.redacted().arguments;
+
+        assert_eq!(preparation.version_id, "neoforge-21.1.249");
+        assert!(
+            arguments
+                .iter()
+                .any(|argument| argument == "-DignoreList=client-extra,1.21.1.jar")
+        );
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair == ["--version", "1.21.1"])
+        );
         Ok(())
     }
 }

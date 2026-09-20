@@ -1238,7 +1238,15 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
     onSuccess: async (updated) => {
       queryClient.setQueryData(["instance", instance.id], updated);
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      setMessage("Configuration saved. The instance remains uninstalled.");
+      const runtimeChanged =
+        updated.minecraftVersion !== instance.minecraftVersion ||
+        updated.loaderKind !== instance.loaderKind ||
+        updated.loaderVersion !== instance.loaderVersion;
+      setMessage(
+        runtimeChanged
+          ? "Runtime changed. Reinstall the instance before launching."
+          : "Memory limit saved. Existing game files were kept.",
+      );
     },
   });
 
@@ -1285,8 +1293,8 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
       <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
         <h2 className="m-0 text-[15px] font-bold">Game and runtime</h2>
         <p className="mt-1 mb-5 text-xs text-app-secondary">
-          Changing these values returns the profile to Configured until a future
-          install job succeeds.
+          Memory changes apply on the next launch. Changing Minecraft or its
+          loader requires reinstalling the runtime.
         </p>
         <div className="grid grid-cols-2 gap-5">
           <ComboBox

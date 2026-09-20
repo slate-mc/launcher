@@ -805,17 +805,31 @@ async fn instance_update_configuration(
     state: tauri::State<'_, DesktopState>,
     request: UpdateInstanceConfigurationRequest,
 ) -> Result<InstanceSummary, AppError> {
-    let loader_version = validate_selected_loader_version(
-        &request.minecraft_version,
-        request.loader_kind,
-        request.loader_version.as_deref(),
-    )
-    .await?;
+    let instance_id = InstanceId::from_uuid(request.id);
     let current = state
         .database
-        .get_instance(InstanceId::from_uuid(request.id))
+        .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let requested_loader_kind: LoaderFamily = request.loader_kind.into();
+    let requested_loader_version = request
+        .loader_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let runtime_unchanged = request.minecraft_version.trim() == current.minecraft_version
+        && requested_loader_kind == current.loader_kind
+        && requested_loader_version == current.loader_version.as_deref();
+    let loader_version = if runtime_unchanged {
+        current.loader_version.clone()
+    } else {
+        validate_selected_loader_version(
+            &request.minecraft_version,
+            request.loader_kind,
+            request.loader_version.as_deref(),
+        )
+        .await?
+    };
     validate_instance_configuration(
         current.mode.into(),
         &request.minecraft_version,
@@ -828,7 +842,7 @@ async fn instance_update_configuration(
     state
         .database
         .update_instance_configuration(
-            InstanceId::from_uuid(request.id),
+            instance_id,
             &request.minecraft_version,
             request.loader_kind.into(),
             loader_version.as_deref(),
