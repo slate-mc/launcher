@@ -1,11 +1,7 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import {
-  authFlowStatusSchema,
-  authStartSchema,
   bootstrapSchema,
   createInstanceSchema,
-  gameSessionListSchema,
-  gameSessionSchema,
   installJobListSchema,
   installJobSchema,
   instanceArtworkAssetSchema,
@@ -17,10 +13,6 @@ import {
   instanceModResolutionListSchema,
   instanceSummaryListSchema,
   instanceSummarySchema,
-  loaderVersionCatalogSchema,
-  minecraftAccountListSchema,
-  minecraftAccountSchema,
-  minecraftVersionCatalogSchema,
   modpackInstallStartedSchema,
   modpackProjectSchema,
   modpackProvidersSchema,
@@ -29,22 +21,13 @@ import {
   modpackVersionSchema,
   preferencesSchema,
   preflightSchema,
-  storageCleanupResultSchema,
-  storageOverviewSchema,
-  sessionLogEventSchema,
-  sessionLogSubscriptionSchema,
   defaultInstanceSettings,
   type AppPreferences,
-  type AuthFlowStatus,
-  type AuthStart,
   type Bootstrap,
   type CreateInstanceInput,
   type LauncherInstance,
   type LauncherUpdate,
   type LoaderKind,
-  type LoaderVersionCatalog,
-  type MinecraftVersionCatalog,
-  type MinecraftAccount,
   type ContentLoader,
   type ModpackInstallStarted,
   type ModpackProject,
@@ -52,8 +35,6 @@ import {
   type ModpackSearchResult,
   type ModpackVersion,
   type Provider,
-  type GameSession,
-  type SessionLogEvent,
   type InstallJob,
   type InstanceMod,
   type InstanceModResolution,
@@ -65,28 +46,41 @@ import {
   type InstanceSnapshot,
   type Preflight,
   type ServerPreview,
-  type StorageCategory,
-  type StorageCleanupResult,
-  type StorageOverview,
 } from "../types/launcher";
 
-declare global {
-  interface Window {
-    __TAURI_INTERNALS__?: unknown;
-  }
-}
+import {
+  bridgeMode,
+  requireNativeContent,
+  requirePreview,
+} from "./bridgeRuntime";
 
-const runningInTauri = window.__TAURI_INTERNALS__ !== undefined;
-const developmentPreview =
-  import.meta.env.DEV &&
-  !runningInTauri &&
-  import.meta.env.VITE_DATA_ADAPTER !== "native";
-
-export const bridgeMode = runningInTauri
-  ? "native"
-  : developmentPreview
-    ? "preview"
-    : "unavailable";
+export { bridgeMode } from "./bridgeRuntime";
+export {
+  cancelMinecraftAuth,
+  getMinecraftAuthStatus,
+  listAccounts,
+  refreshMinecraftAccount,
+  removeMinecraftAccount,
+  setDefaultMinecraftAccount,
+  startMinecraftAuth,
+} from "./bridgeAccounts";
+export {
+  getLoaderVersionCatalog,
+  getMinecraftVersionCatalog,
+} from "./bridgeCatalog";
+export {
+  clearStorageCategory,
+  deleteTrashedInstance,
+  emptyInstanceTrash,
+  getStorageOverview,
+  restoreTrashedInstance,
+} from "./bridgeStorage";
+export {
+  forceStopGameSession,
+  launchInstance,
+  listGameSessions,
+  subscribeSessionLog,
+} from "./bridgeSessions";
 
 const previewStorageKey = "slate.preview.instances.v2";
 const previewPreferencesKey = "slate.preview.preferences.v1";
@@ -266,141 +260,6 @@ export async function listInstances(): Promise<LauncherInstance[]> {
   return bridgeMode === "preview" ? structuredClone(previewInstances) : [];
 }
 
-export async function listAccounts(): Promise<MinecraftAccount[]> {
-  if (bridgeMode === "native") {
-    return minecraftAccountListSchema.parse(await invoke("accounts_list"));
-  }
-  return [];
-}
-
-export async function startMinecraftAuth(): Promise<AuthStart> {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Microsoft sign-in is available only in the slate desktop app.",
-    );
-  }
-  return authStartSchema.parse(await invoke("auth_start"));
-}
-
-export async function getMinecraftAuthStatus(
-  flowId: string,
-): Promise<AuthFlowStatus> {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Microsoft sign-in is available only in the slate desktop app.",
-    );
-  }
-  return authFlowStatusSchema.parse(
-    await invoke("auth_get_status", { flowId }),
-  );
-}
-
-export async function cancelMinecraftAuth(
-  flowId: string,
-): Promise<AuthFlowStatus> {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Microsoft sign-in is available only in the slate desktop app.",
-    );
-  }
-  return authFlowStatusSchema.parse(
-    await invoke("auth_cancel", { request: { flowId } }),
-  );
-}
-
-export async function refreshMinecraftAccount(
-  id: string,
-): Promise<MinecraftAccount> {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Account refresh is available only in the slate desktop app.",
-    );
-  }
-  return minecraftAccountSchema.parse(
-    await invoke("account_refresh", { request: { id } }),
-  );
-}
-
-export async function setDefaultMinecraftAccount(
-  id: string,
-): Promise<MinecraftAccount> {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Account selection is available only in the slate desktop app.",
-    );
-  }
-  return minecraftAccountSchema.parse(
-    await invoke("account_set_default", { request: { id } }),
-  );
-}
-
-export async function removeMinecraftAccount(id: string): Promise<void> {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Account removal is available only in the slate desktop app.",
-    );
-  }
-  await invoke("account_remove", { request: { id } });
-}
-
-export async function getMinecraftVersionCatalog(): Promise<MinecraftVersionCatalog> {
-  if (bridgeMode === "native") {
-    return minecraftVersionCatalogSchema.parse(
-      await invoke("minecraft_versions_list"),
-    );
-  }
-  requirePreview();
-  return minecraftVersionCatalogSchema.parse({
-    latestRelease: "1.21.1",
-    versions: [
-      { id: "1.21.1", kind: "release" },
-      { id: "1.20.4", kind: "release" },
-      { id: "1.20.1", kind: "release" },
-    ],
-  });
-}
-
-export async function getLoaderVersionCatalog(input: {
-  minecraftVersion: string;
-  loaderKind: LoaderKind;
-}): Promise<LoaderVersionCatalog> {
-  if (bridgeMode === "native") {
-    return loaderVersionCatalogSchema.parse(
-      await invoke("loader_versions_list", { request: input }),
-    );
-  }
-  requirePreview();
-  if (input.loaderKind === "vanilla") {
-    return {
-      loaderKind: "vanilla",
-      minecraftVersion: input.minecraftVersion,
-      versions: [],
-    };
-  }
-  if (input.loaderKind === "fabric") {
-    return {
-      loaderKind: "fabric",
-      minecraftVersion: input.minecraftVersion,
-      recommendedVersion: "0.19.5",
-      versions: ["0.19.5", "0.18.4", "0.16.10"],
-    };
-  }
-  if (input.minecraftVersion === "1.21.1") {
-    return {
-      loaderKind: "neoForge",
-      minecraftVersion: input.minecraftVersion,
-      recommendedVersion: "21.1.250",
-      versions: ["21.1.250", "21.1.249", "21.1.248-beta"],
-    };
-  }
-  return {
-    loaderKind: "neoForge",
-    minecraftVersion: input.minecraftVersion,
-    versions: [],
-    unavailableReason:
-      "The preview catalog has no NeoForge fixture for this release.",
-  };
-}
 
 export async function getInstance(id: string): Promise<LauncherInstance> {
   if (bridgeMode === "native") {
@@ -1009,61 +868,6 @@ export async function listInstallJobs(): Promise<InstallJob[]> {
   return structuredClone(previewInstallJobs);
 }
 
-export async function launchInstance(
-  id: string,
-  accountId?: string,
-): Promise<GameSession> {
-  if (bridgeMode === "native") {
-    return gameSessionSchema.parse(
-      await invoke("instance_launch", { request: { id, accountId } }),
-    );
-  }
-  throw new Error(
-    "Minecraft launch is available only in the slate desktop app.",
-  );
-}
-
-export async function listGameSessions(): Promise<GameSession[]> {
-  if (bridgeMode === "native") {
-    return gameSessionListSchema.parse(await invoke("sessions_list"));
-  }
-  return [];
-}
-
-export async function forceStopGameSession(id: string): Promise<GameSession> {
-  if (bridgeMode === "native") {
-    return gameSessionSchema.parse(
-      await invoke("session_force_stop", { request: { id } }),
-    );
-  }
-  throw new Error(
-    "Minecraft process control is available only in the slate desktop app.",
-  );
-}
-
-export async function subscribeSessionLog(
-  sessionId: string,
-  onEvent: (event: SessionLogEvent) => void,
-): Promise<() => Promise<void>> {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Live Minecraft logs are available only in the slate desktop app.",
-    );
-  }
-  const channel = new Channel<unknown>();
-  channel.onmessage = (value) => onEvent(sessionLogEventSchema.parse(value));
-  const subscription = sessionLogSubscriptionSchema.parse(
-    await invoke("session_log_subscribe", {
-      request: { sessionId },
-      onEvent: channel,
-    }),
-  );
-  return async () => {
-    await invoke("session_log_unsubscribe", {
-      request: { subscriptionId: subscription.id },
-    });
-  };
-}
 
 export async function getPreferences(): Promise<AppPreferences> {
   if (bridgeMode === "native") {
@@ -1103,73 +907,6 @@ export async function getPreflight(): Promise<Preflight> {
   });
 }
 
-export async function getStorageOverview(): Promise<StorageOverview> {
-  if (bridgeMode === "native") {
-    return storageOverviewSchema.parse(await invoke("storage_overview"));
-  }
-  return storageOverviewSchema.parse({
-    categories: [
-      { category: "instances", sizeBytes: 8_430_000_000, fileCount: 14_280 },
-      { category: "sharedGameFiles", sizeBytes: 1_840_000_000, fileCount: 8_420 },
-      { category: "managedJava", sizeBytes: 612_000_000, fileCount: 1_850 },
-      { category: "logs", sizeBytes: 48_000_000, fileCount: 84 },
-      { category: "temporaryFiles", sizeBytes: 132_000_000, fileCount: 19 },
-      { category: "removedContent", sizeBytes: 286_000_000, fileCount: 42 },
-    ],
-    totalSizeBytes: 11_348_000_000,
-    reclaimableSizeBytes: 466_000_000,
-    trashedInstances: [],
-  });
-}
-
-export async function clearStorageCategory(input: {
-  category: StorageCategory;
-  confirmManagedData?: boolean;
-}): Promise<StorageCleanupResult> {
-  if (bridgeMode === "native") {
-    return storageCleanupResultSchema.parse(
-      await invoke("storage_clear_category", { request: input }),
-    );
-  }
-  requirePreview();
-  return { reclaimedBytes: 0, removedFiles: 0 };
-}
-
-export async function restoreTrashedInstance(input: {
-  id: string;
-  expectedRevision: number;
-}): Promise<LauncherInstance> {
-  if (bridgeMode === "native") {
-    return instanceSummarySchema.parse(
-      await invoke("trashed_instance_restore", { request: input }),
-    );
-  }
-  throw new Error("Instance recovery is available only in the slate desktop app.");
-}
-
-export async function deleteTrashedInstance(input: {
-  id: string;
-  expectedRevision: number;
-  confirmationName: string;
-}): Promise<StorageCleanupResult> {
-  if (bridgeMode === "native") {
-    return storageCleanupResultSchema.parse(
-      await invoke("trashed_instance_delete", { request: input }),
-    );
-  }
-  throw new Error("Permanent deletion is available only in the slate desktop app.");
-}
-
-export async function emptyInstanceTrash(expectedCount: number): Promise<StorageCleanupResult> {
-  if (bridgeMode === "native") {
-    return storageCleanupResultSchema.parse(
-      await invoke("trashed_instances_empty", {
-        request: { expectedCount },
-      }),
-    );
-  }
-  throw new Error("Permanent deletion is available only in the slate desktop app.");
-}
 
 function updatePreviewInstance(
   id: string,
@@ -1229,20 +966,6 @@ function defaultPreferences(): AppPreferences {
     reduceMotion: "system",
     trashRetentionDays: 30,
   };
-}
-
-function requirePreview() {
-  if (bridgeMode !== "preview") {
-    throw new Error("The local bridge is unavailable.");
-  }
-}
-
-function requireNativeContent() {
-  if (bridgeMode !== "native") {
-    throw new Error(
-      "Modpack content is available only in the slate desktop app.",
-    );
-  }
 }
 
 function cleanLoaderVersion(kind: LoaderKind, version?: string) {
