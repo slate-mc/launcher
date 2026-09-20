@@ -4,6 +4,7 @@ import { useState } from "react";
 import { InlineNotice, PageHeader, StatusPill } from "../../components/PageScaffold";
 import { getPreferences, getPreflight, updatePreferences } from "../../lib/bridge";
 import type { AppPreferences } from "../../types/launcher";
+import { SettingsNavigation } from "./SettingsNavigation";
 
 export function SettingsPage() {
   const preferencesQuery = useQuery({
@@ -20,8 +21,9 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Launcher preferences"
-        description="Local preferences are acknowledged by the Rust backend before the interface applies them."
+        description="Choose how slate looks, behaves, and schedules local work."
       />
+      <SettingsNavigation />
       <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-6 px-8 py-7">
         {preferencesQuery.isPending ? (
           <div className="h-[430px] animate-pulse rounded-control bg-app-surface" />
@@ -109,7 +111,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
         </SettingRow>
         <SettingRow
           title="Concurrent downloads"
-          description="The future download manager will use this as its global upper bound."
+          description="Maximum number of files slate downloads at the same time."
         >
           <select
             value={values.downloadConcurrency}

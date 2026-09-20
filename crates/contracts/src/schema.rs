@@ -1,7 +1,8 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
-    CreateInstanceRequest, CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest,
-    DuplicateInstanceRequest, EventEnvelope, ExportInstanceRequest, GameSessionSummary,
+    ClearStorageCategoryRequest, CreateInstanceRequest, CreateInstanceSnapshotRequest,
+    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
+    EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest, GameSessionSummary,
     GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
     InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
     InstanceContentFileSummary, InstanceContentFilesRequest, InstanceGameOptionsSummary,
@@ -11,11 +12,12 @@ use crate::{
     ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackVersionRequest,
     ModpackVersionsRequest, MoveInstanceStorageRequest, OpenInstanceDirectoryRequest,
     PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
-    RemoveInstanceModRequest, RestoreInstanceSnapshotRequest, SelectInstanceArtworkRequest,
-    SelectInstanceJavaRequest, SessionLogEvent, SessionLogSubscription,
-    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    RemoveInstanceModRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
+    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, SessionLogEvent,
+    SessionLogSubscription, SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
-    SubscribeSessionLogRequest, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
+    UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
     UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest,
 };
 use schemars::{Schema, schema_for};
@@ -110,6 +112,24 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         ),
         ("app-preferences", schema_for!(AppPreferencesDto)),
         ("preflight-summary", schema_for!(PreflightSummary)),
+        ("storage-overview", schema_for!(StorageOverview)),
+        (
+            "clear-storage-category-request",
+            schema_for!(ClearStorageCategoryRequest),
+        ),
+        ("storage-cleanup-result", schema_for!(StorageCleanupResult)),
+        (
+            "restore-trashed-instance-request",
+            schema_for!(RestoreTrashedInstanceRequest),
+        ),
+        (
+            "delete-trashed-instance-request",
+            schema_for!(DeleteTrashedInstanceRequest),
+        ),
+        (
+            "empty-instance-trash-request",
+            schema_for!(EmptyInstanceTrashRequest),
+        ),
         (
             "minecraft-version-catalog",
             schema_for!(MinecraftVersionCatalog),
@@ -253,7 +273,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 58);
+        assert_eq!(schemas.len(), 71);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

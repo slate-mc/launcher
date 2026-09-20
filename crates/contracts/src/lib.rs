@@ -58,10 +58,14 @@ pub use schema::schema_documents;
 pub use settings::{
     AppPreferencesDto, ReduceMotionPreferenceDto, ThemePreferenceDto, UpdateAppPreferencesRequest,
 };
-pub use system::{JavaRuntimeSummary, PreflightSummary};
+pub use system::{
+    ClearStorageCategoryRequest, DeleteTrashedInstanceRequest, EmptyInstanceTrashRequest,
+    JavaRuntimeSummary, PreflightSummary, RestoreTrashedInstanceRequest, StorageCategoryDto,
+    StorageCategorySummary, StorageCleanupResult, StorageOverview, TrashedInstanceSummary,
+};
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 8;
+pub const DATABASE_SCHEMA_VERSION: u32 = 9;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

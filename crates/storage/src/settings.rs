@@ -74,6 +74,7 @@ pub struct AppPreferences {
     pub download_concurrency: u8,
     pub telemetry_enabled: bool,
     pub reduce_motion: ReduceMotionPreference,
+    pub trash_retention_days: u16,
 }
 
 impl Default for AppPreferences {
@@ -83,6 +84,7 @@ impl Default for AppPreferences {
             download_concurrency: 4,
             telemetry_enabled: false,
             reduce_motion: ReduceMotionPreference::System,
+            trash_retention_days: 30,
         }
     }
 }
@@ -97,7 +99,7 @@ impl Database {
 
     pub async fn get_app_preferences(&self) -> Result<AppPreferences, StorageError> {
         let row = sqlx::query(
-            "SELECT theme, download_concurrency, telemetry_enabled, reduce_motion \
+            "SELECT theme, download_concurrency, telemetry_enabled, reduce_motion, trash_retention_days \
              FROM app_preferences WHERE singleton_id = 1",
         )
         .fetch_optional(&self.pool)
@@ -110,6 +112,7 @@ impl Database {
         let reduce_motion: String = row.try_get("reduce_motion")?;
         let download_concurrency: i64 = row.try_get("download_concurrency")?;
         let telemetry_enabled: i64 = row.try_get("telemetry_enabled")?;
+        let trash_retention_days: i64 = row.try_get("trash_retention_days")?;
 
         Ok(AppPreferences {
             theme: ThemePreference::try_from(theme.as_str())?,
@@ -121,6 +124,12 @@ impl Database {
             })?,
             telemetry_enabled: telemetry_enabled != 0,
             reduce_motion: ReduceMotionPreference::try_from(reduce_motion.as_str())?,
+            trash_retention_days: u16::try_from(trash_retention_days).map_err(|_| {
+                StorageError::InvalidStoredValue {
+                    field: "app_preferences.trash_retention_days",
+                    value: trash_retention_days.to_string(),
+                }
+            })?,
         })
     }
 
@@ -130,17 +139,19 @@ impl Database {
     ) -> Result<AppPreferences, StorageError> {
         sqlx::query(
             "INSERT INTO app_preferences \
-             (singleton_id, theme, download_concurrency, telemetry_enabled, reduce_motion, updated_at) \
-             VALUES (1, ?, ?, ?, ?, ?) \
+             (singleton_id, theme, download_concurrency, telemetry_enabled, reduce_motion, trash_retention_days, updated_at) \
+             VALUES (1, ?, ?, ?, ?, ?, ?) \
              ON CONFLICT(singleton_id) DO UPDATE SET theme = excluded.theme, \
              download_concurrency = excluded.download_concurrency, \
              telemetry_enabled = excluded.telemetry_enabled, \
-             reduce_motion = excluded.reduce_motion, updated_at = excluded.updated_at",
+             reduce_motion = excluded.reduce_motion, \
+             trash_retention_days = excluded.trash_retention_days, updated_at = excluded.updated_at",
         )
         .bind(preferences.theme.as_storage_value())
         .bind(i64::from(preferences.download_concurrency))
         .bind(if preferences.telemetry_enabled { 1_i64 } else { 0 })
         .bind(preferences.reduce_motion.as_storage_value())
+        .bind(i64::from(preferences.trash_retention_days))
         .bind(now_rfc3339()?)
         .execute(&self.pool)
         .await?;
@@ -168,6 +179,7 @@ mod tests {
             download_concurrency: 2,
             telemetry_enabled: true,
             reduce_motion: ReduceMotionPreference::On,
+            trash_retention_days: 60,
         };
         assert_eq!(database.update_app_preferences(expected).await?, expected);
         database.close().await;

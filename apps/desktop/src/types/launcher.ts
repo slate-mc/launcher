@@ -229,6 +229,12 @@ export const preferencesSchema = z.object({
   downloadConcurrency: z.number().int().min(1).max(8),
   telemetryEnabled: z.boolean(),
   reduceMotion: z.enum(["system", "on", "off"]),
+  trashRetentionDays: z
+    .number()
+    .int()
+    .min(0)
+    .max(365)
+    .refine((days) => days === 0 || days >= 7),
 });
 
 export const preflightSchema = z.object({
@@ -241,6 +247,48 @@ export const preflightSchema = z.object({
     unavailableReason: z.string().optional(),
   }),
   launchImplemented: z.boolean(),
+});
+
+export const storageCategorySchema = z.enum([
+  "instances",
+  "temporaryFiles",
+  "removedContent",
+  "logs",
+  "sharedGameFiles",
+  "managedJava",
+]);
+
+export const storageCategorySummarySchema = z.object({
+  category: storageCategorySchema,
+  sizeBytes: z.number().int().nonnegative(),
+  fileCount: z.number().int().nonnegative(),
+});
+
+export const trashedInstanceSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+  minecraftVersion: z.string().min(1),
+  loaderKind: loaderKindSchema,
+  loaderVersion: z.string().min(1).optional(),
+  sourceName: z.string().min(1).optional(),
+  iconUrl: z.string().url().optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  fileCount: z.number().int().nonnegative(),
+  filesPresent: z.boolean(),
+  trashedAt: z.string(),
+});
+
+export const storageOverviewSchema = z.object({
+  categories: z.array(storageCategorySummarySchema),
+  totalSizeBytes: z.number().int().nonnegative(),
+  reclaimableSizeBytes: z.number().int().nonnegative(),
+  trashedInstances: z.array(trashedInstanceSchema),
+});
+
+export const storageCleanupResultSchema = z.object({
+  reclaimedBytes: z.number().int().nonnegative(),
+  removedFiles: z.number().int().nonnegative(),
 });
 
 export const minecraftVersionCatalogSchema = z.object({
@@ -525,6 +573,11 @@ export type CreateInstanceInput = z.infer<typeof createInstanceSchema>;
 export type LoaderKind = z.infer<typeof loaderKindSchema>;
 export type AppPreferences = z.infer<typeof preferencesSchema>;
 export type Preflight = z.infer<typeof preflightSchema>;
+export type StorageCategory = z.infer<typeof storageCategorySchema>;
+export type StorageCategorySummary = z.infer<typeof storageCategorySummarySchema>;
+export type TrashedInstance = z.infer<typeof trashedInstanceSchema>;
+export type StorageOverview = z.infer<typeof storageOverviewSchema>;
+export type StorageCleanupResult = z.infer<typeof storageCleanupResultSchema>;
 export type MinecraftVersionCatalog = z.infer<
   typeof minecraftVersionCatalogSchema
 >;

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmptyInstanceTrashRequest",
+  "type": "object",
+  "properties": {
+    "expectedCount": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "expectedCount"
+  ]
+}

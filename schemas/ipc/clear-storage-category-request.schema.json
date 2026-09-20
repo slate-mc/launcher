@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClearStorageCategoryRequest",
+  "type": "object",
+  "properties": {
+    "category": {
+      "$ref": "#/$defs/StorageCategoryDto"
+    },
+    "confirmManagedData": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "category"
+  ],
+  "$defs": {
+    "StorageCategoryDto": {
+      "type": "string",
+      "enum": [
+        "instances",
+        "temporaryFiles",
+        "removedContent",
+        "logs",
+        "sharedGameFiles",
+        "managedJava"
+      ]
+    }
+  }
+}

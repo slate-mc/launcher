@@ -17,13 +17,20 @@
     },
     "theme": {
       "$ref": "#/$defs/ThemePreferenceDto"
+    },
+    "trashRetentionDays": {
+      "type": "integer",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0
     }
   },
   "required": [
     "theme",
     "downloadConcurrency",
     "telemetryEnabled",
-    "reduceMotion"
+    "reduceMotion",
+    "trashRetentionDays"
   ],
   "$defs": {
     "ReduceMotionPreferenceDto": {

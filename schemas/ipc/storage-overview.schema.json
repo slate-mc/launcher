@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StorageOverview",
+  "type": "object",
+  "properties": {
+    "categories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/StorageCategorySummary"
+      }
+    },
+    "reclaimableSizeBytes": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "totalSizeBytes": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "trashedInstances": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TrashedInstanceSummary"
+      }
+    }
+  },
+  "required": [
+    "categories",
+    "totalSizeBytes",
+    "reclaimableSizeBytes",
+    "trashedInstances"
+  ],
+  "$defs": {
+    "LoaderKindDto": {
+      "type": "string",
+      "enum": [
+        "vanilla",
+        "fabric",
+        "neoForge"
+      ]
+    },
+    "StorageCategoryDto": {
+      "type": "string",
+      "enum": [
+        "instances",
+        "temporaryFiles",
+        "removedContent",
+        "logs",
+        "sharedGameFiles",
+        "managedJava"
+      ]
+    },
+    "StorageCategorySummary": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/StorageCategoryDto"
+        },
+        "fileCount": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "category",
+        "sizeBytes",
+        "fileCount"
+      ]
+    },
+    "TrashedInstanceSummary": {
+      "type": "object",
+      "properties": {
+        "fileCount": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "filesPresent": {
+          "type": "boolean"
+        },
+        "iconUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "loaderKind": {
+          "$ref": "#/$defs/LoaderKindDto"
+        },
+        "loaderVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "minecraftVersion": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "sourceName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trashedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "revision",
+        "minecraftVersion",
+        "loaderKind",
+        "sizeBytes",
+        "fileCount",
+        "filesPresent",
+        "trashedAt"
+      ]
+    }
+  }
+}

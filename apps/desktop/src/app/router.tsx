@@ -11,6 +11,7 @@ import {
 import { LibraryPage } from "../features/library/LibraryPage";
 import { NewInstancePage } from "../features/library/NewInstancePage";
 import { SettingsPage } from "../features/settings/SettingsPage";
+import { StorageSettingsPage } from "../features/settings/StorageSettingsPage";
 import {
   AccountsPage,
   ActivityPage,
@@ -97,6 +98,11 @@ const settingsRoute = createRoute({
   path: "/settings/general",
   component: SettingsPage,
 });
+const storageSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/storage",
+  component: StorageSettingsPage,
+});
 const helpRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/help",
@@ -117,6 +123,7 @@ const routeTree = rootRoute.addChildren([
   activityRoute,
   accountsRoute,
   settingsRoute,
+  storageSettingsRoute,
   helpRoute,
 ]);
 

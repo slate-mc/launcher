@@ -100,6 +100,15 @@ pub struct CompletedInstall {
 }
 
 impl Database {
+    pub async fn has_active_install_jobs(&self) -> Result<bool, StorageError> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM jobs WHERE kind = 'instance_install' \
+             AND state IN ('queued', 'running'))",
+        )
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     pub async fn begin_instance_install(
         &self,
         instance_id: InstanceId,

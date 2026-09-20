@@ -71,6 +71,20 @@ pub struct InstanceRecord {
     pub last_played: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrashedInstanceRecord {
+    pub id: InstanceId,
+    pub name: InstanceName,
+    pub revision: u64,
+    pub storage_path: PathBuf,
+    pub minecraft_version: String,
+    pub loader_kind: LoaderFamily,
+    pub loader_version: Option<String>,
+    pub source_name: Option<String>,
+    pub icon_url: Option<String>,
+    pub trashed_at: String,
+}
+
 impl Database {
     pub async fn create_storage_root(
         &self,
@@ -500,6 +514,183 @@ impl Database {
         Ok(())
     }
 
+    pub async fn list_trashed_instances(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<TrashedInstanceRecord>, StorageError> {
+        if !(1..=1_000).contains(&limit) {
+            return Err(StorageError::InvalidPageLimit);
+        }
+        let rows = sqlx::query(
+            "SELECT i.id, i.name, i.revision, i.trashed_at, i.relative_path, \
+             r.canonical_path AS root_path, c.minecraft_version, c.loader_kind, \
+             c.loader_version, m.display_name AS source_name, m.icon_url \
+             FROM instances i INNER JOIN storage_roots r ON r.id = i.root_id \
+             INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
+             WHERE i.trashed_at IS NOT NULL \
+             ORDER BY i.trashed_at DESC, i.id LIMIT ?",
+        )
+        .bind(i64::from(limit))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(trashed_instance_from_row).collect()
+    }
+
+    pub async fn get_trashed_instance(
+        &self,
+        id: InstanceId,
+    ) -> Result<TrashedInstanceRecord, StorageError> {
+        let row = sqlx::query(
+            "SELECT i.id, i.name, i.revision, i.trashed_at, i.relative_path, \
+             r.canonical_path AS root_path, c.minecraft_version, c.loader_kind, \
+             c.loader_version, m.display_name AS source_name, m.icon_url \
+             FROM instances i INNER JOIN storage_roots r ON r.id = i.root_id \
+             INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
+             WHERE i.id = ? AND i.trashed_at IS NOT NULL",
+        )
+        .bind(id.to_string())
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(StorageError::InstanceNotFound)?;
+        trashed_instance_from_row(&row)
+    }
+
+    pub async fn restore_trashed_instance(
+        &self,
+        id: InstanceId,
+        expected_revision: u64,
+    ) -> Result<InstanceRecord, StorageError> {
+        let expected_revision = revision_to_i64(expected_revision)?;
+        let result = sqlx::query(
+            "UPDATE instances SET trashed_at = NULL, revision = revision + 1, updated_at = ? \
+             WHERE id = ? AND revision = ? AND trashed_at IS NOT NULL",
+        )
+        .bind(now_rfc3339()?)
+        .bind(id.to_string())
+        .bind(expected_revision)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return self.trashed_revision_error(id, expected_revision).await;
+        }
+        self.get_instance(id).await
+    }
+
+    pub async fn permanently_delete_trashed_instance_record(
+        &self,
+        id: InstanceId,
+        expected_revision: u64,
+    ) -> Result<(), StorageError> {
+        self.permanently_delete_trashed_instance_records(&[(id, expected_revision)])
+            .await
+    }
+
+    pub async fn permanently_delete_trashed_instance_records(
+        &self,
+        records: &[(InstanceId, u64)],
+    ) -> Result<(), StorageError> {
+        let mut transaction = self.pool.begin().await?;
+        let mut validated = Vec::with_capacity(records.len());
+        for (id, expected_revision) in records {
+            let requested_revision = *expected_revision;
+            let expected_revision = revision_to_i64(requested_revision)?;
+            let current: Option<i64> = sqlx::query_scalar(
+                "SELECT revision FROM instances WHERE id = ? AND trashed_at IS NOT NULL",
+            )
+            .bind(id.to_string())
+            .fetch_optional(&mut *transaction)
+            .await?;
+            let Some(current) = current else {
+                transaction.rollback().await?;
+                return Err(StorageError::InstanceNotFound);
+            };
+            if current != expected_revision {
+                transaction.rollback().await?;
+                return Err(StorageError::RevisionConflict {
+                    expected: requested_revision,
+                });
+            }
+            validated.push((*id, expected_revision));
+        }
+
+        for (id, expected_revision) in validated {
+            sqlx::query(
+                "DELETE FROM session_events WHERE session_id IN \
+                 (SELECT id FROM sessions WHERE instance_id = ?)",
+            )
+            .bind(id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query("DELETE FROM sessions WHERE instance_id = ?")
+                .bind(id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+            sqlx::query(
+                "DELETE FROM job_steps WHERE job_id IN \
+                 (SELECT id FROM jobs WHERE entity_id = ?)",
+            )
+            .bind(id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query("DELETE FROM jobs WHERE entity_id = ?")
+                .bind(id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+            sqlx::query("UPDATE instances SET active_revision_id = NULL WHERE id = ?")
+                .bind(id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+            let deleted = sqlx::query(
+                "DELETE FROM instances WHERE id = ? AND revision = ? AND trashed_at IS NOT NULL",
+            )
+            .bind(id.to_string())
+            .bind(expected_revision)
+            .execute(&mut *transaction)
+            .await?;
+            if deleted.rows_affected() != 1 {
+                transaction.rollback().await?;
+                return Err(StorageError::RevisionConflict {
+                    expected: u64::try_from(expected_revision)
+                        .map_err(|_| StorageError::NegativeRevision)?,
+                });
+            }
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn mark_active_instances_for_repair(&self) -> Result<u64, StorageError> {
+        Ok(sqlx::query(
+            "UPDATE instance_configuration SET setup_state = 'configured' \
+             WHERE instance_id IN (SELECT id FROM instances WHERE trashed_at IS NULL)",
+        )
+        .execute(&self.pool)
+        .await?
+        .rows_affected())
+    }
+
+    async fn trashed_revision_error<T>(
+        &self,
+        id: InstanceId,
+        expected_revision: i64,
+    ) -> Result<T, StorageError> {
+        let current: Option<i64> = sqlx::query_scalar(
+            "SELECT revision FROM instances WHERE id = ? AND trashed_at IS NOT NULL",
+        )
+        .bind(id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        match current {
+            Some(_) => Err(StorageError::RevisionConflict {
+                expected: u64::try_from(expected_revision)
+                    .map_err(|_| StorageError::NegativeRevision)?,
+            }),
+            None => Err(StorageError::InstanceNotFound),
+        }
+    }
+
     async fn ensure_updated(
         &self,
         id: InstanceId,
@@ -601,6 +792,32 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
     })
 }
 
+fn trashed_instance_from_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<TrashedInstanceRecord, StorageError> {
+    let id = parse_uuid(row.try_get("id")?, "instances.id")?;
+    let name: String = row.try_get("name")?;
+    let revision: i64 = row.try_get("revision")?;
+    let relative_path: String = row.try_get("relative_path")?;
+    let root_path: String = row.try_get("root_path")?;
+    let loader_kind: String = row.try_get("loader_kind")?;
+    let relative_path = ManagedRelativePath::parse(&relative_path)?;
+    Ok(TrashedInstanceRecord {
+        id: InstanceId::from_uuid(id),
+        name: InstanceName::parse(name)
+            .map_err(|_| invalid_value("instances.name", "invalid instance name".to_owned()))?,
+        revision: u64::try_from(revision).map_err(|_| StorageError::NegativeRevision)?,
+        storage_path: relative_path.resolve_under(std::path::Path::new(&root_path)),
+        minecraft_version: row.try_get("minecraft_version")?,
+        loader_kind: LoaderFamily::try_from(loader_kind.as_str())
+            .map_err(|_| invalid_value("instance_configuration.loader_kind", loader_kind))?,
+        loader_version: row.try_get("loader_version")?,
+        source_name: row.try_get("source_name")?,
+        icon_url: row.try_get("icon_url")?,
+        trashed_at: row.try_get("trashed_at")?,
+    })
+}
+
 fn invalid_value(field: &'static str, value: String) -> StorageError {
     StorageError::InvalidStoredValue { field, value }
 }
@@ -681,6 +898,46 @@ mod tests {
 
         assert!(matches!(
             database.get_instance(created.id).await,
+            Err(StorageError::InstanceNotFound)
+        ));
+        database.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn trashed_instances_can_be_restored_or_permanently_deleted()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root_path = directory.path().join("storage");
+        std::fs::create_dir_all(&root_path)?;
+        let root = database
+            .create_storage_root(root_path.to_string_lossy().as_ref(), None)
+            .await?;
+        let created = database
+            .create_instance(vanilla(root, "Recoverable")?)
+            .await?;
+
+        database
+            .trash_instance(created.id, created.revision)
+            .await?;
+        let trashed = database.list_trashed_instances(10).await?;
+        assert_eq!(trashed.len(), 1);
+        assert_eq!(trashed[0].name.as_str(), "Recoverable");
+        let restored = database
+            .restore_trashed_instance(created.id, trashed[0].revision)
+            .await?;
+        assert_eq!(restored.revision, 2);
+
+        database
+            .trash_instance(restored.id, restored.revision)
+            .await?;
+        let trashed = database.get_trashed_instance(restored.id).await?;
+        database
+            .permanently_delete_trashed_instance_record(restored.id, trashed.revision)
+            .await?;
+        assert!(matches!(
+            database.get_trashed_instance(restored.id).await,
             Err(StorageError::InstanceNotFound)
         ));
         database.close().await;

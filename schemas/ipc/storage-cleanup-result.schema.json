@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StorageCleanupResult",
+  "type": "object",
+  "properties": {
+    "reclaimedBytes": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "removedFiles": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "reclaimedBytes",
+    "removedFiles"
+  ]
+}

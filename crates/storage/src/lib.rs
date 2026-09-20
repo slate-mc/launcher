@@ -23,7 +23,9 @@ pub use instance_settings::{
     InstanceSettingsRecord, InstanceWindowMode, JavaSelectionMode, LauncherBehavior, MemoryMode,
     PerformancePreset, ProcessPriority, UpdateInstanceSettings,
 };
-pub use instances::{InstanceRecord, ModpackSourceRecord, NewInstance, NewModpackSource};
+pub use instances::{
+    InstanceRecord, ModpackSourceRecord, NewInstance, NewModpackSource, TrashedInstanceRecord,
+};
 pub use servers::{NewSavedServer, SavedServerRecord};
 pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference};
 pub use snapshots::InstanceSnapshotRecord;
