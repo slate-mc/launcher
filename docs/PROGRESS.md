@@ -60,11 +60,28 @@ Verified on Windows on September 20, 2026:
    retry from the Downloads page, queue ordering, pause/resume, and bandwidth controls are missing.
 6. **Resource content workflows:** resource packs, shaders, and data packs can be inventoried and
    managed after they exist, but browsing, importing, updating, and ordering them are incomplete.
-7. **Distribution:** production packaging, signing, release channels, a signed updater path,
-   rollback validation, and uninstall/data-retention behavior have not been proven end to end.
+7. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
+   slate's release API, rollback validation, and uninstall/data-retention behavior have not been
+   proven end to end.
 8. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
+9. **Operational readiness:** crash reporting, privacy-aware product analytics, remote feature
+   controls, backend telemetry, bounded offline diagnostics, and the in-app support-report pipeline
+   still need production implementations.
+
+## Observability, rollout, and support plan
+
+| Need | Selected approach | Remaining work for slate |
+| --- | --- | --- |
+| Errors and crashes | Sentry | Integrate desktop and API releases, preserve useful stack traces, sanitize context, and group failures by affected version and user impact. |
+| Feature flags and remote configuration | PostHog | Add gradual rollouts, experiments, emergency switches, safe defaults, local caching, and failure-safe behavior when PostHog is unavailable. |
+| Product analytics | PostHog | Instrument onboarding, installation, content management, and launch funnels with explicit privacy controls and no secrets or raw diagnostic payloads. |
+| Rust instrumentation | `tracing` + `tracing-subscriber` | Standardize structured events and spans across the desktop and API, including request, install, download, and launch correlation. |
+| Backend observability | OpenTelemetry to Grafana Cloud | Export API traces, latency, dependency failures, logs, and resource metrics with production sampling and retention policies. |
+| Local diagnostics | Rotating files plus a bounded disk queue | Retain useful sanitized evidence across offline periods and crashes without allowing logs or queued telemetry to grow without limit. |
+| Updates | Tauri updater plus the slate release API | Ship signed launcher updates, controlled channels and rollouts, rollback protection, and clear recovery behavior. |
+| Support reports | In-app report flow plus private object storage | Let users review and submit sanitized diagnostics, upload them securely, and receive a report ID without exposing storage details. |
 
 ## Quality and documentation gaps
 
@@ -75,8 +92,8 @@ Verified on Windows on September 20, 2026:
   visual behavior; complete keyboard and screen-reader testing.
 - Add localization/message catalogs before user-facing copy grows further.
 - Add virtualization for very large mod, activity, and log views.
-- Finish rule-based diagnostics, repair explanations, support-bundle export, and privacy-safe local
-  performance reporting.
+- Finish rule-based diagnostics and repair explanations, then connect them to the bounded local
+  diagnostics and support-report pipeline above.
 - Required specification documents still missing: `ROUTES.md`, `GAME_PROTOCOL.md`, `MANIFESTS.md`,
   `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `PRIVACY.md`, `COMPATIBILITY.md`, `RELEASING.md`, and
   `OPERATIONS.md`. Existing architecture, IPC, testing, security, and dependency docs also need a
@@ -95,5 +112,7 @@ Verified on Windows on September 20, 2026:
 
 Finish the F1 server workflow (saved-server CRUD, ping, instance compatibility choice, and join), then
 implement desktop modpack updates using the existing `/v1/modpacks/:provider/:project_id/update`
-contract. In parallel with those product slices, add native clean-install smoke coverage so release
-claims are evidence-based rather than inferred from unit tests.
+contract. In parallel, establish the structured `tracing` foundation and bounded local diagnostics;
+those are prerequisites for useful Sentry, OpenTelemetry, analytics, and support-report integrations.
+Add native clean-install smoke coverage so release claims are evidence-based rather than inferred
+from unit tests.
