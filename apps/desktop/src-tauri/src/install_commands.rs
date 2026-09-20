@@ -148,7 +148,7 @@ async fn queue_instance_install(
         operation = operation.storage_name(),
         "installation queued"
     );
-    let response = install_job_summary(pending.job.clone());
+    let response = supervised_install_job_summary(state, pending.job.clone());
     let install_paths = paths_for_instance(state, &instance);
     let target_loader_version = modpack_update.as_ref().map_or_else(
         || instance.loader_version.clone(),
@@ -158,6 +158,7 @@ async fn queue_instance_install(
     tauri::async_runtime::spawn(async move {
         let mut cancellation = control.cancellation;
         let mut pause = control.pause;
+        let mut start = control.start;
         let (progress_tx, mut progress_rx) =
             tokio::sync::mpsc::unbounded_channel::<InstallProgress>();
         let progress_gate = Arc::new(Mutex::new((None, Instant::now() - Duration::from_secs(1))));
@@ -196,7 +197,12 @@ async fn queue_instance_install(
                 let _ = progress_tx.send(progress);
             }
         };
-        let result = {
+        let started = tokio::select! {
+            biased;
+            _ = &mut cancellation => false,
+            result = &mut start => result.is_ok(),
+        };
+        let result = if started {
             let installation = async {
                 if let Some((parent, plan)) = content_update {
                     update_content_with_progress(
@@ -259,6 +265,8 @@ async fn queue_instance_install(
                     }
                 }
             }
+        } else {
+            None
         };
         let _ = progress_task.await;
         match result {
@@ -422,7 +430,7 @@ pub(super) async fn install_job_cancel(
         .database
         .get_install_job(job_id)
         .await
-        .map(install_job_summary)
+        .map(|job| supervised_install_job_summary(state.inner(), job))
         .map_err(|error| map_storage_error(error, "slate could not reload that installation."))
 }
 
@@ -468,7 +476,31 @@ pub(super) async fn install_job_set_paused(
         .database
         .get_install_job(job_id)
         .await
-        .map(install_job_summary)
+        .map(|job| supervised_install_job_summary(state.inner(), job))
+        .map_err(|error| map_storage_error(error, "slate could not reload that installation."))
+}
+
+#[tauri::command]
+pub(super) async fn install_job_move(
+    state: tauri::State<'_, DesktopState>,
+    request: MoveInstallJobRequest,
+) -> Result<InstallJobSummary, AppError> {
+    let job_id = JobId::from_uuid(request.job_id);
+    let direction = match request.direction {
+        InstallQueueDirectionDto::Up => QueueDirection::Up,
+        InstallQueueDirectionDto::Down => QueueDirection::Down,
+    };
+    if !state.installs.move_queued(job_id, direction) {
+        return Err(AppError::new(
+            "local.install_not_queued",
+            "That installation has started or cannot move any farther.",
+        ));
+    }
+    state
+        .database
+        .get_install_job(job_id)
+        .await
+        .map(|job| supervised_install_job_summary(state.inner(), job))
         .map_err(|error| map_storage_error(error, "slate could not reload that installation."))
 }
 

@@ -375,6 +375,7 @@ export const installJobSchema = z.object({
     .enum(["instanceInstall", "modInstall", "modpackUpdate"])
     .optional(),
   canRetry: z.boolean().default(false),
+  queuePosition: z.number().int().positive().optional(),
   phase: z.string(),
   message: z.string(),
   completedItems: z.number().int().nonnegative().optional(),

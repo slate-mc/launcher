@@ -41,6 +41,14 @@
     "phase": {
       "type": "string"
     },
+    "queuePosition": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0
+    },
     "revisionId": {
       "type": "string",
       "format": "uuid"

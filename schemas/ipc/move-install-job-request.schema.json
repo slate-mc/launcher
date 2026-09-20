@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MoveInstallJobRequest",
+  "type": "object",
+  "properties": {
+    "direction": {
+      "$ref": "#/$defs/InstallQueueDirectionDto"
+    },
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "jobId",
+    "direction"
+  ],
+  "$defs": {
+    "InstallQueueDirectionDto": {
+      "type": "string",
+      "enum": [
+        "up",
+        "down"
+      ]
+    }
+  }
+}

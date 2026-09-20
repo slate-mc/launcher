@@ -989,6 +989,16 @@ export async function setInstallJobPaused(input: {
   );
 }
 
+export async function moveInstallJob(input: {
+  jobId: string;
+  direction: "up" | "down";
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("install_job_move", { request: input }),
+  );
+}
+
 export async function retryInstallJob(jobId: string): Promise<InstallJob> {
   requireNativeContent();
   return installJobSchema.parse(

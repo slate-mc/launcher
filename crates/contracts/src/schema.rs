@@ -13,17 +13,17 @@ use crate::{
     LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
     MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
     ModpackSearchRequest, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
-    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
-    PingServerRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
-    RemoveInstanceModRequest, RemoveSavedServerRequest, RestoreInstanceSnapshotRequest,
-    RestoreTrashedInstanceRequest, RetryInstallJobRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
-    SessionLogSubscription, SetInstallJobPausedRequest, SetInstanceContentFileEnabledRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
-    StopGameSessionRequest, StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
-    SupportReportExport, SupportReportPreview, UnsubscribeSessionLogRequest,
-    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest,
-    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    MoveInstallJobRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
+    OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
+    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogSubscription, SetInstallJobPausedRequest,
+    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
+    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -170,6 +170,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         (
             "set-install-job-paused-request",
             schema_for!(SetInstallJobPausedRequest),
+        ),
+        (
+            "move-install-job-request",
+            schema_for!(MoveInstallJobRequest),
         ),
         ("install-job-summary", schema_for!(InstallJobSummary)),
         (
@@ -338,7 +342,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 92);
+        assert_eq!(schemas.len(), 93);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

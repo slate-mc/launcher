@@ -43,7 +43,7 @@ use content_commands::*;
 use diagnostics::init_diagnostics;
 use game_options::{prepare_options_update, read_recognized_options};
 use install_commands::*;
-use install_supervisor::InstallSupervisor;
+use install_supervisor::{InstallSupervisor, QueueDirection};
 use instance_commands::*;
 use instance_content::{
     FileMove, InstanceContentFile, InstanceContentKind, InstanceModFile, scan_instance_content,
@@ -88,25 +88,26 @@ use slate_contracts::{
     GetInstanceGameOptionsRequest, ImportInstanceRequest, ImportLocalContentFileRequest,
     ImportLocalModRequest, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
     InstallModRequest, InstallModSelection, InstallModpackRequest, InstallOperationDto,
-    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceContentFileSummary,
-    InstanceContentFilesRequest, InstanceContentKindDto, InstanceDirectoryKindDto,
-    InstanceGameOptionsSummary, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
-    InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
-    InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, InstanceWorldsRequest,
-    JavaRuntimeSummary, JavaSelectionModeDto, LaunchInstanceRequest, LauncherBehaviorDto,
-    LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto,
-    MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
-    MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
-    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
-    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
-    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
-    PerformancePresetDto, PingServerRequest, PreflightSummary, ProcessPriorityDto,
-    ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
-    RemoveSavedServerRequest, RenameInstanceRequest, RestoreInstanceSnapshotRequest,
-    RestoreTrashedInstanceRequest, RetryInstallJobRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
-    SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest, SetFavoriteRequest,
-    SetInstallJobPausedRequest, SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    InstallQueueDirectionDto, InstanceArtworkAsset, InstanceArtworkKindDto,
+    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
+    InstanceDirectoryKindDto, InstanceGameOptionsSummary, InstanceModOriginDto,
+    InstanceModResolution, InstanceModSummary, InstanceModeDto, InstanceModsRequest,
+    InstanceSettingsSummary, InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary,
+    InstanceWindowModeDto, InstanceWorldsRequest, JavaRuntimeSummary, JavaSelectionModeDto,
+    LaunchInstanceRequest, LauncherBehaviorDto, LoaderKindDto, LoaderVersionCatalog,
+    LoaderVersionsRequest, MemoryModeDto, MinecraftAccountStatusDto, MinecraftAccountSummary,
+    MinecraftReleaseKindDto, MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest,
+    ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto,
+    ModpackSourceSummary, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
+    MoveInstallJobRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
+    OpenInstanceDirectoryRequest, PerformancePresetDto, PingServerRequest, PreflightSummary,
+    ProcessPriorityDto, ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest,
+    RemoveInstanceModRequest, RemoveSavedServerRequest, RenameInstanceRequest,
+    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
+    SetDefaultAccountRequest, SetFavoriteRequest, SetInstallJobPausedRequest,
+    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
     StorageCategoryDto, StorageCategorySummary, StorageCleanupResult, StorageOverview,
     SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview, ThemePreferenceDto,
@@ -586,6 +587,7 @@ fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
         },
         operation,
         can_retry,
+        queue_position: None,
         phase: record.phase,
         message,
         completed_items: record.completed_items,
@@ -593,6 +595,16 @@ fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
         created_at: record.created_at,
         updated_at: record.updated_at,
     }
+}
+
+fn supervised_install_job_summary(
+    state: &DesktopState,
+    record: InstallJobRecord,
+) -> InstallJobSummary {
+    let job_id = record.id;
+    let mut summary = install_job_summary(record);
+    summary.queue_position = state.installs.queue_position(job_id);
+    summary
 }
 
 fn game_session_summary(process: ActiveProcess) -> GameSessionSummary {
@@ -722,6 +734,7 @@ fn main() {
             trashed_instances_empty,
             instance_install,
             install_job_cancel,
+            install_job_move,
             install_job_set_paused,
             install_job_retry,
             install_jobs_list,

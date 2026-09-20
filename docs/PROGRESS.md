@@ -14,10 +14,11 @@ Last updated: September 20, 2026
 - Vanilla, Fabric, and NeoForge version selection, verified installation, compatible managed Java
   acquisition, authenticated launch, duplicate-launch prevention, force stop, last-played tracking,
   and live/retained Minecraft logs.
-- Durable installation records with detailed bounded progress, parallel downloads, verified shared
-  artifacts, restart recovery for interrupted jobs, pause/resume, safe user cancellation, operation-aware retry
-  from Downloads, an aggregate download-speed limit covering base-game and content files, and
-  sanitized user-facing failure messages.
+- Durable installation records with detailed bounded progress, an ordered single-worker queue,
+  parallel file downloads, verified shared artifacts, restart recovery for interrupted jobs,
+  pause/resume, safe user cancellation, operation-aware retry from Downloads, an aggregate
+  download-speed limit covering base-game and content files, and sanitized user-facing failure
+  messages.
 - Instance library, favorites, profile text/tags/notes, icon/banner selection and positioning,
   per-instance account/window/language/quick-play/performance/Java settings, common Minecraft game
   options, folder shortcuts, relocation, duplication, portable slate import/export, snapshots,
@@ -62,7 +63,7 @@ Verified on Windows on September 20, 2026:
 - 15 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 130 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 131 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -72,19 +73,16 @@ Verified on Windows on September 20, 2026:
    dependency/dependent views, and rollback are not complete; pinning alone is not an updater.
 2. **Import coverage:** slate portable archives and local mod JARs work, but importing
    CurseForge/Modrinth packs and importing from other launchers are not complete.
-3. **Download controls:** installation progress, restart recovery, safe user cancellation, and
-   operation-aware retry, pause/resume, and an aggregate bandwidth limit work, but queue ordering
-   is missing.
-4. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
+3. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
    validated local ZIP import and can be inventoried and managed after installation. Provider
    browsing, updates, and ordering remain incomplete.
-5. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
+4. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
-6. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
+5. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-7. **Operational readiness:** structured local tracing and local support-report export are active.
+6. **Operational readiness:** structured local tracing and local support-report export are active.
    Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
    telemetry, offline delivery, and private support-report submission still need production
    implementations.

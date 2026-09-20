@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
   Boxes,
   Check,
   CircleHelp,
@@ -36,6 +38,7 @@ import {
   listGameSessions,
   listInstallJobs,
   listInstances,
+  moveInstallJob,
   refreshMinecraftAccount,
   removeMinecraftAccount,
   retryInstallJob,
@@ -54,6 +57,10 @@ export function DownloadsPage() {
     refetchInterval: 1_000,
   });
   const jobs = jobsQuery.data ?? [];
+  const maxQueuePosition = jobs.reduce(
+    (maximum, job) => Math.max(maximum, job.queuePosition ?? 0),
+    0,
+  );
   const cancelMutation = useMutation({
     mutationFn: cancelInstallJob,
     onSuccess: async () => {
@@ -74,6 +81,12 @@ export function DownloadsPage() {
   });
   const pauseMutation = useMutation({
     mutationFn: setInstallJobPaused,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["install-jobs"] });
+    },
+  });
+  const moveMutation = useMutation({
+    mutationFn: moveInstallJob,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["install-jobs"] });
     },
@@ -119,6 +132,16 @@ export function DownloadsPage() {
           </InlineNotice>
         </div>
       ) : null}
+      {moveMutation.isError ? (
+        <div className="mx-auto max-w-[940px] px-8 pt-6">
+          <InlineNotice tone="danger" title="Queue order was not changed">
+            {getUserFacingError(
+              moveMutation.error,
+              "That installation may have already started. Refresh and try again.",
+            )}
+          </InlineNotice>
+        </div>
+      ) : null}
       {jobsQuery.isPending ? (
         <div
           className="mx-auto grid max-w-[940px] gap-3 px-8 py-7"
@@ -141,7 +164,7 @@ export function DownloadsPage() {
       ) : (
         <div className="mx-auto max-w-[940px] px-8 py-7">
           <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
-            <div className="grid grid-cols-[minmax(0,1fr)_115px_145px_150px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+            <div className="grid grid-cols-[minmax(0,1fr)_115px_145px_230px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
               <span>Installation</span>
               <span>State</span>
               <span>Updated</span>
@@ -151,7 +174,7 @@ export function DownloadsPage() {
               {jobs.map((job) => (
                 <div
                   key={job.id}
-                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_115px_145px_150px] items-center gap-4 px-5 py-3"
+                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_115px_145px_230px] items-center gap-4 px-5 py-3"
                 >
                   <span className="min-w-0">
                     <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
@@ -176,7 +199,9 @@ export function DownloadsPage() {
                             : "bg-app-warning"
                       }`}
                     />
-                    {job.state[0].toUpperCase() + job.state.slice(1)}
+                    {job.queuePosition
+                      ? `Queued #${job.queuePosition}`
+                      : job.state[0].toUpperCase() + job.state.slice(1)}
                   </span>
                   <time className="text-[11px] text-app-secondary">
                     {new Date(job.updatedAt).toLocaleString()}
@@ -185,6 +210,43 @@ export function DownloadsPage() {
                   job.state === "running" ||
                   job.state === "paused" ? (
                     <span className="ml-auto inline-flex items-center gap-2">
+                      {job.queuePosition ? (
+                        <span className="inline-flex items-center overflow-hidden rounded-compact border border-app-separator bg-app-bg">
+                          <button
+                            type="button"
+                            className="inline-flex size-8 items-center justify-center text-app-secondary hover:text-app-text disabled:opacity-30"
+                            aria-label={`Move queued installation ${job.queuePosition} up`}
+                            disabled={
+                              job.queuePosition <= 1 || moveMutation.isPending
+                            }
+                            onClick={() =>
+                              moveMutation.mutate({
+                                jobId: job.id,
+                                direction: "up",
+                              })
+                            }
+                          >
+                            <ArrowUp size={13} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex size-8 items-center justify-center border-l border-app-separator text-app-secondary hover:text-app-text disabled:opacity-30"
+                            aria-label={`Move queued installation ${job.queuePosition} down`}
+                            disabled={
+                              job.queuePosition >= maxQueuePosition ||
+                              moveMutation.isPending
+                            }
+                            onClick={() =>
+                              moveMutation.mutate({
+                                jobId: job.id,
+                                direction: "down",
+                              })
+                            }
+                          >
+                            <ArrowDown size={13} aria-hidden="true" />
+                          </button>
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         className="inline-flex h-8 items-center gap-1.5 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"

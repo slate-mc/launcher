@@ -46,6 +46,20 @@ pub struct SetInstallJobPausedRequest {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum InstallQueueDirectionDto {
+    Up,
+    Down,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveInstallJobRequest {
+    pub job_id: Uuid,
+    pub direction: InstallQueueDirectionDto,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RetryInstallJobRequest {
     pub job_id: Uuid,
 }
@@ -60,6 +74,8 @@ pub struct InstallJobSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operation: Option<InstallOperationDto>,
     pub can_retry: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u32>,
     pub phase: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -250,6 +250,25 @@ pub(super) async fn install_jobs_list(
         .database
         .list_install_jobs(100)
         .await
-        .map(|jobs| jobs.into_iter().map(install_job_summary).collect())
+        .map(|jobs| {
+            let mut summaries = jobs
+                .into_iter()
+                .map(|job| supervised_install_job_summary(state.inner(), job))
+                .collect::<Vec<_>>();
+            summaries.sort_by_key(|job| match job.queue_position {
+                Some(position) => (1_u8, position),
+                None if matches!(
+                    job.state,
+                    InstallJobStateDto::Queued
+                        | InstallJobStateDto::Running
+                        | InstallJobStateDto::Paused
+                ) =>
+                {
+                    (0, 0)
+                }
+                None => (2, 0),
+            });
+            summaries
+        })
         .map_err(|error| map_storage_error(error, "slate could not load installation activity."))
 }
