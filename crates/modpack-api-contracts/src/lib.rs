@@ -1,5 +1,6 @@
 //! Stable public contracts shared by the slate modpack API and its clients.
 
+mod content;
 mod error;
 mod file;
 mod import_plan;
@@ -9,6 +10,7 @@ mod modpack;
 mod provider;
 mod version;
 
+pub use content::{ContentInstallPlanRequest, ContentKind};
 pub use error::{ApiEnvelope, ApiErrorCode, ApiErrorDetail, ApiFieldError, ApiMeta};
 pub use file::{
     DownloadSource, FileOption, Hashes, ModpackFile, PackFileType, ProviderReference, Side,

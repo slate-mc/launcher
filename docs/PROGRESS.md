@@ -37,8 +37,9 @@ Last updated: September 20, 2026
   changes.
 - Instance content inventory for mods, resource packs, shader packs, and world data packs, including
   pack-vs-user ownership, enable/disable behavior where supported, recoverable removal, local mod
-  JAR import, and local resource/shader/data-pack ZIP import with validation, explicit world
-  selection, duplicate protection, snapshots, and rollback.
+  JAR import, local resource/shader/data-pack ZIP import, and compatible Modrinth browsing and batch
+  installation. Provider content uses exact Minecraft/runtime matching, explicit world selection for
+  data packs, verified downloads, duplicate protection, snapshots, and rollback.
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
   formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
   authenticated quick join.
@@ -65,15 +66,15 @@ Verified on Windows on September 20, 2026:
 - 15 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 142 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 146 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
 ## F1 release blockers
 
 1. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
-   validated local ZIP import and can be inventoried and managed after installation. Provider
-   browsing, updates, and ordering remain incomplete.
+   validated local ZIP import plus compatible Modrinth browsing and batch installation. Provider
+   dependency handling, updates, version pinning, and ordering remain incomplete.
 2. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
@@ -124,6 +125,6 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add provider-backed resource pack and shader browsing, compatibility-safe installation, update
-management, and ordering where the game supports it. Then add native clean-install smoke coverage
-so release claims are evidence-based rather than inferred from unit tests.
+Add dependency handling, update management, version pinning, and ordering for provider-managed
+resource packs, shaders, and data packs. Then add native clean-install smoke coverage so release
+claims are evidence-based rather than inferred from unit tests.

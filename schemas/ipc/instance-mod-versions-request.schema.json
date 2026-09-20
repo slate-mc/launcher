@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InstanceModVersionsRequest",
+  "type": "object",
+  "properties": {
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    }
+  },
+  "required": [
+    "instanceId",
+    "provider",
+    "projectId"
+  ],
+  "$defs": {
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}

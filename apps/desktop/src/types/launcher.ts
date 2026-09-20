@@ -372,7 +372,13 @@ export const installJobSchema = z.object({
     "cancelled",
   ]),
   operation: z
-    .enum(["instanceInstall", "modInstall", "modUpdate", "modpackUpdate"])
+    .enum([
+      "instanceInstall",
+      "contentInstall",
+      "modInstall",
+      "modUpdate",
+      "modpackUpdate",
+    ])
     .optional(),
   canRetry: z.boolean().default(false),
   queuePosition: z.number().int().positive().optional(),
@@ -643,6 +649,11 @@ export const instanceContentFileSchema = z.object({
   fileSize: z.number().int().nonnegative(),
   modifiedAt: z.string().nullable(),
   worldName: z.string().min(1).nullable(),
+  provider: z.enum(["curseforge", "modrinth"]).nullable(),
+  projectId: z.string().min(1).nullable(),
+  versionId: z.string().min(1).nullable(),
+  iconUrl: z.string().url().nullable(),
+  installedAt: z.string().min(1).nullable(),
 });
 
 export const instanceContentFileListSchema = z.array(instanceContentFileSchema);

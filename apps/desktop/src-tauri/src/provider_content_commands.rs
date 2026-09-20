@@ -1,0 +1,332 @@
+use super::*;
+use futures_util::{StreamExt, stream};
+
+const MAX_CONTENT_SELECTIONS: usize = 50;
+const CONTENT_PLAN_CONCURRENCY: usize = 8;
+
+#[tauri::command]
+pub(super) async fn content_search(
+    state: tauri::State<'_, DesktopState>,
+    request: ContentSearchRequest,
+) -> Result<SearchResponse, AppError> {
+    let instance = state
+        .database
+        .get_instance(InstanceId::from_uuid(request.instance_id))
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    state
+        .modpacks
+        .search_content(
+            provider_content_kind(request.kind),
+            &SearchOptions {
+                query: request.query,
+                provider: Some(slate_modpack_api_contracts::Provider::Modrinth),
+                minecraft_version: Some(instance.minecraft_version),
+                loader: None,
+                category: None,
+                sort: match request.sort {
+                    ModpackSortDto::Relevance => SearchSort::Relevance,
+                    ModpackSortDto::Downloads => SearchSort::Downloads,
+                    ModpackSortDto::Updated => SearchSort::Updated,
+                    ModpackSortDto::Newest => SearchSort::Newest,
+                },
+                cursor: request.cursor,
+                page: request.page,
+                limit: request.limit.unwrap_or(20),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)
+}
+
+#[tauri::command]
+pub(super) async fn instance_content_install(
+    state: tauri::State<'_, DesktopState>,
+    request: InstallContentRequest,
+) -> Result<InstallJobSummary, AppError> {
+    instance_content_install_inner(state.inner(), request).await
+}
+
+pub(super) async fn instance_content_install_inner(
+    state: &DesktopState,
+    request: InstallContentRequest,
+) -> Result<InstallJobSummary, AppError> {
+    if request.content.is_empty() || request.content.len() > MAX_CONTENT_SELECTIONS {
+        return Err(AppError::new(
+            "content.invalid_selection",
+            format!("Choose between 1 and {MAX_CONTENT_SELECTIONS} items."),
+        ));
+    }
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state, instance_id, request.expected_revision).await?;
+    if instance.setup_state != slate_domain::InstanceSetupState::Ready {
+        return Err(AppError::new(
+            "local.instance_not_ready",
+            "Finish installing or repair this instance before adding content.",
+        ));
+    }
+    let kind = provider_content_kind(request.kind);
+    let world_name =
+        validate_content_world(state, &instance, request.kind, request.world_name).await?;
+    let (loader, loader_version) = instance_runtime_target(&instance);
+    let mut unique = BTreeMap::new();
+    for selection in &request.content {
+        validate_content_selection(selection)?;
+        unique
+            .entry((selection.provider, selection.project_id.trim().to_owned()))
+            .or_insert_with(|| selection.clone());
+    }
+    let installed = state
+        .database
+        .list_instance_provider_content(instance_id, kind)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not inspect installed content."))?;
+    let installed_identities = installed
+        .iter()
+        .map(|item| (item.provider, item.project_id.clone()))
+        .collect::<HashSet<_>>();
+    let pending = unique
+        .into_iter()
+        .filter(|(identity, _)| !installed_identities.contains(identity))
+        .map(|(_, selection)| selection)
+        .collect::<Vec<_>>();
+    if pending.is_empty() {
+        return Err(AppError::new(
+            "content.already_installed",
+            "Every selected item is already installed.",
+        ));
+    }
+
+    let api = state.modpacks.clone();
+    let minecraft_version = instance.minecraft_version.clone();
+    let plans = stream::iter(pending.into_iter().map(|selection| {
+        let api = api.clone();
+        let minecraft_version = minecraft_version.clone();
+        let loader_version = loader_version.clone();
+        async move {
+            let plan = api
+                .content_install_plan(
+                    kind,
+                    selection.project_id.trim(),
+                    &ContentInstallPlanRequest {
+                        minecraft_version,
+                        loader,
+                        loader_version,
+                        version_id: None,
+                    },
+                )
+                .await
+                .map_err(modpack_api_error)?;
+            Ok::<_, AppError>((selection, plan))
+        }
+    }))
+    .buffer_unordered(CONTENT_PLAN_CONCURRENCY)
+    .collect::<Vec<_>>()
+    .await;
+
+    let existing_paths = installed
+        .iter()
+        .map(|item| normalized_content_path(&item.file_path))
+        .collect::<HashSet<_>>();
+    let paths = paths_for_instance(state, &instance);
+    let internal_kind = content_kind(request.kind);
+    let scanned = tokio::task::spawn_blocking(move || {
+        scan_instance_content(&paths, instance_id, internal_kind)
+    })
+    .await
+    .map_err(|_| content_file_error())?
+    .map_err(|_| content_file_error())?;
+    let scanned_paths = scanned
+        .into_iter()
+        .map(|item| normalized_content_path(&item.file_path))
+        .collect::<HashSet<_>>();
+    let mut planned_paths = HashSet::new();
+    let mut downloads = Vec::new();
+    let mut records = Vec::new();
+    let mut merged_plan = None;
+    for result in plans {
+        let (selection, mut plan) = result?;
+        validate_content_plan(&instance, kind, &selection, &plan)?;
+        let mut download = plan.downloads.remove(0);
+        if kind == ContentKind::DataPack {
+            let world_name = world_name.as_deref().ok_or_else(|| {
+                AppError::new(
+                    "content.world_required",
+                    "Choose a world before adding a data pack.",
+                )
+            })?;
+            let file_name = download
+                .destination
+                .strip_prefix("datapacks/")
+                .ok_or_else(invalid_content_plan)?;
+            download.destination = format!("saves/{world_name}/datapacks/{file_name}");
+        }
+        let normalized = normalized_content_path(&download.destination);
+        if existing_paths.contains(&normalized)
+            || scanned_paths.contains(&normalized)
+            || !planned_paths.insert(normalized)
+        {
+            return Err(AppError::new(
+                "content.file_conflict",
+                format!(
+                    "{} conflicts with a content file that is already installed.",
+                    selection.display_name.trim()
+                ),
+            ));
+        }
+        let version_id = plan.instance.version_id.clone();
+        records.push(NewInstanceProviderContent {
+            kind,
+            provider: selection.provider,
+            project_id: selection.project_id.trim().to_owned(),
+            version_id,
+            display_name: selection.display_name.trim().to_owned(),
+            icon_url: trusted_content_icon(selection.icon_url.as_deref()),
+            file_path: download.destination.clone(),
+            hashes: download.hashes.clone(),
+        });
+        downloads.push(download);
+        merged_plan.get_or_insert(plan);
+    }
+    let mut plan = merged_plan.ok_or_else(invalid_content_plan)?;
+    plan.downloads = downloads;
+    plan.total_download_size = plan.downloads.iter().try_fold(0_u64, |total, download| {
+        total
+            .checked_add(download.size)
+            .ok_or_else(invalid_content_plan)
+    })?;
+    queue_instance_install(
+        state,
+        instance,
+        request.expected_revision,
+        Some(plan),
+        PendingModChanges {
+            provider_content: records,
+            ..PendingModChanges::default()
+        },
+        None,
+        RetryableInstallOperation::ContentInstall {
+            kind: request.kind,
+            world_name,
+            content: request.content,
+        },
+    )
+    .await
+}
+
+fn validate_content_selection(selection: &InstallContentSelection) -> Result<(), AppError> {
+    if selection.provider != slate_modpack_api_contracts::Provider::Modrinth
+        || selection.project_id.is_empty()
+        || selection.project_id.len() > 128
+        || !selection
+            .project_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        || selection.display_name.trim().is_empty()
+        || selection.display_name.chars().count() > 160
+        || selection.display_name.chars().any(char::is_control)
+    {
+        return Err(AppError::new(
+            "content.invalid_selection",
+            "One of the selected items has invalid details.",
+        ));
+    }
+    Ok(())
+}
+
+fn instance_runtime_target(instance: &InstanceRecord) -> (LoaderKind, Option<String>) {
+    match instance.loader_kind {
+        LoaderFamily::Vanilla => (LoaderKind::Vanilla, None),
+        LoaderFamily::Fabric => (LoaderKind::Fabric, instance.loader_version.clone()),
+        LoaderFamily::NeoForge => (LoaderKind::NeoForge, instance.loader_version.clone()),
+    }
+}
+
+async fn validate_content_world(
+    state: &DesktopState,
+    instance: &InstanceRecord,
+    kind: InstanceContentKindDto,
+    world_name: Option<String>,
+) -> Result<Option<String>, AppError> {
+    if kind != InstanceContentKindDto::DataPack {
+        return Ok(None);
+    }
+    let world_name = world_name
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 240
+                && !matches!(value.as_str(), "." | "..")
+                && !value.contains(['/', '\\', ':'])
+                && !value.chars().any(char::is_control)
+        })
+        .ok_or_else(|| {
+            AppError::new(
+                "content.world_required",
+                "Choose a world before adding a data pack.",
+            )
+        })?;
+    let paths = paths_for_instance(state, instance);
+    let instance_id = instance.id;
+    let worlds = tokio::task::spawn_blocking(move || scan_instance_worlds(&paths, instance_id))
+        .await
+        .map_err(|_| content_file_error())?
+        .map_err(|_| content_file_error())?;
+    if !worlds.contains(&world_name) {
+        return Err(AppError::new(
+            "content.world_unavailable",
+            "That world is no longer available. Choose another world and try again.",
+        ));
+    }
+    Ok(Some(world_name))
+}
+
+fn validate_content_plan(
+    instance: &InstanceRecord,
+    kind: ContentKind,
+    selection: &InstallContentSelection,
+    plan: &InstallPlan,
+) -> Result<(), AppError> {
+    let (loader, loader_version) = instance_runtime_target(instance);
+    let prefix = match kind {
+        ContentKind::ResourcePack => "resourcepacks/",
+        ContentKind::ShaderPack => "shaderpacks/",
+        ContentKind::DataPack => "datapacks/",
+    };
+    let valid_download = plan.downloads.len() == 1
+        && plan.downloads[0].destination.starts_with(prefix)
+        && plan.downloads[0].hashes.has_cryptographic_hash();
+    if plan.schema != 1
+        || plan.instance.provider != selection.provider
+        || plan.instance.project_id != selection.project_id.trim()
+        || plan.runtime.minecraft != instance.minecraft_version
+        || plan.runtime.loader.kind != loader
+        || plan.runtime.loader.version != loader_version
+        || !plan.extract.is_empty()
+        || !plan.delete.is_empty()
+        || !valid_download
+    {
+        return Err(invalid_content_plan());
+    }
+    Ok(())
+}
+
+fn trusted_content_icon(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    url::Url::parse(value)
+        .ok()
+        .filter(|url| {
+            url.scheme() == "https"
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.host_str() == Some("cdn.modrinth.com")
+        })
+        .map(|_| value.to_owned())
+}
+
+fn invalid_content_plan() -> AppError {
+    AppError::new(
+        "content.resolution_mismatch",
+        "A compatible version of the selected content could not be confirmed. Nothing was installed.",
+    )
+}

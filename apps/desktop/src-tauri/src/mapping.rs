@@ -157,6 +157,18 @@ pub(super) const fn content_kind(kind: InstanceContentKindDto) -> InstanceConten
     }
 }
 
+pub(super) const fn provider_content_kind(
+    kind: InstanceContentKindDto,
+) -> slate_modpack_api_contracts::ContentKind {
+    match kind {
+        InstanceContentKindDto::ResourcePack => {
+            slate_modpack_api_contracts::ContentKind::ResourcePack
+        }
+        InstanceContentKindDto::ShaderPack => slate_modpack_api_contracts::ContentKind::ShaderPack,
+        InstanceContentKindDto::DataPack => slate_modpack_api_contracts::ContentKind::DataPack,
+    }
+}
+
 pub(super) const fn pack_file_matches_content(
     file_kind: PackFileType,
     content_kind: InstanceContentKindDto,
@@ -175,8 +187,11 @@ pub(super) fn content_file_summary(
     file: InstanceContentFile,
     kind: InstanceContentKindDto,
     managed_paths: &HashSet<String>,
+    provider_content: Option<InstanceProviderContentRecord>,
 ) -> InstanceContentFileSummary {
-    let origin = if managed_paths.contains(&normalized_content_path(&file.file_path)) {
+    let origin = if provider_content.is_some() {
+        InstanceModOriginDto::Added
+    } else if managed_paths.contains(&normalized_content_path(&file.file_path)) {
         InstanceModOriginDto::Modpack
     } else {
         InstanceModOriginDto::Local
@@ -191,6 +206,17 @@ pub(super) fn content_file_summary(
         file_size: file.size,
         modified_at: file.modified_at,
         world_name: file.world_name,
+        provider: provider_content.as_ref().map(|item| item.provider),
+        project_id: provider_content
+            .as_ref()
+            .map(|item| item.project_id.clone()),
+        version_id: provider_content
+            .as_ref()
+            .map(|item| item.version_id.clone()),
+        icon_url: provider_content
+            .as_ref()
+            .and_then(|item| item.icon_url.clone()),
+        installed_at: provider_content.map(|item| item.installed_at),
     }
 }
 

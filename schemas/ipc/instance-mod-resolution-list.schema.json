@@ -6,9 +6,36 @@
     "$ref": "#/$defs/InstanceModResolution"
   },
   "$defs": {
+    "InstanceModReferenceSummary": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        }
+      },
+      "required": [
+        "provider",
+        "projectId"
+      ]
+    },
     "InstanceModResolution": {
       "type": "object",
       "properties": {
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InstanceModReferenceSummary"
+          }
+        },
         "displayName": {
           "type": [
             "string",
@@ -30,6 +57,12 @@
         "provider": {
           "$ref": "#/$defs/Provider"
         },
+        "requiredBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InstanceModReferenceSummary"
+          }
+        },
         "versionId": {
           "type": [
             "string",
@@ -40,7 +73,9 @@
       "required": [
         "filePath",
         "provider",
-        "projectId"
+        "projectId",
+        "dependencies",
+        "requiredBy"
       ]
     },
     "Provider": {

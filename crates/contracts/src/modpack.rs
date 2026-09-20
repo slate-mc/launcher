@@ -104,6 +104,37 @@ pub struct ModSearchRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ContentSearchRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+    pub query: Option<String>,
+    pub sort: ModpackSortDto,
+    pub cursor: Option<String>,
+    pub page: Option<u32>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallContentSelection {
+    pub provider: Provider,
+    pub project_id: String,
+    pub display_name: String,
+    pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallContentRequest {
+    pub instance_id: Uuid,
+    pub expected_revision: u64,
+    pub kind: InstanceContentKindDto,
+    pub world_name: Option<String>,
+    pub content: Vec<InstallContentSelection>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallModSelection {
     pub provider: Provider,
     pub project_id: String,
@@ -298,6 +329,11 @@ pub struct InstanceContentFileSummary {
     pub file_size: u64,
     pub modified_at: Option<String>,
     pub world_name: Option<String>,
+    pub provider: Option<Provider>,
+    pub project_id: Option<String>,
+    pub version_id: Option<String>,
+    pub icon_url: Option<String>,
+    pub installed_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

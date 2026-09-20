@@ -346,7 +346,7 @@ impl Database {
         Ok(())
     }
 
-    async fn begin_content_mutation(
+    pub(crate) async fn begin_content_mutation(
         &self,
         instance_id: InstanceId,
         expected_revision: u64,

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResolveInstanceModRelationshipsRequest",
+  "type": "object",
+  "properties": {
+    "filePath": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "versionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "instanceId",
+    "provider",
+    "projectId",
+    "versionId",
+    "filePath"
+  ],
+  "$defs": {
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}

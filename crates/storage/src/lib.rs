@@ -3,6 +3,7 @@
 mod accounts;
 mod database;
 mod installations;
+mod instance_content;
 mod instance_mods;
 mod instance_settings;
 mod instances;
@@ -17,6 +18,7 @@ pub use installations::{
     CompletedInstall, CompletedModpackUpdate, InstallJobRecord, InstalledRevisionRecord,
     InstalledRuntime, JobState, PendingInstall,
 };
+pub use instance_content::{InstanceProviderContentRecord, NewInstanceProviderContent};
 pub use instance_mods::{
     InstanceModDependency, InstanceModDependencyRecord, InstanceModEnabledChange,
     InstanceModHistoryRecord, InstanceModRecord, InstanceModTarget, NewInstanceMod,

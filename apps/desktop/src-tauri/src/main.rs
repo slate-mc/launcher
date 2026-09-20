@@ -25,6 +25,7 @@ mod modpack_install_commands;
 mod onboarding_commands;
 mod pack_import;
 mod portable_instance;
+mod provider_content_commands;
 mod server_commands;
 mod server_support;
 mod session_commands;
@@ -78,6 +79,7 @@ use pack_import::{
     DetectedImportArchive, detect_import_archive, extract_import_overrides, stage_import_archive,
 };
 use portable_instance::*;
+use provider_content_commands::*;
 use serde::{Deserialize, Serialize};
 use server_commands::*;
 use server_support::*;
@@ -92,12 +94,13 @@ use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, ApplyModpackUpdateRequest, AuthCancelRequest,
     AuthFlowStateDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
     CancelInstallJobRequest, CapabilitySummary, CheckModpackUpdateRequest,
-    ClearStorageCategoryRequest, CreateInstanceRequest, CreateInstanceSnapshotRequest,
-    CreateSavedServerRequest, CreateSupportReportRequest, DeleteInstanceSnapshotRequest,
-    DeleteTrashedInstanceRequest, DuplicateInstanceRequest, EmptyInstanceTrashRequest,
-    ExportInstanceRequest, GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
-    GetInstanceGameOptionsRequest, ImportInstanceRequest, ImportLocalContentFileRequest,
-    ImportLocalModRequest, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
+    ClearStorageCategoryRequest, ContentSearchRequest, CreateInstanceRequest,
+    CreateInstanceSnapshotRequest, CreateSavedServerRequest, CreateSupportReportRequest,
+    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
+    EmptyInstanceTrashRequest, ExportInstanceRequest, GameSessionStateDto, GameSessionSummary,
+    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
+    ImportLocalContentFileRequest, ImportLocalModRequest, InstallContentRequest,
+    InstallContentSelection, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
     InstallModRequest, InstallModSelection, InstallModpackRequest, InstallOperationDto,
     InstallQueueDirectionDto, InstanceArtworkAsset, InstanceArtworkKindDto,
     InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
@@ -145,10 +148,11 @@ use slate_minecraft::{
     ResolvedVersion, RuleContext,
 };
 use slate_modpack_api_contracts::{
-    Architecture as ModpackArchitecture, Hashes, ImportPackPlanRequest, ImportedPackPlan,
-    InstallPlan, InstallPlanRequest, LoaderKind, ModInstallPlanRequest, ModProjectReference,
-    ModVersionList, Modpack, ModpackVersion, PackFileType, Platform as ModpackPlatform,
-    ProviderReference, ProvidersResponse, ResolveModsRequest, SearchResponse, Side, VersionPage,
+    Architecture as ModpackArchitecture, ContentInstallPlanRequest, ContentKind, Hashes,
+    ImportPackPlanRequest, ImportedPackPlan, InstallPlan, InstallPlanRequest, LoaderKind,
+    ModInstallPlanRequest, ModProjectReference, ModVersionList, Modpack, ModpackVersion,
+    PackFileType, Platform as ModpackPlatform, ProviderReference, ProvidersResponse,
+    ResolveModsRequest, SearchResponse, Side, VersionPage,
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
 use slate_platform::{
@@ -162,11 +166,12 @@ use slate_process::{
 use slate_storage::{
     AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, CompletedInstall,
     CompletedModpackUpdate, Database, InstallJobRecord, InstalledRuntime, InstanceModDependency,
-    InstanceModEnabledChange, InstanceModRecord, InstanceModTarget, InstanceRecord,
-    InstanceSnapshotRecord, InstanceWindowMode, JavaSelectionMode, JobState, LauncherBehavior,
-    MemoryMode, NewInstance, NewInstanceMod, NewInstanceModDependencySet, NewModpackSource,
-    NewSavedServer, PerformancePreset, ProcessPriority, ReduceMotionPreference, SavedServerRecord,
-    StorageError, ThemePreference, TrashedInstanceRecord, UpdateInstanceSettings,
+    InstanceModEnabledChange, InstanceModRecord, InstanceModTarget, InstanceProviderContentRecord,
+    InstanceRecord, InstanceSnapshotRecord, InstanceWindowMode, JavaSelectionMode, JobState,
+    LauncherBehavior, MemoryMode, NewInstance, NewInstanceMod, NewInstanceModDependencySet,
+    NewInstanceProviderContent, NewModpackSource, NewSavedServer, PerformancePreset,
+    ProcessPriority, ReduceMotionPreference, SavedServerRecord, StorageError, ThemePreference,
+    TrashedInstanceRecord, UpdateInstanceSettings,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -579,6 +584,7 @@ fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
         Some("instance_install" | "external_instance_import" | "imported_pack_install") => {
             Some(InstallOperationDto::InstanceInstall)
         }
+        Some("content_install") => Some(InstallOperationDto::ContentInstall),
         Some("mod_install") => Some(InstallOperationDto::ModInstall),
         Some("mod_update") => Some(InstallOperationDto::ModUpdate),
         Some("modpack_update") => Some(InstallOperationDto::ModpackUpdate),
@@ -781,6 +787,7 @@ fn main() {
             modpack_providers,
             modpacks_search,
             mods_search,
+            content_search,
             modpack_get,
             modpack_versions_list,
             modpack_version_get,
@@ -788,6 +795,7 @@ fn main() {
             modpack_update_check,
             modpack_update_apply,
             instance_mods_list,
+            instance_content_install,
             instance_mod_history,
             instance_mod_relationships_resolve,
             instance_mod_versions,

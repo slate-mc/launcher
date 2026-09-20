@@ -52,6 +52,40 @@ pub(super) async fn install_job_retry(
             )
             .await
         }
+        Some("content_install") => {
+            let payload = job
+                .retry_payload
+                .as_ref()
+                .ok_or_else(retry_context_missing)?;
+            let kind = payload
+                .get("kind")
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok())
+                .ok_or_else(retry_context_missing)?;
+            let world_name = payload
+                .get("worldName")
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok());
+            let content = payload
+                .get("content")
+                .cloned()
+                .and_then(|value| {
+                    serde_json::from_value::<Vec<InstallContentSelection>>(value).ok()
+                })
+                .filter(|items| !items.is_empty())
+                .ok_or_else(retry_context_missing)?;
+            instance_content_install_inner(
+                state.inner(),
+                InstallContentRequest {
+                    instance_id,
+                    expected_revision,
+                    kind,
+                    world_name,
+                    content,
+                },
+            )
+            .await
+        }
         Some("mod_update") => {
             let payload = job
                 .retry_payload

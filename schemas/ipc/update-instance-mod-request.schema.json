@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UpdateInstanceModRequest",
+  "type": "object",
+  "properties": {
+    "displayName": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "filePath": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "targetVersionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "instanceId",
+    "expectedRevision",
+    "provider",
+    "projectId",
+    "filePath",
+    "displayName",
+    "targetVersionId"
+  ],
+  "$defs": {
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}

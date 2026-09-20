@@ -654,6 +654,14 @@ pub(super) async fn instance_content_files_list(
     .map_err(|_| content_file_error())?
     .map_err(|_| content_file_error())?;
     let mut managed_paths = HashSet::new();
+    let mut provider_content = state
+        .database
+        .list_instance_provider_content(instance_id, provider_content_kind(request.kind))
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load installed content."))?
+        .into_iter()
+        .map(|item| (normalized_content_path(&item.file_path), item))
+        .collect::<HashMap<_, _>>();
     if let Some(source) = &instance.modpack_source {
         match state
             .modpacks
@@ -676,7 +684,10 @@ pub(super) async fn instance_content_files_list(
     }
     Ok(files
         .into_iter()
-        .map(|file| content_file_summary(file, request.kind, &managed_paths))
+        .map(|file| {
+            let source = provider_content.remove(&normalized_content_path(&file.file_path));
+            content_file_summary(file, request.kind, &managed_paths, source)
+        })
         .collect())
 }
 
@@ -701,7 +712,15 @@ pub(super) async fn instance_content_file_set_enabled(
     .map_err(|_| content_file_error())?;
     let database_result = state
         .database
-        .advance_instance_revision(instance_id, request.expected_revision)
+        .move_instance_provider_content(
+            instance_id,
+            request.expected_revision,
+            &request.file_path,
+            file_move
+                .updated_file_path
+                .as_deref()
+                .ok_or_else(content_file_error)?,
+        )
         .await;
     finish_instance_content_change(
         state.inner(),
@@ -733,7 +752,11 @@ pub(super) async fn instance_content_file_remove(
     .map_err(|_| content_file_error())?;
     let database_result = state
         .database
-        .advance_instance_revision(instance_id, request.expected_revision)
+        .remove_instance_provider_content(
+            instance_id,
+            request.expected_revision,
+            &request.file_path,
+        )
         .await;
     finish_instance_content_change(
         state.inner(),

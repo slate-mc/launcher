@@ -1,5 +1,8 @@
 use crate::database::now_rfc3339;
-use crate::{Database, NewInstanceMod, NewInstanceModDependencySet, StorageError};
+use crate::instance_content::insert_provider_content;
+use crate::{
+    Database, NewInstanceMod, NewInstanceModDependencySet, NewInstanceProviderContent, StorageError,
+};
 use slate_domain::{AccountId, InstanceId, JobId, LoaderFamily, RequestId, RevisionId, SessionId};
 use sqlx::Row;
 use std::path::PathBuf;
@@ -52,6 +55,7 @@ fn valid_install_operation(operation: &str) -> bool {
     matches!(
         operation,
         "instance_install"
+            | "content_install"
             | "external_instance_import"
             | "imported_pack_install"
             | "mod_install"
@@ -395,6 +399,7 @@ impl Database {
             None,
             None,
             None,
+            None,
         )
         .await
     }
@@ -410,6 +415,7 @@ impl Database {
             Some(installed_mods),
             None,
             Some(dependency_sets),
+            None,
             None,
         )
         .await
@@ -428,6 +434,7 @@ impl Database {
             Some(replaced_file_paths),
             Some(dependency_sets),
             None,
+            None,
         )
         .await
     }
@@ -437,8 +444,25 @@ impl Database {
         completion: CompletedInstall,
         update: CompletedModpackUpdate,
     ) -> Result<(), StorageError> {
-        self.complete_instance_install_inner(completion, None, None, None, Some(update))
+        self.complete_instance_install_inner(completion, None, None, None, Some(update), None)
             .await
+    }
+
+    pub async fn complete_instance_provider_content_install(
+        &self,
+        completion: CompletedInstall,
+        installed_content: Vec<NewInstanceProviderContent>,
+        replaced_file_paths: Vec<String>,
+    ) -> Result<(), StorageError> {
+        self.complete_instance_install_inner(
+            completion,
+            None,
+            None,
+            None,
+            None,
+            Some((installed_content, replaced_file_paths)),
+        )
+        .await
     }
 
     async fn complete_instance_install_inner(
@@ -448,6 +472,7 @@ impl Database {
         replaced_mod_paths: Option<Vec<String>>,
         dependency_sets: Option<Vec<NewInstanceModDependencySet>>,
         modpack_update: Option<CompletedModpackUpdate>,
+        provider_content: Option<(Vec<NewInstanceProviderContent>, Vec<String>)>,
     ) -> Result<(), StorageError> {
         let now = now_rfc3339()?;
         let runtime_id = Uuid::new_v4().to_string();
@@ -646,6 +671,15 @@ impl Database {
                 .bind(completion.revision_id.to_string())
                 .execute(&mut *transaction)
                 .await?;
+        }
+        if let Some((installed_content, replaced_paths)) = provider_content {
+            insert_provider_content(
+                &mut transaction,
+                &instance_id,
+                installed_content,
+                replaced_paths,
+            )
+            .await?;
         }
         sqlx::query(
             "UPDATE instance_revisions SET manifest_digest = ?, client_version = ?, \

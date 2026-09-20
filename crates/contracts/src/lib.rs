@@ -51,8 +51,9 @@ pub use launch::{
     SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
 };
 pub use modpack::{
-    ApplyModpackUpdateRequest, CheckModpackUpdateRequest, ImportLocalContentFileRequest,
-    ImportLocalModRequest, InstallModRequest, InstallModSelection, InstallModpackRequest,
+    ApplyModpackUpdateRequest, CheckModpackUpdateRequest, ContentSearchRequest,
+    ImportLocalContentFileRequest, ImportLocalModRequest, InstallContentRequest,
+    InstallContentSelection, InstallModRequest, InstallModSelection, InstallModpackRequest,
     InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
     InstanceModHistoryRequest, InstanceModHistorySummary, InstanceModOriginDto,
     InstanceModReferenceSummary, InstanceModResolution, InstanceModSummary,
@@ -80,7 +81,7 @@ pub use system::{
 };
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 13;
+pub const DATABASE_SCHEMA_VERSION: u32 = 14;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

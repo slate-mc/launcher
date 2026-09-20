@@ -18,6 +18,7 @@ pub enum InstallJobStateDto {
 #[serde(rename_all = "camelCase")]
 pub enum InstallOperationDto {
     InstanceInstall,
+    ContentInstall,
     ModInstall,
     ModUpdate,
     ModpackUpdate,

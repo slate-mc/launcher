@@ -26,6 +26,18 @@
           "format": "uint64",
           "minimum": 0
         },
+        "iconUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "installedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "kind": {
           "$ref": "#/$defs/InstanceContentKindDto"
         },
@@ -37,6 +49,28 @@
         },
         "origin": {
           "$ref": "#/$defs/InstanceModOriginDto"
+        },
+        "projectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provider"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versionId": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "worldName": {
           "type": [
@@ -69,6 +103,14 @@
         "added",
         "modpack",
         "local"
+      ]
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
       ]
     }
   }

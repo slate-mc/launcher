@@ -11,6 +11,8 @@ pub(super) struct PendingModChanges {
     pub(super) installed: Vec<NewInstanceMod>,
     pub(super) replaced_paths: Vec<String>,
     pub(super) dependency_sets: Vec<NewInstanceModDependencySet>,
+    pub(super) provider_content: Vec<NewInstanceProviderContent>,
+    pub(super) replaced_content_paths: Vec<String>,
     pub(super) imported_overrides: Option<PendingImportedOverrides>,
 }
 
@@ -26,6 +28,11 @@ pub(super) enum RetryableInstallOperation {
     ExternalInstanceImport,
     ModInstall {
         mods: Vec<InstallModSelection>,
+    },
+    ContentInstall {
+        kind: InstanceContentKindDto,
+        world_name: Option<String>,
+        content: Vec<InstallContentSelection>,
     },
     ModUpdate {
         provider: slate_modpack_api_contracts::Provider,
@@ -49,6 +56,7 @@ impl RetryableInstallOperation {
             Self::InstanceInstall => "instance_install",
             Self::ExternalInstanceImport => "external_instance_import",
             Self::ModInstall { .. } => "mod_install",
+            Self::ContentInstall { .. } => "content_install",
             Self::ModUpdate { .. } => "mod_update",
             Self::ModpackUpdate { .. } => "modpack_update",
             Self::ImportedPackInstall { .. } => "imported_pack_install",
@@ -59,6 +67,15 @@ impl RetryableInstallOperation {
         match self {
             Self::InstanceInstall | Self::ExternalInstanceImport => None,
             Self::ModInstall { mods } => Some(serde_json::json!({ "mods": mods })),
+            Self::ContentInstall {
+                kind,
+                world_name,
+                content,
+            } => Some(serde_json::json!({
+                "kind": kind,
+                "worldName": world_name,
+                "content": content,
+            })),
             Self::ModUpdate {
                 provider,
                 project_id,
@@ -139,6 +156,8 @@ pub(super) async fn queue_instance_install(
         installed: pending_mods,
         replaced_paths: replaced_mod_paths,
         dependency_sets,
+        provider_content,
+        replaced_content_paths,
         imported_overrides,
     } = mod_changes;
     let instance_id = instance.id;
@@ -168,7 +187,7 @@ pub(super) async fn queue_instance_install(
     if !operation.skips_automatic_snapshot() {
         create_automatic_snapshot_if_enabled(state, &instance).await?;
     }
-    let content_update = if pending_mods.is_empty() {
+    let content_update = if pending_mods.is_empty() && provider_content.is_empty() {
         None
     } else {
         let plan = modpack_plan.take().ok_or_else(|| {
@@ -410,6 +429,11 @@ pub(super) async fn queue_instance_install(
                         "Installed {} verified mod files without reinstalling the base instance",
                         outcome.installed_content_files
                     )
+                } else if !provider_content.is_empty() {
+                    format!(
+                        "Installed {} verified content files without reinstalling the base instance",
+                        outcome.installed_content_files
+                    )
                 } else if outcome.installed_content_files > 0 {
                     format!(
                         "Ready with {} verified pack files; downloaded {} game files and reused {} cached files",
@@ -459,17 +483,35 @@ pub(super) async fn queue_instance_install(
                         )
                         .await
                 } else if pending_mods.is_empty() {
-                    task_state
-                        .database
-                        .complete_instance_install(
-                            pending.job.id,
-                            pending.revision_id,
-                            &outcome.manifest_digest,
-                            &outcome.resolved_version_id,
-                            runtime,
-                            &message,
-                        )
-                        .await
+                    if provider_content.is_empty() {
+                        task_state
+                            .database
+                            .complete_instance_install(
+                                pending.job.id,
+                                pending.revision_id,
+                                &outcome.manifest_digest,
+                                &outcome.resolved_version_id,
+                                runtime,
+                                &message,
+                            )
+                            .await
+                    } else {
+                        task_state
+                            .database
+                            .complete_instance_provider_content_install(
+                                CompletedInstall {
+                                    job_id: pending.job.id,
+                                    revision_id: pending.revision_id,
+                                    manifest_digest: outcome.manifest_digest,
+                                    client_version: outcome.resolved_version_id,
+                                    runtime,
+                                    message,
+                                },
+                                provider_content,
+                                replaced_content_paths,
+                            )
+                            .await
+                    }
                 } else {
                     task_state
                         .database

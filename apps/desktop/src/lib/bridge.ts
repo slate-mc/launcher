@@ -436,6 +436,40 @@ export async function searchMods(input: {
   );
 }
 
+export async function searchContent(input: {
+  instanceId: string;
+  kind: InstanceContentKind;
+  query?: string;
+  sort: "relevance" | "downloads" | "updated" | "newest";
+  page?: number;
+  limit?: number;
+}): Promise<ModpackSearchResult> {
+  if (bridgeMode !== "native") {
+    return { items: [], has_more: false, provider_status: {} };
+  }
+  return modpackSearchResultSchema.parse(
+    await invoke("content_search", { request: input }),
+  );
+}
+
+export async function installContent(input: {
+  instanceId: string;
+  expectedRevision: number;
+  kind: InstanceContentKind;
+  worldName?: string;
+  content: Array<{
+    provider: Exclude<Provider, "ftb">;
+    projectId: string;
+    displayName: string;
+    iconUrl?: string;
+  }>;
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("instance_content_install", { request: input }),
+  );
+}
+
 export async function listInstanceMods(
   instanceId: string,
 ): Promise<InstanceMod[]> {

@@ -2,10 +2,12 @@ mod curseforge;
 mod ftb;
 mod modpacks_ch;
 mod modrinth;
+mod modrinth_content;
 
 pub use curseforge::CurseForgeProvider;
 pub use ftb::FtbProvider;
 pub use modrinth::ModrinthProvider;
+pub use modrinth_content::{ModrinthContentProvider, ResolvedContent};
 
 use crate::domain::{SearchPage, SearchRequest, VersionQuery};
 use async_trait::async_trait;

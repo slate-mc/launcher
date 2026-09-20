@@ -1,31 +1,32 @@
 use crate::{
     AppError, AppPreferencesDto, ApplyModpackUpdateRequest, AuthFlowStatus, AuthStartResponse,
     BootstrapResponse, CancelInstallJobRequest, CheckModpackUpdateRequest,
-    ClearStorageCategoryRequest, CreateInstanceRequest, CreateInstanceSnapshotRequest,
-    CreateSavedServerRequest, CreateSupportReportRequest, DeleteInstanceSnapshotRequest,
-    DeleteTrashedInstanceRequest, DuplicateInstanceRequest, EmptyInstanceTrashRequest,
-    EventEnvelope, ExportInstanceRequest, GameSessionSummary, GetInstanceArtworkRequest,
-    GetInstanceGameOptionsRequest, ImportInstanceRequest, ImportLocalContentFileRequest,
-    ImportLocalModRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
-    InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
-    InstanceGameOptionsSummary, InstanceModHistoryRequest, InstanceModHistorySummary,
-    InstanceModResolution, InstanceModSummary, InstanceModVersionsRequest, InstanceModsRequest,
-    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest,
-    LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
-    MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
-    ModpackSearchRequest, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
-    MoveInstallJobRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
-    OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
-    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
-    ResolveInstanceModRelationshipsRequest, RestoreInstanceSnapshotRequest,
-    RestoreTrashedInstanceRequest, RetryInstallJobRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
-    SessionLogSubscription, SetInstallJobPausedRequest, SetInstanceContentFileEnabledRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
-    StopGameSessionRequest, StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
-    SupportReportExport, SupportReportPreview, UnsubscribeSessionLogRequest,
-    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
-    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    ClearStorageCategoryRequest, ContentSearchRequest, CreateInstanceRequest,
+    CreateInstanceSnapshotRequest, CreateSavedServerRequest, CreateSupportReportRequest,
+    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
+    EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest, GameSessionSummary,
+    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
+    ImportLocalContentFileRequest, ImportLocalModRequest, InstallContentRequest,
+    InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceGameOptionsSummary,
+    InstanceModHistoryRequest, InstanceModHistorySummary, InstanceModResolution,
+    InstanceModSummary, InstanceModVersionsRequest, InstanceModsRequest, InstanceSnapshotSummary,
+    InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest, LaunchInstanceRequest,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
+    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
+    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest, MoveInstallJobRequest,
+    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
+    PingServerRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
+    RemoveInstanceModRequest, RemoveSavedServerRequest, ResolveInstanceModRelationshipsRequest,
+    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionLogEvent, SessionLogSubscription, SetInstallJobPausedRequest,
+    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
+    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
+    UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -264,6 +265,11 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         ),
         ("modpack-update-summary", schema_for!(ModpackUpdateSummary)),
         ("mod-search-request", schema_for!(ModSearchRequest)),
+        ("content-search-request", schema_for!(ContentSearchRequest)),
+        (
+            "install-content-request",
+            schema_for!(InstallContentRequest),
+        ),
         ("install-mod-request", schema_for!(InstallModRequest)),
         ("instance-mods-request", schema_for!(InstanceModsRequest)),
         (
@@ -372,7 +378,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 100);
+        assert_eq!(schemas.len(), 102);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

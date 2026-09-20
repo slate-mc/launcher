@@ -2,10 +2,11 @@
 
 use reqwest::{Method, StatusCode};
 use slate_modpack_api_contracts::{
-    ApiEnvelope, ApiErrorCode, CategoriesResponse, ImportPackPlanRequest, ImportedPackPlan,
-    InstallPlan, InstallPlanRequest, LoaderKind, ModInstallPlanRequest, ModVersionList, Modpack,
-    ModpackVersion, Provider, ProvidersResponse, ReleaseType, ResolveModsRequest,
-    ResolveModsResponse, SearchResponse, UpdateResponse, VersionPage,
+    ApiEnvelope, ApiErrorCode, CategoriesResponse, ContentInstallPlanRequest, ContentKind,
+    ImportPackPlanRequest, ImportedPackPlan, InstallPlan, InstallPlanRequest, LoaderKind,
+    ModInstallPlanRequest, ModVersionList, Modpack, ModpackVersion, Provider, ProvidersResponse,
+    ReleaseType, ResolveModsRequest, ResolveModsResponse, SearchResponse, UpdateResponse,
+    VersionPage,
 };
 use std::time::Duration;
 use url::Url;
@@ -138,6 +139,79 @@ impl ModpackApiClient {
             query.append_pair("limit", &options.limit.to_string());
         }
         self.get(url).await
+    }
+
+    pub async fn search_content(
+        &self,
+        kind: ContentKind,
+        options: &SearchOptions,
+    ) -> Result<SearchResponse, ClientError> {
+        options.validate()?;
+        let minecraft_version = options
+            .minecraft_version
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or(ClientError::MissingContentTarget)?;
+        let mut url = self.endpoint(&["v1", "content", kind.as_str()])?;
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(value) = options.query.as_deref() {
+                query.append_pair("q", value);
+            }
+            query.append_pair("minecraft_version", minecraft_version);
+            query.append_pair("sort", options.sort.as_str());
+            if let Some(cursor) = &options.cursor {
+                query.append_pair("cursor", cursor);
+            }
+            if let Some(page) = options.page {
+                query.append_pair("page", &page.to_string());
+            }
+            query.append_pair("limit", &options.limit.to_string());
+        }
+        self.get(url).await
+    }
+
+    pub async fn content_versions(
+        &self,
+        kind: ContentKind,
+        project_id: &str,
+        minecraft_version: &str,
+    ) -> Result<ModVersionList, ClientError> {
+        if minecraft_version.trim().is_empty() {
+            return Err(ClientError::MissingContentTarget);
+        }
+        let mut url = self.endpoint(&[
+            "v1",
+            "content",
+            kind.as_str(),
+            "modrinth",
+            project_id,
+            "versions",
+        ])?;
+        url.query_pairs_mut()
+            .append_pair("minecraft_version", minecraft_version);
+        self.get(url).await
+    }
+
+    pub async fn content_install_plan(
+        &self,
+        kind: ContentKind,
+        project_id: &str,
+        request: &ContentInstallPlanRequest,
+    ) -> Result<InstallPlan, ClientError> {
+        if request.minecraft_version.trim().is_empty() {
+            return Err(ClientError::MissingContentTarget);
+        }
+        let url = self.endpoint(&[
+            "v1",
+            "content",
+            kind.as_str(),
+            "modrinth",
+            project_id,
+            "install-plan",
+        ])?;
+        self.send(Method::POST, url, Some(serde_json::to_vec(request)?))
+            .await
     }
 
     pub async fn project(
@@ -517,6 +591,8 @@ pub enum ClientError {
     MissingModTarget,
     #[error("the selected provider does not support individual mods")]
     UnsupportedModProvider,
+    #[error("content operations require an exact Minecraft target")]
+    MissingContentTarget,
     #[error("the Slate modpack API response exceeded its size limit")]
     ResponseTooLarge,
     #[error("the Slate modpack API returned an invalid response envelope")]

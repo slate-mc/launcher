@@ -1,4 +1,6 @@
-use crate::providers::{CurseForgeProvider, FtbProvider, ModrinthProvider, ProviderRegistry};
+use crate::providers::{
+    CurseForgeProvider, FtbProvider, ModrinthContentProvider, ModrinthProvider, ProviderRegistry,
+};
 use crate::rate_limit::RateLimiter;
 use crate::upstream::{UpstreamClient, UpstreamError};
 use moka::sync::Cache;
@@ -9,6 +11,7 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct AppState {
     pub providers: ProviderRegistry,
+    pub content: ModrinthContentProvider,
     pub upstream: UpstreamClient,
     pub minecraft: MinecraftCatalog,
     pub rate_limiter: RateLimiter,
@@ -24,6 +27,7 @@ impl AppState {
         ]);
         Ok(Self {
             providers,
+            content: ModrinthContentProvider::new(upstream.clone()),
             upstream,
             minecraft: MinecraftCatalog::new()?,
             rate_limiter: RateLimiter::default(),

@@ -257,7 +257,7 @@ pub(super) async fn instance_mod_install_inner(
             installed: pending_by_identity.into_values().collect(),
             replaced_paths: Vec::new(),
             dependency_sets,
-            imported_overrides: None,
+            ..PendingModChanges::default()
         },
         None,
         RetryableInstallOperation::ModInstall { mods: request.mods },
@@ -625,7 +625,7 @@ pub(super) async fn instance_mod_update_inner(
                 root_project_id: request.project_id.trim().to_owned(),
                 dependencies: dependencies.into_values().collect(),
             }],
-            imported_overrides: None,
+            ..PendingModChanges::default()
         },
         None,
         RetryableInstallOperation::ModUpdate {

@@ -2,22 +2,31 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronLeft,
+  Download,
   FileUp,
   LoaderCircle,
+  Plus,
   RotateCcw,
+  Search,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { ContentArtwork } from "../../components/ContentArtwork";
+import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import { EmptyState, InlineNotice } from "../../components/PageScaffold";
 import {
   importLocalContentFile,
+  installContent,
   installInstance,
+  listInstallJobs,
   listInstanceContentFiles,
   listInstanceWorlds,
   removeInstanceContentFile,
+  searchContent,
   setInstanceContentFileEnabled,
 } from "../../lib/bridge";
+import { installJobMessage } from "../../lib/installJobPresentation";
 import type {
   InstanceContentFile,
   InstanceContentKind,
@@ -87,6 +96,17 @@ export function InstanceFileContent({
   const queryClient = useQueryClient();
   const [removeTarget, setRemoveTarget] = useState<string>();
   const [worldName, setWorldName] = useState("");
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [draftQuery, setDraftQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sort, setSort] = useState<
+    "relevance" | "downloads" | "updated" | "newest"
+  >("relevance");
+  const [page, setPage] = useState(1);
+  const [selectedContent, setSelectedContent] = useState<
+    Record<string, ModpackSummary>
+  >({});
+  const [installJobId, setInstallJobId] = useState<string>();
   const [notice, setNotice] = useState<{
     tone: "positive" | "danger";
     title: string;
@@ -103,6 +123,48 @@ export function InstanceFileContent({
   });
   const worlds = worldsQuery.data ?? [];
   const selectedWorldName = worlds.includes(worldName) ? worldName : worlds[0];
+  const searchQuery = useQuery({
+    queryKey: ["content-search", instance.id, kind, searchTerm, sort, page],
+    queryFn: () =>
+      searchContent({
+        instanceId: instance.id,
+        kind,
+        query: searchTerm || undefined,
+        sort,
+        page,
+        limit: 20,
+      }),
+    enabled: browserOpen && (kind !== "dataPack" || Boolean(selectedWorldName)),
+    placeholderData: (previous) => previous,
+  });
+  const jobsQuery = useQuery({
+    queryKey: ["install-jobs"],
+    queryFn: async () => {
+      const jobs = await listInstallJobs();
+      const tracked = jobs.find((job) => job.id === installJobId);
+      if (tracked?.state === "succeeded") {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["instance-content-files", instance.id, kind],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["instance", instance.id],
+          }),
+          queryClient.invalidateQueries({ queryKey: ["instances"] }),
+        ]);
+      }
+      return jobs;
+    },
+    enabled: Boolean(installJobId),
+    refetchInterval: (jobs) => {
+      const tracked = jobs.state.data?.find((job) => job.id === installJobId);
+      return tracked &&
+        ["succeeded", "failed", "cancelled"].includes(tracked.state)
+        ? false
+        : 750;
+    },
+  });
+  const installJob = jobsQuery.data?.find((job) => job.id === installJobId);
   const refresh = async (updated: LauncherInstance, message: string) => {
     queryClient.setQueryData(["instance", instance.id], updated);
     await Promise.all([
@@ -206,12 +268,72 @@ export function InstanceFileContent({
         message: contentErrorMessage(error),
       }),
   });
+  const installMutation = useMutation({
+    mutationFn: (items: ModpackSummary[]) =>
+      installContent({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+        kind,
+        worldName: kind === "dataPack" ? selectedWorldName : undefined,
+        content: items.map((item) => ({
+          provider: "modrinth",
+          projectId: item.id,
+          displayName: item.name,
+          iconUrl: item.icon_url ?? undefined,
+        })),
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: async (job) => {
+      setSelectedContent({});
+      setInstallJobId(job.id);
+      queryClient.setQueryData(["install-jobs"], (current: unknown) =>
+        Array.isArray(current) ? [job, ...current] : [job],
+      );
+      await queryClient.invalidateQueries({ queryKey: ["install-jobs"] });
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: `${contentKindLabel(kind)} were not queued`,
+        message: contentErrorMessage(error),
+      }),
+  });
   const files = query.data ?? [];
+  const selectedItems = Object.values(selectedContent);
+  const installedIdentities = new Set(
+    files.flatMap((file) =>
+      file.provider && file.projectId
+        ? [`${file.provider}:${file.projectId}`]
+        : [],
+    ),
+  );
   const label = contentKindLabel(kind);
+  const singular = contentKindSingular(kind);
+  const installNotice =
+    installJob?.state === "succeeded"
+      ? {
+          tone: "positive" as const,
+          title: `${label} installed`,
+          message: "The selected content is ready in this instance.",
+        }
+      : installJob && ["failed", "cancelled"].includes(installJob.state)
+        ? {
+            tone: "danger" as const,
+            title: `${label} were not installed`,
+            message: installJobMessage(installJob),
+          }
+        : undefined;
+  const visibleNotice = notice ?? installNotice;
+  const installing =
+    installMutation.isPending ||
+    installJob?.state === "queued" ||
+    installJob?.state === "running" ||
+    installJob?.state === "paused";
   const busy =
     importMutation.isPending ||
     toggleMutation.isPending ||
-    removeMutation.isPending;
+    removeMutation.isPending ||
+    installing;
 
   return (
     <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6">
@@ -258,6 +380,19 @@ export function InstanceFileContent({
             ) : null}
             <button
               type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={busy || (kind === "dataPack" && !selectedWorldName)}
+              onClick={() => {
+                if (browserOpen) setSelectedContent({});
+                setBrowserOpen((open) => !open);
+                setNotice(undefined);
+              }}
+            >
+              <Plus size={14} aria-hidden="true" />
+              {browserOpen ? "Close browser" : `Add ${label.toLowerCase()}`}
+            </button>
+            <button
+              type="button"
               className={secondaryButtonClass}
               disabled={
                 busy ||
@@ -293,11 +428,189 @@ export function InstanceFileContent({
             ) : null}
           </div>
         </header>
-        {notice ? (
+        {visibleNotice ? (
           <div className="px-5 pt-5">
-            <InlineNotice tone={notice.tone} title={notice.title}>
-              {notice.message}
+            <InlineNotice tone={visibleNotice.tone} title={visibleNotice.title}>
+              {visibleNotice.message}
             </InlineNotice>
+          </div>
+        ) : null}
+        {installJob &&
+        ["queued", "running", "paused"].includes(installJob.state) ? (
+          <div className="border-b border-app-separator/55 px-5 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="m-0 text-xs font-bold text-app-text">
+                  Installing {label.toLowerCase()}
+                </p>
+                <p className="mt-1 mb-0 text-[11px] text-app-secondary">
+                  {installJobMessage(installJob)}
+                </p>
+              </div>
+              <LoaderCircle
+                size={18}
+                className="animate-spin text-app-accent motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            </div>
+            <InstallProgressIndicator job={installJob} />
+          </div>
+        ) : null}
+        {browserOpen ? (
+          <div className="border-b border-app-separator/55">
+            <div className="border-b border-app-separator/45 bg-app-bg/35 px-5 py-4">
+              <div className="mb-4 flex items-start justify-between gap-5">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck
+                    size={18}
+                    className="mt-0.5 text-app-accent"
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <p className="m-0 text-xs font-bold text-app-text">
+                      Showing compatible {label.toLowerCase()}
+                    </p>
+                    <p className="mt-1 mb-0 font-mono text-[10px] text-app-secondary">
+                      Minecraft {instance.minecraftVersion}
+                      {kind === "dataPack" && selectedWorldName
+                        ? ` · ${selectedWorldName}`
+                        : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="font-mono text-[10px] text-app-muted">
+                    {selectedItems.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    disabled={selectedItems.length === 0 || installing}
+                    className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:bg-app-raised disabled:text-app-muted"
+                    onClick={() => installMutation.mutate(selectedItems)}
+                  >
+                    {installMutation.isPending ? (
+                      <LoaderCircle
+                        size={14}
+                        className="animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Download size={14} aria-hidden="true" />
+                    )}
+                    {installMutation.isPending
+                      ? "Preparing install"
+                      : selectedItems.length
+                        ? `Install ${selectedItems.length} selected`
+                        : "Install selected"}
+                  </button>
+                </div>
+              </div>
+              <form
+                className="grid grid-cols-[minmax(220px,1fr)_150px_auto] gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setSearchTerm(draftQuery.trim());
+                  setPage(1);
+                }}
+              >
+                <label className="relative block">
+                  <span className="sr-only">Search {label.toLowerCase()}</span>
+                  <Search
+                    size={15}
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-app-muted"
+                    aria-hidden="true"
+                  />
+                  <input
+                    value={draftQuery}
+                    onChange={(event) => setDraftQuery(event.target.value)}
+                    placeholder={`Search ${label.toLowerCase()}`}
+                    className="h-9 w-full rounded-control border border-app-separator bg-app-bg pr-3 pl-9 text-xs text-app-text outline-none placeholder:text-app-muted focus:border-app-accent"
+                  />
+                </label>
+                <ContentSelect
+                  label="Sort results"
+                  value={sort}
+                  options={[
+                    ["relevance", "Relevance"],
+                    ["downloads", "Downloads"],
+                    ["updated", "Recently updated"],
+                    ["newest", "Newest"],
+                  ]}
+                  onChange={(value) => {
+                    setSort(value as typeof sort);
+                    setPage(1);
+                  }}
+                />
+                <button type="submit" className={secondaryButtonClass}>
+                  Search
+                </button>
+              </form>
+            </div>
+            {searchQuery.isPending ? (
+              <ModResultSkeletons />
+            ) : searchQuery.isError ? (
+              <div className="p-5">
+                <InlineNotice tone="danger" title="Content could not be loaded">
+                  {contentErrorMessage(searchQuery.error)}
+                </InlineNotice>
+              </div>
+            ) : searchQuery.data?.items.length ? (
+              <>
+                <div className="divide-y divide-app-separator/45 px-5">
+                  {searchQuery.data.items.map((item) => {
+                    const identity = `${item.provider}:${item.id}`;
+                    return (
+                      <ModSearchResult
+                        key={identity}
+                        item={item}
+                        installed={installedIdentities.has(identity)}
+                        selected={Boolean(selectedContent[identity])}
+                        checkingInstalled={query.isPending}
+                        disabled={installing}
+                        onToggleSelected={() =>
+                          setSelectedContent((current) => {
+                            const next = { ...current };
+                            if (next[identity]) delete next[identity];
+                            else next[identity] = item;
+                            return next;
+                          })
+                        }
+                      />
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between border-t border-app-separator/45 px-5 py-3">
+                  <span className="font-mono text-[10px] text-app-muted">
+                    Page {page}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={secondaryButtonClass}
+                      disabled={page === 1 || searchQuery.isFetching}
+                      onClick={() => setPage((current) => current - 1)}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className={secondaryButtonClass}
+                      disabled={
+                        !searchQuery.data.has_more || searchQuery.isFetching
+                      }
+                      onClick={() => setPage((current) => current + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <EmptyState
+                title={`No compatible ${label.toLowerCase()} found`}
+                description={`Try a different search. Results are limited to ${singular.toLowerCase()} versions that support Minecraft ${instance.minecraftVersion}.`}
+              />
+            )}
           </div>
         ) : null}
         {query.isPending ? (
@@ -329,15 +642,25 @@ export function InstanceFileContent({
                 {files.map((file) => (
                   <tr key={file.filePath} className="text-[11px]">
                     <td className="px-5 py-3">
-                      <strong className="block truncate text-xs text-app-text">
-                        {file.displayName}
-                      </strong>
-                      <span
-                        className="mt-0.5 block truncate font-mono text-[9px] text-app-muted"
-                        title={file.filePath}
-                      >
-                        {file.filePath}
-                      </span>
+                      <div className="flex min-w-0 items-center gap-3">
+                        {file.iconUrl ? (
+                          <ContentImage
+                            src={file.iconUrl}
+                            name={file.displayName}
+                          />
+                        ) : null}
+                        <span className="min-w-0">
+                          <strong className="block truncate text-xs text-app-text">
+                            {file.displayName}
+                          </strong>
+                          <span
+                            className="mt-0.5 block truncate font-mono text-[9px] text-app-muted"
+                            title={file.filePath}
+                          >
+                            {file.filePath}
+                          </span>
+                        </span>
+                      </div>
                     </td>
                     <td className="px-3 py-3 text-app-secondary">
                       {file.worldName ?? "Instance"}

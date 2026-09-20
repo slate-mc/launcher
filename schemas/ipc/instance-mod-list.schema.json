@@ -14,9 +14,36 @@
         "local"
       ]
     },
+    "InstanceModReferenceSummary": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        }
+      },
+      "required": [
+        "provider",
+        "projectId"
+      ]
+    },
     "InstanceModSummary": {
       "type": "object",
       "properties": {
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InstanceModReferenceSummary"
+          }
+        },
         "displayName": {
           "type": "string"
         },
@@ -65,6 +92,12 @@
             }
           ]
         },
+        "requiredBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InstanceModReferenceSummary"
+          }
+        },
         "versionId": {
           "type": [
             "string",
@@ -78,7 +111,9 @@
         "enabled",
         "pinned",
         "origin",
-        "fileSize"
+        "fileSize",
+        "dependencies",
+        "requiredBy"
       ]
     },
     "Provider": {

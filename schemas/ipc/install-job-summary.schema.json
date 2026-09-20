@@ -95,7 +95,9 @@
       "type": "string",
       "enum": [
         "instanceInstall",
+        "contentInstall",
         "modInstall",
+        "modUpdate",
         "modpackUpdate"
       ]
     }
