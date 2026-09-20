@@ -16,9 +16,9 @@ pub(crate) struct InstanceModFile {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum InstanceContentKind {
-    ResourcePack,
-    ShaderPack,
-    DataPack,
+    Resource,
+    Shader,
+    Data,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -155,13 +155,13 @@ pub(crate) fn scan_instance_content(
     let game = paths.instance(instance_id).join("game");
     let mut roots = Vec::new();
     match kind {
-        InstanceContentKind::ResourcePack => {
+        InstanceContentKind::Resource => {
             roots.push((game.join("resourcepacks"), "resourcepacks".to_owned(), None));
         }
-        InstanceContentKind::ShaderPack => {
+        InstanceContentKind::Shader => {
             roots.push((game.join("shaderpacks"), "shaderpacks".to_owned(), None));
         }
-        InstanceContentKind::DataPack => {
+        InstanceContentKind::Data => {
             let saves = game.join("saves");
             let worlds = match std::fs::read_dir(saves) {
                 Ok(worlds) => worlds,
@@ -314,13 +314,13 @@ fn instance_content_path(
 ) -> Result<(PathBuf, String), io::Error> {
     let components = file_path.split('/').collect::<Vec<_>>();
     let valid_shape = match kind {
-        InstanceContentKind::ResourcePack => {
+        InstanceContentKind::Resource => {
             components.len() == 2 && components.first() == Some(&"resourcepacks")
         }
-        InstanceContentKind::ShaderPack => {
+        InstanceContentKind::Shader => {
             components.len() == 2 && components.first() == Some(&"shaderpacks")
         }
-        InstanceContentKind::DataPack => {
+        InstanceContentKind::Data => {
             components.len() == 4
                 && components.first() == Some(&"saves")
                 && components.get(2) == Some(&"datapacks")
@@ -577,13 +577,13 @@ mod tests {
         std::fs::write(game.join("saves/Survival/datapacks/recipes.zip"), b"zip")?;
 
         let resource_packs =
-            scan_instance_content(&paths, instance_id, InstanceContentKind::ResourcePack)?;
+            scan_instance_content(&paths, instance_id, InstanceContentKind::Resource)?;
         assert_eq!(resource_packs.len(), 2);
         assert!(resource_packs.iter().any(|pack| !pack.can_toggle));
-        let shaders = scan_instance_content(&paths, instance_id, InstanceContentKind::ShaderPack)?;
+        let shaders = scan_instance_content(&paths, instance_id, InstanceContentKind::Shader)?;
         assert_eq!(shaders.len(), 1);
         assert!(!shaders[0].enabled);
-        let data_packs = scan_instance_content(&paths, instance_id, InstanceContentKind::DataPack)?;
+        let data_packs = scan_instance_content(&paths, instance_id, InstanceContentKind::Data)?;
         assert_eq!(data_packs.len(), 1);
         assert_eq!(data_packs[0].world_name.as_deref(), Some("Survival"));
         Ok(())
@@ -605,7 +605,7 @@ mod tests {
         let disabled = set_instance_content_enabled(
             &paths,
             instance_id,
-            InstanceContentKind::ResourcePack,
+            InstanceContentKind::Resource,
             "resourcepacks/slate.zip",
             false,
         )?;
@@ -614,7 +614,7 @@ mod tests {
         let removed = trash_instance_content(
             &paths,
             instance_id,
-            InstanceContentKind::ResourcePack,
+            InstanceContentKind::Resource,
             "resourcepacks/slate.zip",
         )?;
         assert!(!packs.join("slate.zip").exists());
@@ -624,7 +624,7 @@ mod tests {
             trash_instance_content(
                 &paths,
                 instance_id,
-                InstanceContentKind::ResourcePack,
+                InstanceContentKind::Resource,
                 "resourcepacks/../outside.zip",
             )
             .is_err()

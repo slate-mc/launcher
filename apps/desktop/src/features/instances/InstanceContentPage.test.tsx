@@ -20,7 +20,7 @@ describe("instance content", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add mods" }));
 
     expect(
-      await screen.findByText("Compatibility locked to this instance"),
+      await screen.findByText("Showing compatible mods"),
     ).toBeInTheDocument();
     expect(
       screen.getAllByText(/Minecraft 1\.21\.1 · Fabric 0\.16\.10/),

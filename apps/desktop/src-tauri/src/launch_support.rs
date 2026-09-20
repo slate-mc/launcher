@@ -1,12 +1,32 @@
 use super::*;
 
-pub(super) fn bounded_error_message(message: &str) -> String {
-    const MAX_CHARACTERS: usize = 500;
-    let mut bounded = message.chars().take(MAX_CHARACTERS).collect::<String>();
-    if message.chars().count() > MAX_CHARACTERS {
-        bounded.push('…');
+pub(super) const fn install_failure_message(error: &slate_installer::InstallError) -> &'static str {
+    use slate_installer::InstallError;
+
+    match error {
+        InstallError::Download(_) => {
+            "A required file could not be downloaded or verified. Check your connection and try again."
+        }
+        InstallError::Runtime(_) => {
+            "The required Java version could not be prepared. Try again or choose another Java installation."
+        }
+        InstallError::Content(_) => {
+            "Some pack content could not be installed or verified. Try repairing the instance."
+        }
+        InstallError::Fabric(_)
+        | InstallError::NeoForge(_)
+        | InstallError::NeoForgeInstallerFailed { .. }
+        | InstallError::NeoForgeInstalledMetadataMismatch => {
+            "The selected mod loader could not be installed. Check the version and try again."
+        }
+        InstallError::Mojang(_) => {
+            "Minecraft version information could not be loaded. Check your connection and try again."
+        }
+        InstallError::UnsupportedArchitecture => {
+            "This Minecraft version is not available for your computer's architecture."
+        }
+        _ => "Installation could not be completed. Try again or repair the instance.",
     }
-    bounded
 }
 
 pub(super) fn installed_manifest_path(

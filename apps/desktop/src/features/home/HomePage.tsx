@@ -139,7 +139,7 @@ export function HomePage() {
       : "Review the warning before force-closing Minecraft."
     : !launchCapability?.available
       ? (launchCapability?.unavailableReason ??
-        "Launch supervision is unavailable.")
+        "Minecraft cannot be launched right now.")
       : selected?.setupState !== "ready"
         ? "Install this instance before launching."
         : !defaultAccount
@@ -220,7 +220,7 @@ export function HomePage() {
             className="mt-1 size-[72px] rounded-control border border-app-separator/80 shadow-[0_12px_30px_rgb(0_0_0_/_28%)]"
             eager
           />
-          <div className="min-w-0">
+          <div className="home-hero-copy min-w-0">
             <p className={eyebrowClass}>Continue playing</p>
             <h1
               id="continue-heading"
@@ -266,7 +266,7 @@ export function HomePage() {
               "h-11 w-full text-[17px] active:translate-y-px disabled:bg-app-raised disabled:text-app-muted disabled:opacity-80",
               activeSession
                 ? "border border-app-danger/50 bg-app-sidebar text-app-danger hover:bg-app-danger/10"
-                : "bg-app-accent text-app-on-accent hover:bg-[#9be0bc]",
+                : "bg-app-accent text-app-on-accent hover:brightness-105",
             )}
             type="button"
             disabled={
@@ -321,7 +321,7 @@ export function HomePage() {
                 </button>
                 <button
                   type="button"
-                  className="h-7 rounded-compact bg-app-danger px-2.5 text-[10px] font-bold text-[#24110f]"
+                  className="h-7 rounded-compact bg-app-danger px-2.5 text-[10px] font-bold text-app-bg"
                   disabled={stopMutation.isPending}
                   onClick={() => stopMutation.mutate(activeSession.id)}
                 >
@@ -331,11 +331,11 @@ export function HomePage() {
             </div>
           ) : activeSession ? (
             <p className="m-0 rounded-compact bg-app-sidebar/95 px-3 py-2 font-mono text-[10px] text-app-accent">
-              Running · PID {activeSession.pid}
+              Minecraft is running
             </p>
           ) : launchMutation.isSuccess ? (
             <p className="m-0 rounded-compact bg-app-sidebar/95 px-3 py-2 text-[10px] text-app-accent">
-              Minecraft started · PID {launchMutation.data.pid}
+              Minecraft started
             </p>
           ) : null}
           {launchMutation.isError || stopMutation.isError ? (
@@ -469,7 +469,7 @@ export function HomePage() {
                       {instance.name}
                     </strong>
                     <small className="mt-px block overflow-hidden text-[11px] text-app-muted text-ellipsis whitespace-nowrap">
-                      {instance.settings.description || "Local instance"}
+                      {instance.settings.description || "Custom Minecraft setup"}
                     </small>
                   </span>
                 </span>
@@ -538,7 +538,7 @@ export function HomePage() {
               ))
             ) : (
               <p className="mt-2 mb-0 text-xs text-app-muted">
-                Provider news is not connected yet.
+                News will appear here when available.
               </p>
             )}
           </SummarySection>

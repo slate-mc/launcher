@@ -26,6 +26,7 @@ import {
   updateInstanceSettings,
 } from "../../lib/bridge";
 import { loaderLabel } from "../../lib/format";
+import { UserFacingError } from "../../lib/userFacingError";
 import type { LauncherInstance, LoaderKind } from "../../types/launcher";
 import {
   contentErrorMessage,
@@ -86,8 +87,8 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
         updated.loaderVersion !== instance.loaderVersion;
       setMessage(
         runtimeChanged
-          ? "Runtime changed. Reinstall the instance before launching."
-          : "Runtime configuration saved. Existing game files were kept.",
+          ? "Game version changed. Reinstall the instance before launching."
+          : "Game settings saved. Existing files were kept.",
       );
     },
   });
@@ -191,7 +192,7 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
       return;
     }
     if (versionsQuery.isError) {
-      setMessage("The Minecraft release catalog is unavailable.");
+      setMessage("Minecraft versions are unavailable right now.");
       return;
     }
     if (
@@ -202,7 +203,7 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
       return;
     }
     if (loaderKind !== "vanilla" && loaderQuery.isError) {
-      setMessage("The compatible loader catalog is unavailable.");
+      setMessage("Compatible loader versions are unavailable right now.");
       return;
     }
     if (loaderKind !== "vanilla" && loaderQuery.data?.versions.length === 0) {
@@ -270,11 +271,8 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
           </button>
         ))}
         <div className="mt-5 border-t border-app-separator/55 px-3 pt-4">
-          <span className="font-mono text-[10px] text-app-muted">
-            REVISION {instance.revision}
-          </span>
-          <p className="mt-2 mb-0 text-[11px]/[16px] text-app-secondary">
-            Every write is revision guarded. Stale views cannot overwrite newer changes.
+          <p className="m-0 text-[11px]/[16px] text-app-secondary">
+            Changes here apply only to this instance.
           </p>
         </div>
       </nav>
@@ -414,9 +412,9 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
           {section === "runtime" ? (
             <SettingsPanel
               title="Java & performance"
-              description="slate validates runtime compatibility and keeps launch-critical arguments under native control."
+              description="Choose memory, Java, and advanced performance options for this instance."
             >
-              <h3 className="m-0 text-xs font-bold">Minecraft runtime</h3>
+              <h3 className="m-0 text-xs font-bold">Minecraft version</h3>
               <p className="mt-1 mb-4 text-[11px] text-app-secondary">Changing Minecraft or its loader requires a verified reinstall. Memory-only changes do not.</p>
               <div className="grid grid-cols-2 gap-5">
           <ComboBox
@@ -493,7 +491,7 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
                 <div className="col-span-2 flex justify-end">
                   <button type="button" className={secondaryButtonClass} disabled={runtimeMutation.isPending} onClick={saveRuntime}>
                     {runtimeMutation.isPending ? <RotateCcw className="animate-spin" size={14} /> : <Save size={14} />}
-                    Save runtime target
+                    Save game version
                   </button>
                 </div>
               </div>
@@ -515,11 +513,11 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
 
               <div className="border-t border-app-separator/55 pt-5">
                 <h3 className="m-0 text-xs font-bold">Java runtime</h3>
-                <p className="mt-1 mb-4 text-[11px] text-app-secondary">Minecraft {instance.minecraftVersion} requires Java {requiredJavaLabel(instance.minecraftVersion)}. A selection is saved only after slate probes it.</p>
+                <p className="mt-1 mb-4 text-[11px] text-app-secondary">Minecraft {instance.minecraftVersion} requires Java {requiredJavaLabel(instance.minecraftVersion)}. slate checks compatibility before saving your choice.</p>
                 <div className="grid grid-cols-3 gap-3">
-                  <ChoiceButton active={instance.settings.javaMode === "managed"} title="Managed" description="Installed by slate" disabled={javaMutation.isPending} onClick={() => javaMutation.mutate("managed")} />
-                  <ChoiceButton active={instance.settings.javaMode === "detected"} title="System Java" description="Detect from PATH" disabled={javaMutation.isPending} onClick={() => javaMutation.mutate("detected")} />
-                  <ChoiceButton active={instance.settings.javaMode === "custom"} title="Custom executable" description="Choose java or javaw" disabled={javaMutation.isPending} onClick={() => javaMutation.mutate("custom")} />
+                  <ChoiceButton active={instance.settings.javaMode === "managed"} title="Automatic" description="Downloaded by slate" disabled={javaMutation.isPending} onClick={() => javaMutation.mutate("managed")} />
+                  <ChoiceButton active={instance.settings.javaMode === "detected"} title="System Java" description="Use Java already installed" disabled={javaMutation.isPending} onClick={() => javaMutation.mutate("detected")} />
+                  <ChoiceButton active={instance.settings.javaMode === "custom"} title="Custom Java" description="Choose a Java application" disabled={javaMutation.isPending} onClick={() => javaMutation.mutate("custom")} />
                 </div>
                 {instance.settings.customJavaLabel ? <p className="mt-3 mb-0 truncate font-mono text-[10px] text-app-muted">{instance.settings.customJavaLabel}</p> : null}
               </div>
@@ -560,9 +558,9 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
           ) : null}
 
           {section === "safety" ? (
-            <SettingsPanel title="Lifecycle & safety" description="Keep recoverable history around content and runtime changes.">
+            <SettingsPanel title="Lifecycle & safety" description="Protect the instance before major changes and repair it when files are missing.">
               <label className="flex items-start justify-between gap-6 border-b border-app-separator/55 pb-5">
-                <span><strong className="block text-xs">Snapshot before managed changes</strong><span className="mt-1 block text-[11px] text-app-secondary">Create a restore point before pack, runtime, or bulk content changes.</span></span>
+                <span><strong className="block text-xs">Snapshot before major changes</strong><span className="mt-1 block text-[11px] text-app-secondary">Create a restore point before modpack, game-version, or bulk content changes.</span></span>
                 <input type="checkbox" checked={draft.backupBeforeChanges} onChange={(event) => setDraft({ ...draft, backupBeforeChanges: event.target.checked })} />
               </label>
               <div className="grid grid-cols-2 gap-5">
@@ -572,7 +570,7 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
             <InstanceLifecycleActions instance={instance} />
               <div className="border-t border-app-separator/55 pt-5">
                 <h3 className="m-0 text-xs font-bold">Repair</h3>
-                <p className="mt-1 mb-4 text-[11px] text-app-secondary">Verify the selected runtime revision and download only missing or changed files.</p>
+                <p className="mt-1 mb-4 text-[11px] text-app-secondary">Check the installation and download only missing or changed files.</p>
                 <button type="button" className={secondaryButtonClass} onClick={() => void installInstance({ id: instance.id, expectedRevision: instance.revision })}><RotateCcw size={14} />Repair and verify</button>
               </div>
             </SettingsPanel>
@@ -584,7 +582,7 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
             {error ? contentErrorMessage(error) : message}
           </p>
           {section === "game" ? (
-            <span className="text-[11px] text-app-muted">Game configuration has its own guarded save action.</span>
+            <span className="text-[11px] text-app-muted">Save game settings from the panel above.</span>
           ) : (
             <button type="button" className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:opacity-50" disabled={busy} onClick={saveSettings}>
               {settingsMutation.isPending ? <RotateCcw className="animate-spin" size={16} /> : <Check size={16} />}
@@ -678,12 +676,12 @@ function parseEnvironmentOverrides(value: string) {
     if (!line) continue;
     const separator = line.indexOf("=");
     if (separator <= 0) {
-      throw new Error(`Environment line ${index + 1} must use KEY=value.`);
+      throw new UserFacingError(`Environment line ${index + 1} must use KEY=value.`);
     }
     const key = line.slice(0, separator).trim();
     const itemValue = line.slice(separator + 1);
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      throw new Error(`Environment line ${index + 1} has an invalid variable name.`);
+      throw new UserFacingError(`Environment line ${index + 1} has an invalid variable name.`);
     }
     result[key] = itemValue;
   }
@@ -695,7 +693,9 @@ function parseCpuAffinity(value: string) {
   const cpus = value.split(",").map((rawCpu, index) => {
     const cpu = Number(rawCpu.trim());
     if (!Number.isInteger(cpu) || cpu < 0 || cpu > 63) {
-      throw new Error(`CPU affinity item ${index + 1} must be an integer from 0 through 63.`);
+      throw new UserFacingError(
+        `CPU affinity item ${index + 1} must be an integer from 0 through 63.`,
+      );
     }
     return cpu;
   });

@@ -1,5 +1,9 @@
 import type { InstallJob } from "../types/launcher";
 import { cn } from "../lib/cn";
+import {
+  installJobMessage,
+  installPhaseLabel,
+} from "../lib/installJobPresentation";
 
 export function InstallProgressIndicator({
   job,
@@ -8,6 +12,7 @@ export function InstallProgressIndicator({
   job: InstallJob;
   className?: string;
 }) {
+  const message = installJobMessage(job);
   const determinate =
     job.completedItems !== undefined &&
     job.totalItems !== undefined &&
@@ -19,7 +24,7 @@ export function InstallProgressIndicator({
   return (
     <div className={cn("mt-3", className)}>
       <div className="mb-1.5 flex items-center justify-between gap-4 font-mono text-[10px] text-app-muted">
-        <span>{phaseLabel(job.phase)}</span>
+        <span>{installPhaseLabel(job.phase)}</span>
         <span className="tabular-nums">
           {determinate
             ? `${job.completedItems!.toLocaleString()} / ${job.totalItems!.toLocaleString()} files`
@@ -29,7 +34,7 @@ export function InstallProgressIndicator({
       <div
         className="relative h-1.5 overflow-hidden rounded-full bg-app-raised"
         role="progressbar"
-        aria-label={job.message}
+        aria-label={message}
         aria-valuemin={determinate ? 0 : undefined}
         aria-valuemax={determinate ? job.totalItems : undefined}
         aria-valuenow={determinate ? job.completedItems : undefined}
@@ -48,27 +53,11 @@ export function InstallProgressIndicator({
       </div>
       <p
         className="mt-2 mb-0 truncate text-[11px] text-app-secondary"
-        title={job.message}
+        title={message}
         aria-live="polite"
       >
-        {job.message}
+        {message}
       </p>
     </div>
   );
-}
-
-function phaseLabel(phase: string) {
-  const labels: Record<string, string> = {
-    metadata: "Metadata",
-    "base-game": "Base game",
-    assets: "Game assets",
-    runtime: "Java runtime",
-    loader: "Mod loader",
-    "launch-files": "Launch files",
-    natives: "Native libraries",
-    content: "Instance content",
-    verification: "Verification",
-    commit: "Finalizing",
-  };
-  return labels[phase] ?? "Installation";
 }

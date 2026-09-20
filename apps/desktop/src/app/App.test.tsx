@@ -16,6 +16,8 @@ describe("launcher shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Survival" }),
     ).toBeInTheDocument();
+    expect(screen.getByTitle("Downloads")).toHaveAttribute("href", "/downloads");
+    expect(screen.getByTitle("Activity")).toHaveAttribute("href", "/activity");
     expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
   });
 });

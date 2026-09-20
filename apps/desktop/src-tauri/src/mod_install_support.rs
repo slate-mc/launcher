@@ -178,7 +178,7 @@ pub(super) fn validate_instance_mod_plan(
     {
         return Err(AppError::new(
             "mod.resolution_mismatch",
-            "The provider could not prove an exact match for this instance. Nothing was installed.",
+            "A compatible version of this mod could not be confirmed. Nothing was installed.",
         ));
     }
     Ok(())
@@ -200,7 +200,7 @@ pub(super) fn validate_resolved_modpack(
     {
         return Err(AppError::new(
             "modpack.resolution_mismatch",
-            "The provider returned inconsistent modpack metadata. Nothing was installed.",
+            "This modpack release has conflicting version details. Nothing was installed.",
         ));
     }
     Ok(())

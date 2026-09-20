@@ -15,6 +15,7 @@ import { StorageSettingsPage } from "../features/settings/StorageSettingsPage";
 import {
   AccountsPage,
   ActivityPage,
+  DownloadsPage,
   HelpPage,
   ServersPage,
 } from "../features/system/SystemPages";
@@ -88,6 +89,11 @@ const activityRoute = createRoute({
   path: "/activity",
   component: ActivityPage,
 });
+const downloadsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/downloads",
+  component: DownloadsPage,
+});
 const accountsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/accounts",
@@ -120,6 +126,7 @@ const routeTree = rootRoute.addChildren([
   discoverRoute,
   modpackDetailRoute,
   serversRoute,
+  downloadsRoute,
   activityRoute,
   accountsRoute,
   settingsRoute,

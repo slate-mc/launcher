@@ -26,6 +26,7 @@ import {
   updatePreferences,
 } from "../../lib/bridge";
 import { formatDate, loaderLabel } from "../../lib/format";
+import { getUserFacingError, UserFacingError } from "../../lib/userFacingError";
 import type {
   StorageCategory,
   StorageCategorySummary,
@@ -50,16 +51,16 @@ const categoryDetails: Record<
   },
   sharedGameFiles: {
     title: "Shared Minecraft files",
-    description: "Libraries, assets, clients, loader installers, and metadata reused between instances.",
+    description: "Shared game and loader files reused between instances.",
     icon: PackageOpen,
     action: "Remove files",
     managed: true,
   },
   managedJava: {
-    title: "Managed Java runtimes",
-    description: "Version-specific Java installations downloaded and validated by slate.",
+    title: "Downloaded Java versions",
+    description: "Java versions slate downloaded for your Minecraft instances.",
     icon: Coffee,
-    action: "Remove runtimes",
+    action: "Remove Java versions",
     managed: true,
   },
   logs: {
@@ -69,8 +70,8 @@ const categoryDetails: Record<
     action: "Clear logs",
   },
   temporaryFiles: {
-    title: "Download residue",
-    description: "Interrupted downloads, corrupt quarantines, and abandoned staging directories.",
+    title: "Incomplete downloads",
+    description: "Files left by interrupted or failed downloads that are safe to clear.",
     icon: FileClock,
     action: "Clear residue",
   },
@@ -144,7 +145,7 @@ export function StorageSettingsPage() {
   const retentionMutation = useMutation({
     mutationFn: async (days: number) => {
       const current = preferencesQuery.data;
-      if (!current) throw new Error("Preferences are still loading.");
+      if (!current) throw new UserFacingError("Preferences are still loading.");
       return updatePreferences({ ...current, trashRetentionDays: days });
     },
     onSuccess: (preferences) => {
@@ -173,7 +174,7 @@ export function StorageSettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Storage"
-        description="See what slate owns, reclaim disposable files, and recover or permanently delete instances."
+        description="Review disk use, clear files you no longer need, and recover removed instances."
         actions={
           <button
             type="button"
@@ -216,7 +217,7 @@ export function StorageSettingsPage() {
                 <div>
                   <h2 id="storage-use-title" className="m-0 text-[17px] font-bold">Storage use</h2>
                   <p className="mt-1 mb-0 text-xs text-app-secondary">
-                    {formatBytes(overviewQuery.data.totalSizeBytes)} managed locally. {formatBytes(overviewQuery.data.reclaimableSizeBytes)} can be reclaimed without deleting active instances.
+                    {formatBytes(overviewQuery.data.totalSizeBytes)} used on this device. {formatBytes(overviewQuery.data.reclaimableSizeBytes)} can be cleared without deleting active instances.
                   </p>
                 </div>
               </div>
@@ -240,7 +241,7 @@ export function StorageSettingsPage() {
                 <div>
                   <h2 id="instance-trash-title" className="m-0 text-[17px] font-bold">Trashed instances</h2>
                   <p className="mt-1 mb-0 text-xs text-app-secondary">
-                    {formatCount(trash.length, "instance")}, {formatBytes(trashSize)}. Restoring keeps the original instance identity and files.
+                    {formatCount(trash.length, "instance")}, {formatBytes(trashSize)}. Restore an instance with all of its remaining files.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -364,7 +365,7 @@ function StorageCategoryRow({
               {pending ? "Clearing…" : details.action}
             </button>
           ) : (
-            <StatusPill tone="neutral">Managed per instance</StatusPill>
+            <StatusPill tone="neutral">Clear from Library</StatusPill>
           )}
         </span>
       </div>
@@ -484,6 +485,8 @@ function formatCount(value: number, noun: string) {
 }
 
 function errorMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  return "slate could not complete that storage action. Refresh and try again.";
+  return getUserFacingError(
+    error,
+    "slate could not complete that storage action. Refresh and try again.",
+  );
 }

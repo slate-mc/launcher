@@ -58,4 +58,26 @@ describe("InstallProgressIndicator", () => {
     expect(progress).not.toHaveAttribute("aria-valuenow");
     expect(progress).toHaveAttribute("aria-valuetext", "In progress");
   });
+
+  it("does not expose a persisted internal failure message", () => {
+    render(
+      <InstallProgressIndicator
+        job={{
+          id: "12345678-1234-4234-8234-123456789abc",
+          instanceId: "22345678-1234-4234-8234-123456789abc",
+          revisionId: "32345678-1234-4234-8234-123456789abc",
+          state: "failed",
+          phase: "content",
+          message: "request failed for https://private.example/C:/Users/name/file.jar",
+          createdAt: "2026-09-13T00:00:00Z",
+          updatedAt: "2026-09-13T00:00:01Z",
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("Installation did not complete. Retry or repair the instance."),
+    ).toBeVisible();
+    expect(screen.queryByText(/private\.example/)).not.toBeInTheDocument();
+  });
 });

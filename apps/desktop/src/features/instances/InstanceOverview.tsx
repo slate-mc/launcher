@@ -165,16 +165,16 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
               <p className="m-0 max-w-[600px] text-xs/[19px] text-app-secondary">
                 {activeSession
                   ? activeSession.state === "stopping"
-                    ? `Waiting for process ${activeSession.pid} to exit.`
-                    : `Process ${activeSession.pid} is active. slate will keep checking it while the launcher is open.`
+                    ? "Waiting for Minecraft to close."
+                    : "Minecraft is running. slate will keep monitoring it while the launcher is open."
                   : ready
-                    ? "Game files, loader files, natives, assets, and the version-specific managed Java runtime are installed."
+                    ? "Game files, mod loader, assets, platform libraries, and the matching Java version are installed."
                     : installing
                       ? (installJob?.message ??
-                        "Resolving metadata and preparing downloads.")
+                        "Checking the selected version and preparing downloads.")
                       : instance.loaderKind === "neoForge"
-                        ? "Install downloads verified game files and runs NeoForge’s official client installer in slate’s managed directory."
-                        : "Install downloads and verifies the base game, assets, libraries, natives, and matching Java runtime."}
+                        ? "Install downloads verified game files and prepares the selected NeoForge version."
+                        : "Install downloads and verifies the base game, assets, platform libraries, and matching Java version."}
               </p>
             </div>
             <button
@@ -199,7 +199,7 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
                     ? effectiveAccountId
                       ? "Start Minecraft with the selected account."
                       : "Connect a Minecraft account before launching."
-                    : "Install this exact instance revision."
+                    : "Install the selected Minecraft and loader versions."
               }
               onClick={() => {
                 if (activeSession) {
@@ -270,7 +270,7 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
               </button>
               <button
                 type="button"
-                className="h-8 rounded-compact bg-app-danger px-3 text-[11px] font-bold text-[#24110f] disabled:opacity-50"
+                className="h-8 rounded-compact bg-app-danger px-3 text-[11px] font-bold text-app-bg disabled:opacity-50"
                 disabled={stopMutation.isPending}
                 onClick={() => stopMutation.mutate(activeSession.id)}
               >
@@ -323,12 +323,12 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
           {launchMutation.isError ? (
             <InlineNotice tone="danger" title="Minecraft did not start">
               The installed files were left intact. Reinstall if verification
-              reports a missing or corrupt artifact.
+              reports a missing or corrupt file.
             </InlineNotice>
           ) : null}
           {stopMutation.isError ? (
             <InlineNotice tone="danger" title="Minecraft did not stop">
-              The process is still being tracked. Try force-closing it again.
+              Minecraft still appears to be running. Try force-closing it again.
             </InlineNotice>
           ) : null}
         </section>
@@ -344,11 +344,10 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
 
         <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
           <h2 className="m-0 text-[15px] font-bold tracking-[-.015em]">
-            Identity
+            Instance name
           </h2>
           <p className="mt-1 mb-5 text-xs text-app-secondary">
-            The name is presentation only; slate keeps the stable instance ID
-            underneath.
+            Rename this instance without changing its game files.
           </p>
           <label className="block text-xs font-bold text-app-text">
             Instance name
@@ -473,8 +472,8 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
               Move {instance.name} to trash?
             </h2>
             <p className="mt-2 mb-0 text-xs/[19px] text-app-secondary">
-              The library record will be hidden, but slate will not delete the
-              managed instance files in this implementation.
+              The instance will move to Storage, where you can restore it or
+              permanently delete its files.
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button

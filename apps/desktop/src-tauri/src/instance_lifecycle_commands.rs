@@ -262,7 +262,7 @@ pub(super) async fn instance_import(
     if manifest.schema != 1 {
         return Err(AppError::new(
             "local.instance_archive_version",
-            "This portable instance uses an unsupported archive version.",
+            "This instance export was created by an unsupported version of slate.",
         ));
     }
     validate_instance_configuration(

@@ -20,7 +20,7 @@ export function InstanceGameOptionsEditor({ instance }: { instance: LauncherInst
     return <div className="h-80 animate-pulse rounded-control bg-app-raised" aria-label="Loading game configuration" />;
   }
   if (query.isError) {
-    return <InlineNotice tone="warning" title="Game configuration unavailable">slate could not read options.txt. Close Minecraft and try again.</InlineNotice>;
+    return <InlineNotice tone="warning" title="Game settings unavailable">Close Minecraft, then try loading these settings again.</InlineNotice>;
   }
   return (
     <GameOptionsForm
@@ -108,10 +108,10 @@ function GameOptionsForm({
       title="Game configuration"
       description="Edit common Minecraft options without discarding settings added by the game or mods."
     >
-      <InlineNotice title="Unknown keys are preserved">
+      <InlineNotice title="Other settings stay unchanged">
         {fileExists
-          ? "slate updates only the recognized keys below. Mod-specific and future Minecraft options stay byte-for-byte unchanged."
-          : "Minecraft has not created options.txt yet. Saving creates it with only the recognized choices below."}
+          ? "Only the settings shown below are changed. Other Minecraft and mod settings are left alone."
+          : "Minecraft has not created its settings file yet. Save once to create it with the choices below."}
       </InlineNotice>
 
       <GameOptionSection title="Video" onReset={() => resetCategory(["graphicsMode", "renderDistance", "simulationDistance", "maxFps", "guiScale", "entityDistanceScaling", "enableVsync", "bobView"])}>

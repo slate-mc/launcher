@@ -153,7 +153,7 @@ export function InstanceLifecycleActions({ instance }: { instance: LauncherInsta
     <>
       <section className="border-t border-app-separator/55 pt-5">
         <h3 className="m-0 text-xs font-bold">Open instance folders</h3>
-        <p className="mt-1 mb-4 text-[11px] text-app-secondary">Paths stay behind the native boundary. slate creates a missing standard folder before opening it.</p>
+        <p className="mt-1 mb-4 text-[11px] text-app-secondary">Open the folders you may need for worlds, mods, screenshots, or troubleshooting.</p>
         <div className="flex flex-wrap gap-2">
           {([
             ["game", "Game"], ["mods", "Mods"], ["saves", "Worlds"],
@@ -177,7 +177,7 @@ export function InstanceLifecycleActions({ instance }: { instance: LauncherInsta
 
       <section className="border-t border-app-separator/55 pt-5">
         <h3 className="m-0 text-xs font-bold">Duplicate instance</h3>
-        <p className="mt-1 mb-4 text-[11px] text-app-secondary">Create a clean copy of this runtime definition, then choose which personal files follow it.</p>
+        <p className="mt-1 mb-4 text-[11px] text-app-secondary">Create another instance with the same game version and choose which personal files to copy.</p>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
           <input className="h-9 rounded-control border border-app-separator bg-app-bg px-3 text-xs outline-none focus:border-app-accent" value={duplicateName} maxLength={80} onChange={(event) => setDuplicateName(event.target.value)} />
           <button type="button" className={lifecycleButtonClass} disabled={!duplicateName.trim() || duplicateMutation.isPending} onClick={() => duplicateMutation.mutate()}>
@@ -195,7 +195,7 @@ export function InstanceLifecycleActions({ instance }: { instance: LauncherInsta
         <div className="flex items-start justify-between gap-6">
           <span>
             <h3 className="m-0 text-xs font-bold">Portable archive</h3>
-            <p className="mt-1 mb-0 text-[11px] text-app-secondary">Move a profile, worlds, content, configuration, and artwork between computers. Java paths and cached revisions stay local.</p>
+            <p className="mt-1 mb-0 text-[11px] text-app-secondary">Move an instance, including selected worlds and settings, between computers.</p>
           </span>
           <span className="flex shrink-0 gap-2">
             <button type="button" className={lifecycleButtonClass} disabled={importMutation.isPending} onClick={() => importMutation.mutate()}>
@@ -210,7 +210,7 @@ export function InstanceLifecycleActions({ instance }: { instance: LauncherInsta
 
       <section className="border-t border-app-separator/55 pt-5">
         <div className="flex items-start justify-between gap-5">
-          <span><h3 className="m-0 text-xs font-bold">Snapshots</h3><p className="mt-1 mb-0 text-[11px] text-app-secondary">Stopped-state copies of the game directory. Pinned snapshots do not count toward retention.</p></span>
+          <span><h3 className="m-0 text-xs font-bold">Snapshots</h3><p className="mt-1 mb-0 text-[11px] text-app-secondary">Create a restore point before making major changes. Pinned snapshots are kept until you remove them.</p></span>
           <button type="button" className={lifecycleButtonClass} disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>
             {createMutation.isPending ? <RotateCcw className="animate-spin" size={14} /> : <FolderArchive size={14} />}Create snapshot
           </button>

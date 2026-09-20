@@ -21,6 +21,7 @@ import {
   listInstallJobs,
 } from "../lib/bridge";
 import { MinecraftHead } from "./MinecraftHead";
+import { installJobMessage } from "../lib/installJobPresentation";
 
 type NavigationItem = {
   label: string;
@@ -73,14 +74,41 @@ export function AppShell() {
 
   useEffect(() => {
     const theme = preferencesQuery.data?.theme ?? "dark";
-    const resolved =
-      theme === "system"
-        ? window.matchMedia("(prefers-color-scheme: light)").matches
-          ? "light"
-          : "dark"
-        : theme;
-    document.documentElement.dataset.theme = resolved;
+    const colorScheme =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-color-scheme: light)")
+        : undefined;
+    const applyTheme = () => {
+      document.documentElement.dataset.theme =
+        theme === "system" ? (colorScheme?.matches ? "light" : "dark") : theme;
+    };
+    applyTheme();
+    if (theme !== "system" || !colorScheme) return;
+    colorScheme.addEventListener("change", applyTheme);
+    return () => colorScheme.removeEventListener("change", applyTheme);
   }, [preferencesQuery.data?.theme]);
+
+  useEffect(() => {
+    const preference = preferencesQuery.data?.reduceMotion ?? "system";
+    const reducedMotion =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-reduced-motion: reduce)")
+        : undefined;
+    const applyMotion = () => {
+      document.documentElement.dataset.motion =
+        preference === "system"
+          ? reducedMotion?.matches
+            ? "reduce"
+            : "full"
+          : preference === "on"
+            ? "reduce"
+            : "full";
+    };
+    applyMotion();
+    if (preference !== "system" || !reducedMotion) return;
+    reducedMotion.addEventListener("change", applyMotion);
+    return () => reducedMotion.removeEventListener("change", applyMotion);
+  }, [preferencesQuery.data?.reduceMotion]);
 
   return (
     <div className="flex h-full min-h-[640px] min-w-[960px] flex-col bg-app-bg text-app-text">
@@ -91,8 +119,13 @@ export function AppShell() {
           aria-label="slate home"
         >
           <img
-            className="block w-[126px] max-[1180px]:w-28"
+            className="brand-lockup-paper block w-[126px] max-[1180px]:w-28"
             src="/brand/slate-lockup-paper.svg"
+            alt="slate"
+          />
+          <img
+            className="brand-lockup-graphite hidden w-[126px] max-[1180px]:w-28"
+            src="/brand/slate-lockup-graphite.svg"
             alt="slate"
           />
         </Link>
@@ -120,13 +153,14 @@ export function AppShell() {
         <div className="flex items-center gap-1">
           <Link
             className={`${quietAction} relative`}
-            to="/activity"
+            to="/downloads"
             aria-label={
               activeJobs.length > 0
                 ? `${activeJobs.length} active installations`
                 : "Downloads"
             }
             title="Downloads"
+            activeProps={{ className: "bg-app-hover text-app-text" }}
           >
             <Download size={19} aria-hidden="true" />
             {activeJobs.length > 0 ? (
@@ -142,6 +176,7 @@ export function AppShell() {
                 : "Activity"
             }
             title="Activity"
+            activeProps={{ className: "bg-app-hover text-app-text" }}
           >
             <Activity size={19} aria-hidden="true" />
             {activeSessions.length > 0 ? (
@@ -211,7 +246,7 @@ export function AppShell() {
         <span className="h-[18px] w-px bg-app-separator" />
         <span className="max-w-[420px] overflow-hidden text-ellipsis whitespace-nowrap">
           {leadingJob
-            ? `${leadingJob.message}${
+            ? `${installJobMessage(leadingJob)}${
                 leadingJob.completedItems !== undefined &&
                 leadingJob.totalItems !== undefined
                   ? ` · ${leadingJob.completedItems.toLocaleString()} / ${leadingJob.totalItems.toLocaleString()}`
@@ -227,7 +262,7 @@ export function AppShell() {
           </span>
         ) : null}
         <span className="ml-auto">
-          {bridgeMode === "native" ? "Native data" : "Preview environment"}
+          {bridgeMode === "native" ? "Everything ready" : "Preview environment"}
         </span>
         <Link
           className="inline-flex h-9 items-center justify-center gap-1.5 rounded-compact px-2 text-[11px] text-app-secondary no-underline hover:bg-app-hover hover:text-app-text"

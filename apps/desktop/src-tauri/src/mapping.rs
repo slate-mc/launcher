@@ -147,9 +147,9 @@ pub(super) fn instance_mod_summary(
 
 pub(super) const fn content_kind(kind: InstanceContentKindDto) -> InstanceContentKind {
     match kind {
-        InstanceContentKindDto::ResourcePack => InstanceContentKind::ResourcePack,
-        InstanceContentKindDto::ShaderPack => InstanceContentKind::ShaderPack,
-        InstanceContentKindDto::DataPack => InstanceContentKind::DataPack,
+        InstanceContentKindDto::ResourcePack => InstanceContentKind::Resource,
+        InstanceContentKindDto::ShaderPack => InstanceContentKind::Shader,
+        InstanceContentKindDto::DataPack => InstanceContentKind::Data,
     }
 }
 

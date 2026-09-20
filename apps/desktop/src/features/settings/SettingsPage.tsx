@@ -21,7 +21,7 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Launcher preferences"
-        description="Choose how slate looks, behaves, and schedules local work."
+        description="Choose how slate looks, behaves, and handles downloads."
       />
       <SettingsNavigation />
       <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-6 px-8 py-7">
@@ -29,7 +29,7 @@ export function SettingsPage() {
           <div className="h-[430px] animate-pulse rounded-control bg-app-surface" />
         ) : preferencesQuery.isError ? (
           <InlineNotice tone="danger" title="Preferences unavailable">
-            slate could not load the local settings database. No values were changed.
+            slate could not load your preferences. Nothing was changed.
           </InlineNotice>
         ) : (
           <PreferencesForm initial={preferencesQuery.data} />
@@ -48,8 +48,13 @@ export function SettingsPage() {
 
 function PreferencesForm({ initial }: { initial: AppPreferences }) {
   const queryClient = useQueryClient();
-  const [values, setValues] = useState(initial);
+  const [values, setValues] = useState({
+    ...initial,
+    telemetryEnabled: false,
+  });
   const [saved, setSaved] = useState(false);
+  const baseline = { ...initial, telemetryEnabled: false };
+  const dirty = !samePreferences(values, baseline);
   const mutation = useMutation({
     mutationFn: updatePreferences,
     onSuccess: (preferences) => {
@@ -71,7 +76,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
     <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
       <h2 className="m-0 text-[15px] font-bold">Appearance and behavior</h2>
       <p className="mt-1 mb-6 text-xs text-app-secondary">
-        These values persist across restarts in native mode.
+        Saved on this device and applied across restarts.
       </p>
       <div className="grid gap-6">
         <SettingRow
@@ -111,7 +116,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
         </SettingRow>
         <SettingRow
           title="Concurrent downloads"
-          description="Maximum number of files slate downloads at the same time."
+          description="Maximum number of verified game, loader, modpack, and mod files downloaded in parallel."
         >
           <select
             value={values.downloadConcurrency}
@@ -126,20 +131,6 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
               </option>
             ))}
           </select>
-        </SettingRow>
-        <SettingRow
-          title="Optional telemetry"
-          description="Off by default. No telemetry transport is implemented in this build."
-        >
-          <label className="inline-flex items-center gap-2 text-xs font-bold text-app-text">
-            <input
-              type="checkbox"
-              checked={values.telemetryEnabled}
-              className="size-4 accent-[var(--slate-accent)]"
-              onChange={(event) => update("telemetryEnabled", event.target.checked)}
-            />
-            Enabled
-          </label>
         </SettingRow>
       </div>
 
@@ -157,7 +148,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
         <button
           type="button"
           className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:opacity-50"
-          disabled={mutation.isPending}
+          disabled={mutation.isPending || !dirty}
           onClick={() => mutation.mutate(values)}
         >
           {saved ? <Check size={16} aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
@@ -178,8 +169,8 @@ function PreflightPanel({
   }
   if (query.isError) {
     return (
-      <InlineNotice tone="danger" title="Preflight unavailable">
-        The native runtime checks could not be completed.
+      <InlineNotice tone="danger" title="System check unavailable">
+        slate could not check this device. Try again after restarting the launcher.
       </InlineNotice>
     );
   }
@@ -188,39 +179,46 @@ function PreflightPanel({
     <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
       <div className="flex items-center gap-2">
         <ShieldCheck size={18} className="text-app-accent" aria-hidden="true" />
-        <h2 className="m-0 text-[15px] font-bold">System preflight</h2>
+        <h2 className="m-0 text-[15px] font-bold">System check</h2>
       </div>
       <p className="mt-1 mb-4 text-[11px]/[17px] text-app-secondary">
-        Local checks only. A passing row does not imply the game can launch.
+        Check the essentials slate needs before you install or play.
       </p>
       <div className="grid gap-2">
         <CheckRow
           icon={Database}
-          label="Local database"
-          ready={preflight.databaseReady}
+          label="Launcher data"
+          state={preflight.databaseReady ? "ready" : "attention"}
         />
         <CheckRow
           icon={HardDrive}
-          label="Managed storage"
-          ready={preflight.storageReady}
+          label="Game storage"
+          state={preflight.storageReady ? "ready" : "attention"}
         />
         <CheckRow
           icon={CircleAlert}
           label="Minecraft account"
-          ready={preflight.accountConfigured}
+          state={preflight.accountConfigured ? "ready" : "attention"}
           detail={preflight.accountConfigured ? undefined : "Not configured"}
         />
         <CheckRow
           icon={CircleAlert}
-          label="Java runtime"
-          ready={preflight.java.available}
-          detail={preflight.java.version ?? preflight.java.unavailableReason}
+          label="System Java (optional)"
+          state={preflight.java.available ? "ready" : "optional"}
+          detail={
+            preflight.java.version ??
+            "Not detected. slate can download the Java version each instance needs."
+          }
         />
         <CheckRow
           icon={CircleAlert}
-          label="Launch feature"
-          ready={preflight.launchImplemented}
-          detail="Intentionally unavailable"
+          label="Game launch"
+          state={preflight.launchImplemented ? "ready" : "attention"}
+          detail={
+            preflight.launchImplemented
+              ? "Ready to launch installed instances"
+              : "Not available"
+          }
         />
       </div>
     </section>
@@ -230,12 +228,12 @@ function PreflightPanel({
 function CheckRow({
   icon: Icon,
   label,
-  ready,
+  state,
   detail,
 }: {
   icon: typeof Database;
   label: string;
-  ready: boolean;
+  state: "ready" | "attention" | "optional";
   detail?: string;
 }) {
   return (
@@ -249,8 +247,10 @@ function CheckRow({
           </small>
         ) : null}
       </span>
-      <StatusPill tone={ready ? "positive" : "warning"}>
-        {ready ? "Ready" : "Pending"}
+      <StatusPill
+        tone={state === "ready" ? "positive" : state === "optional" ? "neutral" : "warning"}
+      >
+        {state === "ready" ? "Ready" : state === "optional" ? "Optional" : "Attention"}
       </StatusPill>
     </div>
   );
@@ -280,3 +280,13 @@ function SettingRow({
 
 const selectClass =
   "h-9 w-full rounded-control border border-app-separator bg-app-bg px-3 text-xs font-semibold text-app-text focus:border-app-accent focus:outline-none";
+
+function samePreferences(left: AppPreferences, right: AppPreferences) {
+  return (
+    left.theme === right.theme &&
+    left.downloadConcurrency === right.downloadConcurrency &&
+    left.telemetryEnabled === right.telemetryEnabled &&
+    left.reduceMotion === right.reduceMotion &&
+    left.trashRetentionDays === right.trashRetentionDays
+  );
+}

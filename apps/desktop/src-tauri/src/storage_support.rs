@@ -14,7 +14,7 @@ pub(super) fn storage_category(
 pub(super) fn storage_scan_error() -> AppError {
     AppError::new(
         "local.storage_scan_failed",
-        "slate could not finish measuring managed storage. Check that the storage folders are available and try again.",
+        "slate could not finish measuring storage. Check that your storage folders are available and try again.",
     )
     .retryable(true)
 }

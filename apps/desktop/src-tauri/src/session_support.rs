@@ -18,7 +18,7 @@ pub(super) fn process_start_error(error: slate_process::ProcessError) -> AppErro
     } else {
         AppError::new(
             "local.launch_failed",
-            "slate could not start the Minecraft process. Check the instance log and try again.",
+            "slate could not start Minecraft. Check the instance log and try again.",
         )
     }
 }
@@ -32,7 +32,7 @@ pub(super) fn process_stop_error(error: slate_process::ProcessError) -> AppError
     } else {
         AppError::new(
             "local.stop_failed",
-            "slate could not force-close the Minecraft process.",
+            "slate could not force-close Minecraft.",
         )
         .retryable(true)
     }
@@ -41,7 +41,7 @@ pub(super) fn process_stop_error(error: slate_process::ProcessError) -> AppError
 pub(super) fn log_stream_state_error() -> AppError {
     AppError::new(
         "local.session_log_state_unavailable",
-        "slate could not update the live log subscription.",
+        "Live Minecraft output could not be updated.",
     )
     .retryable(true)
 }
@@ -49,7 +49,7 @@ pub(super) fn log_stream_state_error() -> AppError {
 pub(super) fn log_channel_error() -> AppError {
     AppError::new(
         "local.session_log_channel_unavailable",
-        "slate could not connect the live Minecraft log to this window.",
+        "Live Minecraft output could not be opened.",
     )
     .retryable(true)
 }
@@ -140,7 +140,7 @@ pub(super) async fn stream_session_log(
                             kind: SessionLogEventKindDto::Error,
                             offset: tail.offset().to_string(),
                             truncated: false,
-                            text: "slate could not verify the game process state.".to_owned(),
+                            text: "slate could not check whether Minecraft is still running.".to_owned(),
                         });
                         return;
                     }

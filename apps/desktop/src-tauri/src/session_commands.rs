@@ -40,7 +40,7 @@ pub(super) async fn session_log_subscribe(
         .ok_or_else(|| {
             AppError::new(
                 "local.session_not_running",
-                "That Minecraft session is no longer available for live log streaming.",
+                "That Minecraft game has already ended, so live output is no longer available.",
             )
         })?;
     let subscription_id = Uuid::new_v4();
@@ -48,7 +48,7 @@ pub(super) async fn session_log_subscribe(
     let snapshot = tail.snapshot().await.map_err(|_| {
         AppError::new(
             "local.session_log_unavailable",
-            "slate could not read this Minecraft session log.",
+            "slate could not load this Minecraft output.",
         )
         .retryable(true)
     })?;

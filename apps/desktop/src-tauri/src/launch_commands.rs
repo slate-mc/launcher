@@ -61,9 +61,7 @@ pub(super) async fn instance_launch(
         .database
         .get_installed_revision(instance_id)
         .await
-        .map_err(|error| {
-            map_storage_error(error, "slate could not load the installed revision.")
-        })?;
+        .map_err(|error| map_storage_error(error, "slate could not load this installation."))?;
     let manifest_path = installed_manifest_path(&instance_paths, instance_id, revision.id);
     let installed = load_installed_revision(
         &manifest_path,
@@ -75,7 +73,7 @@ pub(super) async fn instance_launch(
     .map_err(|_| {
         AppError::new(
             "local.install_manifest_invalid",
-            "The installed revision manifest is missing, changed, or invalid. Reinstall the instance.",
+            "Some installation details are missing or changed. Repair the instance before launching.",
         )
     })?;
     let layers = installed.metadata_layers;
@@ -86,7 +84,7 @@ pub(super) async fn instance_launch(
     {
         return Err(AppError::new(
             "local.runtime_binding_changed",
-            "The runtime binding changed after installation. Reinstall the instance.",
+            "The selected Java version changed after installation. Repair the instance before launching.",
         ));
     }
     let managed_probe_path = runtime.executable.clone();
@@ -96,20 +94,20 @@ pub(super) async fn instance_launch(
             .map_err(|_| {
                 AppError::new(
                     "local.runtime_probe_unavailable",
-                    "slate could not validate the managed Java runtime.",
+                    "slate could not check the Java version for this instance.",
                 )
             })?;
     if !managed_probe.available || managed_probe.major_version != Some(runtime.major_version) {
         return Err(AppError::new(
             "local.runtime_invalid",
-            "The managed Java runtime is missing or no longer matches this instance.",
+            "The required Java version is missing or no longer matches this instance.",
         ));
     }
 
     let resolved = ResolvedVersion::resolve(layers).map_err(|_| {
         AppError::new(
             "local.install_manifest_invalid",
-            "The installed metadata chain is invalid. Reinstall the instance.",
+            "This installation needs repair before Minecraft can start.",
         )
     })?;
     let architecture = minecraft_architecture(&runtime.architecture)?;
@@ -142,7 +140,12 @@ pub(super) async fn instance_launch(
         resolved.java_version().major_version,
         architecture,
     )
-    .map_err(|_| AppError::new("local.runtime_invalid", "The selected runtime is invalid."))?;
+    .map_err(|_| {
+        AppError::new(
+            "local.runtime_invalid",
+            "The selected Java version is invalid.",
+        )
+    })?;
     let mut environment: BTreeMap<String, EnvironmentValue> =
         restricted_child_environment(Some(&selected_executable))
             .into_iter()
@@ -213,7 +216,7 @@ pub(super) async fn instance_launch(
     .map_err(|_| {
         AppError::new(
             "local.launch_plan_invalid",
-            "slate could not construct a valid launch plan for this revision.",
+            "slate could not prepare Minecraft to launch. Repair the instance and try again.",
         )
     })?;
     verify_installed_launch_artifacts(

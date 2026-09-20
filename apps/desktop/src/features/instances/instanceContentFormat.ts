@@ -5,24 +5,9 @@ export function formatContentFileSize(value: number) {
 }
 
 export function contentErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "userMessage" in error &&
-    typeof error.userMessage === "string" &&
-    error.userMessage.trim()
-  ) {
-    return error.userMessage;
-  }
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string" &&
-    error.message.trim()
-  ) {
-    return error.message;
-  }
-  return "slate could not complete that content request. Try again.";
+  return getUserFacingError(
+    error,
+    "slate could not complete that content request. Try again.",
+  );
 }
+import { getUserFacingError } from "../../lib/userFacingError";

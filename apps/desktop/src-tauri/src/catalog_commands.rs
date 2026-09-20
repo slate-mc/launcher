@@ -57,11 +57,11 @@ pub(super) async fn fetch_loader_versions(
     if !known_release {
         return Err(AppError::new(
             "metadata.minecraft_version_unknown",
-            "Choose a Minecraft release from the current catalog.",
+            "Choose one of the available Minecraft versions.",
         )
         .with_field_error(
             "minecraftVersion",
-            "The selected release is not in the catalog.",
+            "That Minecraft version is not available.",
         ));
     }
 
@@ -99,7 +99,7 @@ pub(super) async fn validate_selected_loader_version(
     if !versions.iter().any(|version| version == selected) {
         return Err(AppError::new(
             "metadata.loader_version_unknown",
-            "Choose a compatible loader version from the current catalog.",
+            "Choose one of the compatible loader versions.",
         )
         .with_field_error(
             "loaderVersion",

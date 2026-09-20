@@ -52,7 +52,7 @@ export function LibraryPage() {
       <PageHeader
         eyebrow="Library"
         title="Your instances"
-        description="Each setup is isolated, versioned, and kept separate from the official launcher."
+        description="Keep each Minecraft setup separate, organized, and ready to play."
         actions={
           <Link
             to="/library/new"
@@ -118,7 +118,7 @@ export function LibraryPage() {
           <EmptyState
             error
             title="The library is unavailable"
-            description="Your local data was not changed. Retry the native connection."
+            description="Your local data was not changed. Try again."
             action={
               <button
                 type="button"

@@ -335,7 +335,7 @@ pub(super) fn validated_jvm_arguments(arguments: Vec<String>) -> Result<Vec<Stri
         {
             return Err(settings_validation_error(
                 "jvmArguments",
-                "One or more JVM arguments would override slate-managed launch settings.",
+                "One or more JVM arguments would override settings required to launch Minecraft.",
             ));
         }
         validated.push(argument.to_owned());
@@ -411,7 +411,7 @@ pub(super) fn validated_java_selection(
         return Err(AppError::new(
             "validation.java_version",
             format!(
-                "Minecraft {} requires Java {expected_major}. Choose a matching runtime.",
+                "Minecraft {} requires Java {expected_major}. Choose a matching Java version.",
                 instance.minecraft_version
             ),
         ));
@@ -446,6 +446,6 @@ pub(super) fn required_java_major(minecraft_version: &str) -> u32 {
 pub(super) fn java_selection_error() -> AppError {
     AppError::new(
         "runtime.java_unavailable",
-        "slate could not validate that Java executable. Choose another runtime.",
+        "slate could not use that Java application. Choose another one.",
     )
 }

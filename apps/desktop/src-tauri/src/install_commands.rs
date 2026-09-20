@@ -233,10 +233,16 @@ pub(super) async fn queue_instance_install(
                 }
             }
             Err(error) => {
-                let message = bounded_error_message(&error.to_string());
+                tracing::error!(
+                    job_id = %pending.job.id,
+                    instance_id = %instance_id,
+                    error = %error,
+                    "instance installation failed"
+                );
+                let message = install_failure_message(&error);
                 let _ = task_state
                     .database
-                    .fail_instance_install(pending.job.id, pending.revision_id, &message)
+                    .fail_instance_install(pending.job.id, pending.revision_id, message)
                     .await;
             }
         }
@@ -352,7 +358,7 @@ pub(super) async fn modpack_install(
             .await;
         return Err(AppError::new(
             "local.instance_directory_unavailable",
-            "slate could not create the managed instance directory. The incomplete record was moved to trash.",
+            "slate could not finish creating the instance. The incomplete instance was moved to trash.",
         ));
     }
     let job = match queue_instance_install(

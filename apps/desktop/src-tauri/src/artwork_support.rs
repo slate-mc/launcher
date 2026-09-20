@@ -81,7 +81,7 @@ pub(super) async fn replace_file(
             return Err(if io_error.kind() == std::io::ErrorKind::PermissionDenied {
                 AppError::new(
                     "local.artwork_in_use",
-                    "Close applications using that managed file and try again.",
+                    "Close any app using that image and try again.",
                 )
             } else {
                 error()

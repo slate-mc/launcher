@@ -5,7 +5,6 @@ import {
   Boxes,
   Check,
   CircleHelp,
-  ExternalLink,
   LoaderCircle,
   Plus,
   RefreshCw,
@@ -23,6 +22,10 @@ import {
 import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import { MinecraftHead } from "../../components/MinecraftHead";
 import {
+  installJobMessage,
+  installPhaseLabel,
+} from "../../lib/installJobPresentation";
+import {
   bridgeMode,
   cancelMinecraftAuth,
   getMinecraftAuthStatus,
@@ -36,13 +39,90 @@ import {
   setDefaultMinecraftAccount,
   startMinecraftAuth,
 } from "../../lib/bridge";
+import { getUserFacingError } from "../../lib/userFacingError";
 
-export function ActivityPage() {
+export function DownloadsPage() {
   const jobsQuery = useQuery({
     queryKey: ["install-jobs"],
     queryFn: listInstallJobs,
     refetchInterval: 1_000,
   });
+  const jobs = jobsQuery.data ?? [];
+
+  return (
+    <div className="min-h-full bg-app-bg">
+      <PageHeader
+        eyebrow="Downloads"
+        title="Installation queue"
+        description="Track base-game, loader, modpack, and mod installation work."
+      />
+      {jobsQuery.isPending ? (
+        <div className="mx-auto grid max-w-[940px] gap-3 px-8 py-7" aria-label="Loading downloads">
+          <div className="h-20 animate-pulse rounded-control bg-app-surface" />
+          <div className="h-20 animate-pulse rounded-control bg-app-surface" />
+        </div>
+      ) : jobsQuery.isError ? (
+        <EmptyState
+          error
+          title="Downloads are unavailable"
+          description="slate could not load installation activity. Your files were not changed."
+        />
+      ) : jobs.length === 0 ? (
+        <EmptyState
+          title="No installation activity"
+          description="Install an instance, modpack, or mod to see its progress and result here."
+        />
+      ) : (
+        <div className="mx-auto max-w-[940px] px-8 py-7">
+          <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
+            <div className="grid grid-cols-[minmax(0,1fr)_130px_150px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+              <span>Installation</span>
+              <span>State</span>
+              <span>Updated</span>
+            </div>
+            <div className="divide-y divide-app-separator/55">
+              {jobs.map((job) => (
+                <div
+                  key={job.id}
+                  className="grid min-h-16 grid-cols-[minmax(0,1fr)_130px_150px] items-center gap-4 px-5 py-3"
+                >
+                  <span className="min-w-0">
+                    <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
+                      {installJobMessage(job)}
+                    </strong>
+                    <small className="mt-1 block font-mono text-[10px] text-app-muted">
+                      {installPhaseLabel(job.phase)}
+                    </small>
+                    {job.state === "running" || job.state === "queued" ? (
+                      <InstallProgressIndicator job={job} className="mt-2" />
+                    ) : null}
+                  </span>
+                  <span className="inline-flex items-center gap-2 text-xs text-app-secondary">
+                    <span
+                      className={`size-2 rounded-full ${
+                        job.state === "succeeded"
+                          ? "bg-app-accent"
+                          : job.state === "failed"
+                            ? "bg-app-danger"
+                            : "bg-app-warning"
+                      }`}
+                    />
+                    {job.state[0].toUpperCase() + job.state.slice(1)}
+                  </span>
+                  <time className="text-[11px] text-app-secondary">
+                    {new Date(job.updatedAt).toLocaleString()}
+                  </time>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ActivityPage() {
   const sessionsQuery = useQuery({
     queryKey: ["game-sessions"],
     queryFn: listGameSessions,
@@ -52,119 +132,75 @@ export function ActivityPage() {
     queryKey: ["instances"],
     queryFn: listInstances,
   });
-  const jobs = jobsQuery.data ?? [];
   const sessions = sessionsQuery.data ?? [];
 
   return (
     <div className="min-h-full bg-app-bg">
       <PageHeader
         eyebrow="Activity"
-        title="Jobs and sessions"
-        description="Downloads and instance preparation remain visible across navigation and restarts."
+        title="Running games"
+        description="See the Minecraft games currently running through slate."
       />
-      {jobsQuery.isError || sessionsQuery.isError ? (
+      {sessionsQuery.isPending ? (
+        <div className="mx-auto max-w-[940px] px-8 py-7" aria-label="Loading game activity">
+          <div className="h-20 animate-pulse rounded-control bg-app-surface" />
+        </div>
+      ) : sessionsQuery.isError || instancesQuery.isError ? (
         <EmptyState
           error
-          title="Activity is unavailable"
-          description="slate could not read the durable installation queue. Your files were not changed."
+          title="Game activity is unavailable"
+          description="slate could not check running games. Nothing was stopped or changed."
         />
-      ) : jobs.length === 0 && sessions.length === 0 ? (
+      ) : sessions.length === 0 ? (
         <EmptyState
-          title="No active games or installation activity"
-          description="Launch or install an instance to see its lifecycle here."
+          title="No games are running"
+          description="Launch an instance to see and manage it here."
         />
       ) : (
-        <div className="mx-auto grid max-w-[940px] gap-6 px-8 py-7">
-          {sessions.length > 0 ? (
-            <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
-              <div className="flex items-center justify-between border-b border-app-separator/55 px-5 py-3">
-                <span className="text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
-                  Active Minecraft sessions
-                </span>
-                <span className="font-mono text-[10px] text-app-muted">
-                  {sessions.length} active
-                </span>
-              </div>
-              <div className="divide-y divide-app-separator/55">
-                {sessions.map((session) => {
-                  const instance = instancesQuery.data?.find(
-                    (candidate) => candidate.id === session.instanceId,
-                  );
-                  return (
-                    <div
-                      key={session.id}
-                      className="grid min-h-16 grid-cols-[minmax(0,1fr)_130px_150px] items-center gap-4 px-5 py-3"
-                    >
-                      <span className="min-w-0">
-                        <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
-                          {instance?.name ??
-                            `Instance ${session.instanceId.slice(0, 8)}`}
-                        </strong>
-                        <small className="mt-1 block font-mono text-[10px] text-app-muted">
-                          PID {session.pid} · {session.logName}
-                        </small>
-                      </span>
-                      <span className="inline-flex items-center gap-2 text-xs text-app-secondary">
-                        <span className="size-2 rounded-full bg-app-warning" />
-                        {session.state === "stopping" ? "Stopping" : "Running"}
-                      </span>
-                      <Link
-                        to="/instances/$instanceId/overview"
-                        params={{ instanceId: session.instanceId }}
-                        className="text-[11px] font-bold text-app-accent no-underline hover:underline"
-                      >
-                        Open instance
-                      </Link>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-          {jobs.length > 0 ? (
-            <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
-              <div className="grid grid-cols-[minmax(0,1fr)_130px_150px] gap-4 border-b border-app-separator/55 px-5 py-3 text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
-                <span>Installation</span>
-                <span>State</span>
-                <span>Updated</span>
-              </div>
-              <div className="divide-y divide-app-separator/55">
-                {jobs.map((job) => (
+        <div className="mx-auto max-w-[940px] px-8 py-7">
+          <section className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
+            <div className="flex items-center justify-between border-b border-app-separator/55 px-5 py-3">
+              <span className="text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+                Active Minecraft sessions
+              </span>
+              <span className="font-mono text-[10px] text-app-muted">
+                {sessions.length} active
+              </span>
+            </div>
+            <div className="divide-y divide-app-separator/55">
+              {sessions.map((session) => {
+                const instance = instancesQuery.data?.find(
+                  (candidate) => candidate.id === session.instanceId,
+                );
+                return (
                   <div
-                    key={job.id}
+                    key={session.id}
                     className="grid min-h-16 grid-cols-[minmax(0,1fr)_130px_150px] items-center gap-4 px-5 py-3"
                   >
                     <span className="min-w-0">
                       <strong className="block overflow-hidden text-xs font-bold text-ellipsis whitespace-nowrap">
-                        {job.message}
+                        {instance?.name ?? "Minecraft instance"}
                       </strong>
                       <small className="mt-1 block font-mono text-[10px] text-app-muted">
-                        {job.phase} · {job.id.slice(0, 8)}
+                        Monitored by slate
                       </small>
-                      {job.state === "running" || job.state === "queued" ? (
-                        <InstallProgressIndicator job={job} className="mt-2" />
-                      ) : null}
                     </span>
                     <span className="inline-flex items-center gap-2 text-xs text-app-secondary">
-                      <span
-                        className={`size-2 rounded-full ${
-                          job.state === "succeeded"
-                            ? "bg-app-accent"
-                            : job.state === "failed"
-                              ? "bg-app-danger"
-                              : "bg-app-warning"
-                        }`}
-                      />
-                      {job.state[0].toUpperCase() + job.state.slice(1)}
+                      <span className="size-2 rounded-full bg-app-warning" />
+                      {session.state === "stopping" ? "Stopping" : "Running"}
                     </span>
-                    <time className="text-[11px] text-app-secondary">
-                      {new Date(job.updatedAt).toLocaleString()}
-                    </time>
+                    <Link
+                      to="/instances/$instanceId/overview"
+                      params={{ instanceId: session.instanceId }}
+                      className="text-[11px] font-bold text-app-accent no-underline hover:underline"
+                    >
+                      Open instance
+                    </Link>
                   </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
+                );
+              })}
+            </div>
+          </section>
         </div>
       )}
     </div>
@@ -255,8 +291,8 @@ export function AccountsPage() {
     <div className="min-h-full bg-app-bg">
       <PageHeader
         eyebrow="Accounts"
-        title="Minecraft identity"
-        description="Microsoft credentials stay in your operating-system vault. slate stores only account metadata."
+        title="Minecraft accounts"
+        description="Connect the Microsoft accounts you use to play Minecraft."
         actions={
           <button
             type="button"
@@ -326,7 +362,7 @@ export function AccountsPage() {
           <InlineNotice tone="danger" title="Could not start sign-in">
             {userFacingError(
               startMutation.error,
-              "Confirm that the operating-system credential vault and default browser are available.",
+              "Check that your default browser opens, then try again.",
             )}
           </InlineNotice>
         ) : null}
@@ -360,8 +396,7 @@ export function AccountsPage() {
           ) : accountsQuery.isError ? (
             <div className="p-5">
               <InlineNotice tone="danger" title="Accounts unavailable">
-                Your credentials were not changed. Reload this page to retry
-                local storage.
+                Nothing was changed. Reload this page and try again.
               </InlineNotice>
             </div>
           ) : accounts.length === 0 ? (
@@ -373,8 +408,8 @@ export function AccountsPage() {
                 Connect Minecraft to play
               </h2>
               <p className="mx-auto mt-0 mb-0 max-w-[480px] text-xs/[19px] text-app-secondary">
-                Sign in through Microsoft, then slate verifies Java Edition
-                ownership and saves the refresh credential in your system vault.
+                Sign in through Microsoft to add a Minecraft: Java Edition
+                account.
               </p>
             </div>
           ) : (
@@ -439,7 +474,7 @@ export function AccountsPage() {
                   {confirmRemove === account.id ? (
                     <div className="mt-3 flex items-center justify-end gap-2 border-t border-app-separator/45 pt-3">
                       <span className="mr-auto text-[11px] text-app-secondary">
-                        Remove the local account and its saved vault credential?
+                        Remove this account from slate?
                       </span>
                       <button
                         type="button"
@@ -464,11 +499,6 @@ export function AccountsPage() {
           )}
         </section>
 
-        <p className="mt-4 flex items-center gap-2 text-[11px] text-app-muted">
-          <ExternalLink size={14} aria-hidden="true" />
-          Microsoft credentials never enter the webview or slate’s SQLite
-          database.
-        </p>
       </div>
     </div>
   );
@@ -480,13 +510,13 @@ export function ServersPage() {
       <PageHeader
         eyebrow="Servers"
         title="Saved servers"
-        description="Favorites will stay local and link to a compatible instance before joining."
+        description="Keep favorite servers here and choose which instance to use when joining."
         actions={
           <button
             type="button"
             className="inline-flex h-9 items-center gap-2 rounded-control bg-app-raised px-4 text-xs font-bold text-app-muted opacity-60"
             disabled
-            title="Saved-server persistence and validation are not implemented yet."
+            title="Saving servers is not available yet."
           >
             <Plus size={16} aria-hidden="true" />
             Add server
@@ -495,9 +525,9 @@ export function ServersPage() {
       />
       {bridgeMode === "preview" ? (
         <div className="px-8 py-7">
-          <InlineNotice title="Fixture-only server rows">
-            These entries demonstrate layout in browser preview. They are never
-            returned by the native adapter.
+          <InlineNotice title="Preview-only server rows">
+            These sample entries appear only in the browser preview and cannot
+            be joined.
           </InlineNotice>
           <div className="mt-5 overflow-hidden rounded-control border border-app-separator/70">
             {previewServers.map((server) => (
@@ -526,7 +556,7 @@ export function ServersPage() {
       ) : (
         <EmptyState
           title="No saved servers"
-          description="The native saved-server repository is not implemented, so slate will not show sample entries here."
+          description="Saving and joining servers is not available yet."
         />
       )}
     </div>
@@ -538,33 +568,29 @@ export function HelpPage() {
     <div className="min-h-full bg-app-bg">
       <PageHeader
         eyebrow="Help"
-        title="About this build"
-        description="slate 0.1.0 foundation preview"
+        title="Launcher support"
+        description="Quick guidance for installs, running games, and recovery."
       />
       <div className="mx-auto grid max-w-[900px] grid-cols-2 gap-5 px-8 py-8">
         <InfoBlock
           icon={Boxes}
-          title="Current boundary"
-          description="Local instances, durable installation, managed Java runtimes, Minecraft account authentication, and supervised launch are connected."
+          title="Instances"
+          description="Create, install, customize, repair, duplicate, import, export, and restore your Minecraft instances from the Library."
         />
         <InfoBlock
           icon={ShieldX}
-          title="Next integrations"
-          description="Individual mod management, saved-server joining, cloud sync, and the in-game companion remain outside this build. Modpack discovery and verified installation are connected."
+          title="Installation help"
+          description="If an install stops, open Downloads to see its current step, then retry or repair the instance."
         />
         <InfoBlock
           icon={Activity}
-          title="Data adapter"
-          description={
-            bridgeMode === "native"
-              ? "This window is connected to native Tauri commands and SQLite."
-              : "This browser preview is using clearly labeled fixture data."
-          }
+          title="Running games"
+          description="Open Activity to find a running game, return to its instance, or force-close it when Minecraft will not exit."
         />
         <InfoBlock
           icon={CircleHelp}
-          title="Recovery posture"
-          description="Instance removal is soft-trash only. Managed files are preserved by this implementation."
+          title="Recovery"
+          description="Removed instances stay in Storage until you restore them or confirm permanent deletion. Snapshots provide additional restore points."
         />
       </div>
     </div>
@@ -590,15 +616,5 @@ function InfoBlock({
 }
 
 function userFacingError(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "userMessage" in error &&
-    typeof error.userMessage === "string" &&
-    error.userMessage.trim()
-  ) {
-    return error.userMessage;
-  }
-  return fallback;
+  return getUserFacingError(error, fallback);
 }

@@ -161,7 +161,7 @@ export function InstanceFileContent({
         tone: "positive",
         title: "Pack restore queued",
         message:
-          "slate will restore pack-managed defaults and leave personal additions in place.",
+          "slate will restore files included with the modpack and leave files you added in place.",
       });
     },
     onError: (error) =>
@@ -249,7 +249,7 @@ export function InstanceFileContent({
                     <td className="px-3 py-3 text-app-secondary">{file.worldName ?? "Instance"}</td>
                     <td className="px-3 py-3">
                       <span className={`rounded-full border px-2 py-1 font-mono text-[9px] ${file.origin === "modpack" ? "border-app-accent/35 text-app-accent" : "border-app-separator text-app-secondary"}`}>
-                        {file.origin === "modpack" ? "Pack-managed" : "Personal"}
+                        {file.origin === "modpack" ? "Included with pack" : "Added by you"}
                       </span>
                     </td>
                     <td className="px-3 py-3 font-mono text-[10px] text-app-secondary">{file.fileSize ? formatContentFileSize(file.fileSize) : "Folder"}</td>
@@ -473,7 +473,7 @@ export function InstalledModRow({
               disabled={disabled || !item.provider || !item.projectId}
               onClick={onPin}
               aria-label={`${item.pinned ? "Unpin" : "Pin"} ${item.displayName}`}
-              title={item.provider ? (item.pinned ? "Allow compatible updates" : "Keep this exact version") : "Local files cannot be version pinned"}
+              title={item.provider ? (item.pinned ? "Allow compatible updates" : "Keep this version") : "Updates are not available for this file"}
             >
               {pendingAction === "pin" ? <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" /> : item.pinned ? <PinOff size={14} /> : <Pin size={14} />}
             </button>
@@ -607,7 +607,7 @@ export function ModTableSortHeader({
 function modOriginLabel(origin: InstanceMod["origin"]) {
   if (origin === "modpack") return "From modpack";
   if (origin === "added") return "Added in slate";
-  return "Unmanaged file";
+  return "Local file";
 }
 
 export function ContentSelect({

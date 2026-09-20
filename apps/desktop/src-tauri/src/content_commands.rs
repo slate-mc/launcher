@@ -89,13 +89,13 @@ pub(super) async fn instance_mods_list(
         .map_err(|_| {
             AppError::new(
                 "local.mod_inventory_failed",
-                "slate could not inspect the instance mod directory.",
+                "slate could not load the installed mods for this instance.",
             )
         })?
         .map_err(|_| {
             AppError::new(
                 "local.mod_inventory_failed",
-                "slate could not inspect the instance mod directory.",
+                "slate could not load the installed mods for this instance.",
             )
         })?;
     let mut stored_by_path = stored_mods
@@ -494,7 +494,7 @@ pub(super) async fn instance_mod_set_pinned(
             .ok_or_else(|| {
                 AppError::new(
                     "mod.unmanaged_pin",
-                    "Only provider-resolved mods can be pinned to a version.",
+                    "Updates are not available for this mod file.",
                 )
             })?;
     let instance_id = InstanceId::from_uuid(request.instance_id);

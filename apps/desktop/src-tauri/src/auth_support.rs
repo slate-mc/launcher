@@ -32,16 +32,17 @@ pub(super) async fn refresh_minecraft_session(
 ) -> Result<MinecraftSession, AppError> {
     let vault = state.credential_vault.clone();
     let credential_ref_owned = credential_ref.to_owned();
-    let refresh_token =
-        tauri::async_runtime::spawn_blocking(move || vault.load(&credential_ref_owned))
-            .await
-            .map_err(|_| auth_state_error())?
-            .map_err(|_| {
-                AppError::new(
-                    "auth.credential_unavailable",
-                    "The saved Microsoft credential is unavailable. Sign in again to continue.",
-                )
-            })?;
+    let refresh_token = tauri::async_runtime::spawn_blocking(move || {
+        vault.load(&credential_ref_owned)
+    })
+    .await
+    .map_err(|_| auth_state_error())?
+    .map_err(|_| {
+        AppError::new(
+            "auth.credential_unavailable",
+            "Your saved Microsoft sign-in is no longer available. Sign in again to continue.",
+        )
+    })?;
     let refreshed = match state.auth_client.refresh_session(&refresh_token).await {
         Ok(refreshed) => refreshed,
         Err(error) => {
@@ -73,7 +74,7 @@ pub(super) async fn refresh_minecraft_session(
             .map_err(|_| {
                 AppError::new(
                     "auth.credential_update_failed",
-                    "Microsoft refreshed the account, but slate could not safely update its saved credential.",
+                    "slate could not save the refreshed account. Sign in again to continue.",
                 )
             })?;
     }
@@ -109,7 +110,7 @@ pub(super) fn account_summary(record: AccountRecord) -> MinecraftAccountSummary 
 pub(super) fn auth_state_error() -> AppError {
     AppError::new(
         "auth.local_state_unavailable",
-        "slate could not access the local sign-in state. Restart slate and try again.",
+        "That sign-in could not be resumed. Restart slate and try again.",
     )
 }
 
@@ -175,7 +176,7 @@ pub(super) fn auth_error_message(error: &AuthError) -> String {
             format!("Microsoft rejected the authentication request ({code}).")
         }
         AuthError::RefreshTokenMissing => {
-            "Microsoft completed sign-in but did not issue an offline refresh credential. Remove slate from your Microsoft app permissions, then sign in again."
+            "Microsoft did not finish preparing the account for slate. Remove slate from your Microsoft app permissions, then sign in again."
                 .to_owned()
         }
         AuthError::XboxIdentityMissing => {

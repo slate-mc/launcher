@@ -22,6 +22,8 @@ import {
   setInstanceModPinned,
 } from "../../lib/bridge";
 import { loaderLabel } from "../../lib/format";
+import { installJobMessage } from "../../lib/installJobPresentation";
+import { UserFacingError } from "../../lib/userFacingError";
 import type {
   InstanceContentKind,
   InstanceMod,
@@ -126,10 +128,10 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
   const installMutation = useMutation({
     mutationFn: (items: ModpackSummary[]) => {
       if (items.length === 0) {
-        throw new Error("Select at least one mod to install.");
+        throw new UserFacingError("Select at least one mod to install.");
       }
       if (items.some((item) => item.provider === "ftb")) {
-        throw new Error("FTB does not provide individual mod downloads.");
+        throw new UserFacingError("FTB does not provide individual mod downloads.");
       }
       return installMods({
         instanceId: instance.id,
@@ -282,7 +284,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
             installJob.state === "succeeded"
               ? "Mods installed"
               : "Mod installation stopped",
-          message: installJob.message,
+          message: installJobMessage(installJob),
         }
       : undefined;
   const visibleNotice = completionNotice ?? notice;
@@ -430,7 +432,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                   Installing content
                 </p>
                 <p className="mt-1 mb-0 text-[11px] text-app-secondary">
-                  {installJob.message}
+                  {installJobMessage(installJob)}
                 </p>
               </div>
               <LoaderCircle
@@ -455,7 +457,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                   />
                   <div>
                     <p className="m-0 text-xs font-bold text-app-text">
-                      Compatibility locked to this instance
+                      Showing compatible mods
                     </p>
                     <p className="mt-1 mb-0 font-mono text-[10px] text-app-secondary">
                       Minecraft {instance.minecraftVersion} ·{" "}
@@ -612,7 +614,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
             ) : (
               <EmptyState
                 title="No compatible mods found"
-                description="Try a different search. slate only returns files matching this instance’s exact Minecraft version and loader."
+                description="Try a different search. Results must support this instance’s Minecraft version and loader."
               />
             )}
 
@@ -721,7 +723,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                       className="animate-spin motion-reduce:animate-none"
                       aria-hidden="true"
                     />
-                    Matching providers
+                    Checking installed mods
                   </span>
                 ) : (
                   `${visibleInstalled.length} shown · ${enabledModCount} enabled · ${installed.length} total`

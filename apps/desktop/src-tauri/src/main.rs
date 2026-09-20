@@ -419,7 +419,7 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         } else {
             CapabilitySummary::unavailable(
                 "minecraft.account",
-                "The operating-system credential vault is unavailable.",
+                "Secure account storage needs attention.",
             )
         },
     ])
@@ -506,7 +506,7 @@ fn map_storage_error(error: StorageError, fallback: &'static str) -> AppError {
 fn metadata_error() -> AppError {
     AppError::new(
         "metadata.catalog_unavailable",
-        "slate could not refresh the official version catalog.",
+        "slate could not load the latest Minecraft versions.",
     )
     .retryable(true)
 }
@@ -561,7 +561,7 @@ fn game_session_summary(process: ActiveProcess) -> GameSessionSummary {
 fn process_state_error(_: slate_process::ProcessError) -> AppError {
     AppError::new(
         "local.process_state_unavailable",
-        "slate could not read the current Minecraft process state.",
+        "slate could not check whether Minecraft is already running.",
     )
     .retryable(true)
 }

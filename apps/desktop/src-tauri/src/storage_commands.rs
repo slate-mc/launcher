@@ -91,7 +91,7 @@ pub(super) async fn storage_clear_category(
     if active_install && request.category != StorageCategoryDto::RemovedContent {
         return Err(AppError::new(
             "local.storage_busy",
-            "Wait for active installations to finish before clearing managed storage.",
+            "Wait for active installations to finish before clearing these files.",
         ));
     }
     let active_processes = state.processes.active().map_err(process_state_error)?;
@@ -115,13 +115,13 @@ pub(super) async fn storage_clear_category(
     {
         return Err(AppError::new(
             "validation.managed_storage_confirmation",
-            "Confirm that affected instances will require repair before clearing managed files.",
+            "Confirm that affected instances will need repair before clearing these files.",
         ));
     }
     if request.category == StorageCategoryDto::Instances {
         return Err(AppError::new(
             "validation.storage_category",
-            "Installed instances are managed from the library or trash.",
+            "Remove installed instances from the Library or permanently delete them from trash.",
         ));
     }
     if matches!(

@@ -30,6 +30,7 @@ import {
   listModpackVersions,
   searchModpacks,
 } from "../../lib/bridge";
+import { getUserFacingError } from "../../lib/userFacingError";
 import type {
   ContentLoader,
   ModpackSummary,
@@ -100,7 +101,7 @@ export function DiscoverPage() {
       <PageHeader
         eyebrow="Discover"
         title="Find your next modpack"
-        description="Search CurseForge, Modrinth, and FTB through slate’s normalized content service. Provider formats and credentials stay outside the launcher."
+        description="Search modpacks from CurseForge, Modrinth, and FTB, then install the version you want."
       />
       <main className="px-8 py-7">
         <form
@@ -180,7 +181,7 @@ export function DiscoverPage() {
         <div className="mt-5 flex items-center justify-between border-b border-app-separator/55 pb-3">
           <p className="m-0 text-xs text-app-secondary">
             {searchQuery.isPending
-              ? "Loading provider catalogs"
+              ? "Loading modpacks"
               : `${searchQuery.data?.items.length ?? 0} results on page ${page}`}
           </p>
           <FilterSelect
@@ -442,9 +443,6 @@ export function ModpackDetailPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <ProviderBadge provider={project.provider} />
-              <span className="font-mono text-[10px] text-app-muted">
-                {project.id}
-              </span>
             </div>
             <h1 className="mt-2 mb-0 text-[30px]/[36px] font-bold tracking-[-.035em]">
               {project.name}
@@ -612,9 +610,9 @@ export function ModpackDetailPage() {
           )}
           {deferredIntegrityFiles > 0 ? (
             <p className="mt-3 mb-0 text-[10px]/[16px] text-app-muted">
-              {deferredIntegrityFiles} provider file
-              {deferredIntegrityFiles === 1 ? "" : "s"} will be sized and
-              verified when installation starts.
+              {deferredIntegrityFiles} file
+              {deferredIntegrityFiles === 1 ? "" : "s"} will be checked when
+              installation starts.
             </p>
           ) : null}
           {effectiveVersionId ? (
@@ -688,7 +686,7 @@ export function ModpackDetailPage() {
               >
                 {!installable
                   ? `${loaderLabel(version.loader.type)} support is not available in slate yet.`
-                  : "The provider did not resolve an exact loader version, so slate will not guess one."}
+                  : "This release does not include a compatible loader version."}
               </InlineNotice>
             </div>
           ) : null}
@@ -743,8 +741,8 @@ export function ModpackDetailPage() {
                   className="mt-px shrink-0 text-app-accent"
                   aria-hidden="true"
                 />
-                Files are staged, hashed, and applied transactionally. The API
-                is re-queried on retry.
+                Every file is verified before it is added. Retrying checks for
+                the latest available download details.
               </p>
             </>
           ) : null}
@@ -935,13 +933,8 @@ function formatShortDate(value: string) {
 }
 
 function errorMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  if (
-    typeof error === "object" &&
-    error &&
-    "message" in error &&
-    typeof error.message === "string"
-  )
-    return error.message;
-  return "The content service did not complete the request. Try again shortly.";
+  return getUserFacingError(
+    error,
+    "slate could not load that content. Check your connection and try again.",
+  );
 }

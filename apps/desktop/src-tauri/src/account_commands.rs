@@ -31,7 +31,7 @@ pub(super) async fn auth_start(
     state.credential_vault.check_available().map_err(|_| {
         AppError::new(
             "auth.credential_vault_unavailable",
-            "The operating-system credential vault is unavailable. Unlock or configure it before signing in.",
+            "slate could not securely save sign-in details. Restart your computer and try again.",
         )
     })?;
     let (start, pending) = state
@@ -93,8 +93,7 @@ pub(super) async fn auth_start(
         if !matches!(stored, Ok(Ok(()))) {
             task_state.auth_flows.fail(
                 flow_id,
-                "Minecraft was verified, but the refresh credential could not be saved in the operating-system vault."
-                    .to_owned(),
+                "Minecraft was verified, but slate could not save the account securely.".to_owned(),
             );
             return;
         }
@@ -117,7 +116,7 @@ pub(super) async fn auth_start(
                     .await;
                 task_state.auth_flows.fail(
                     flow_id,
-                    "Minecraft was verified, but slate could not save the local account record."
+                    "Minecraft was verified, but slate could not finish adding the account."
                         .to_owned(),
                 );
             }
@@ -183,7 +182,7 @@ pub(super) async fn account_remove(
         .map_err(|_| {
             AppError::new(
                 "auth.credential_cleanup_failed",
-                "The account was removed from slate, but its operating-system credential could not be deleted.",
+                "The account was removed from slate, but some saved sign-in data could not be deleted.",
             )
         })
 }

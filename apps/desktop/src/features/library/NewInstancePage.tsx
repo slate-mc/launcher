@@ -139,7 +139,7 @@ export function NewInstancePage() {
       <PageHeader
         eyebrow="New instance"
         title="Build a clean setup"
-        description="Configure the profile now. Downloading, installation, and launching remain separate unavailable steps."
+        description="Choose the Minecraft version, mod loader, and memory for this instance."
         actions={
           <Link
             to="/library"
@@ -155,7 +155,7 @@ export function NewInstancePage() {
         <ol className="m-0 list-none p-0" aria-label="Instance creation progress">
           {[
             [1, "Experience"],
-            [2, "Version and runtime"],
+            [2, "Game version"],
             [3, "Review"],
           ].map(([value, label]) => (
             <li
@@ -287,19 +287,19 @@ function ExperienceStep({
     {
       id: "vanilla" as const,
       title: "Vanilla",
-      description: "The unmodified Minecraft client with an isolated game directory.",
+      description: "Minecraft without a mod loader.",
       icon: Box,
     },
     {
       id: "modded" as const,
       title: "Modded",
-      description: "A Fabric or NeoForge setup prepared for managed content.",
+      description: "Use Fabric or NeoForge for mods and modpacks.",
       icon: Layers3,
     },
     {
       id: "pvp" as const,
       title: "PvP",
-      description: "A focused profile with independent controls and performance settings.",
+      description: "A separate setup for multiplayer controls and performance settings.",
       icon: Shield,
     },
   ];
@@ -373,11 +373,10 @@ function ConfigurationStep(props: {
         Step 2 of 3
       </p>
       <h2 className="mt-2 mb-1 text-xl font-bold tracking-[-.025em]">
-        Set the exact versions
+        Choose your game version
       </h2>
       <p className="mt-0 mb-5 text-xs text-app-secondary">
-        Releases come from Mojang. Loader choices are narrowed to versions published for the
-        selected Minecraft release.
+        Choose Minecraft first, then pick one of the compatible loader versions.
       </p>
 
       <div className="grid grid-cols-2 gap-5">
@@ -411,7 +410,7 @@ function ConfigurationStep(props: {
               className="mt-2 border-0 bg-transparent p-0 text-[11px] font-bold text-app-danger underline underline-offset-2"
               onClick={props.onRetryVersions}
             >
-              Version catalog unavailable. Retry
+              Minecraft versions unavailable. Retry
             </button>
           ) : null}
         </div>
@@ -510,7 +509,7 @@ function ReviewStep(props: {
         Review the profile
       </h2>
       <p className="mt-0 mb-5 text-xs text-app-secondary">
-        Creation writes the durable configuration and managed directory only.
+        slate creates the instance and its folders. Downloads begin only when you choose Install.
       </p>
       <dl className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-control border border-app-separator bg-app-bg p-5">
         <ReviewValue label="Name" value={props.name} />
@@ -522,12 +521,10 @@ function ReviewStep(props: {
           mono
         />
         <ReviewValue label="Memory" value={`${props.memoryMb} MB`} mono />
-        <ReviewValue label="Management" value="Local" />
       </dl>
       <div className="mt-5">
-        <InlineNotice tone="warning" title="Configured, not installed">
-          No Minecraft files will be downloaded and no game process can start in this build.
-          The resulting instance will remain in the Configured state.
+        <InlineNotice title="Ready to create">
+          Create the instance now, then install its game files from the overview.
         </InlineNotice>
       </div>
     </>

@@ -9,7 +9,7 @@ pub(super) async fn instances_list(
         .list_instances(250)
         .await
         .map(|records| records.into_iter().map(instance_summary).collect())
-        .map_err(|error| map_storage_error(error, "slate could not load your local instances."))
+        .map_err(|error| map_storage_error(error, "slate could not load your instances."))
 }
 
 #[tauri::command]
@@ -68,7 +68,7 @@ pub(super) async fn instance_create(
             .await;
         return Err(AppError::new(
             "local.instance_directory_unavailable",
-            "slate could not create the managed instance directory. The incomplete record was moved to trash.",
+            "slate could not finish creating the instance. The incomplete instance was moved to trash.",
         ));
     }
 

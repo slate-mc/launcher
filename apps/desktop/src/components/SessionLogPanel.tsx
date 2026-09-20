@@ -74,7 +74,7 @@ export function SessionLogPanel({
         if (!disposed) {
           setStatus("error");
           setStatusMessage(
-            "The live log connection ended before slate could attach to it.",
+            "Live game output is unavailable. Reopen the instance and try again.",
           );
         }
       });
@@ -112,7 +112,7 @@ export function SessionLogPanel({
               Game output
             </h2>
             <p className="mt-0.5 mb-0 overflow-hidden font-mono text-[10px] text-app-muted text-ellipsis whitespace-nowrap">
-              {session.logName} · PID {session.pid}
+              Live Minecraft output
             </p>
           </div>
           <span

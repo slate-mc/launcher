@@ -75,7 +75,7 @@ pub(super) async fn preflight_get(
         .map_err(|_| {
             AppError::new(
                 "local.java_probe_unavailable",
-                "slate could not inspect the local Java runtime.",
+                "slate could not check the installed Java version.",
             )
             .retryable(true)
         })?;
