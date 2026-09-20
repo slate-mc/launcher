@@ -18,7 +18,9 @@ mod launch_commands;
 mod launch_support;
 mod local_content_import;
 mod mapping;
+mod mod_install_commands;
 mod mod_install_support;
+mod modpack_install_commands;
 mod onboarding_commands;
 mod portable_instance;
 mod server_commands;
@@ -64,7 +66,9 @@ use local_content_import::{
     ensure_local_content_not_installed, import_local_content, validate_local_content_source,
 };
 use mapping::*;
+use mod_install_commands::*;
 use mod_install_support::*;
+use modpack_install_commands::*;
 use onboarding_commands::*;
 use portable_instance::*;
 use serde::{Deserialize, Serialize};
