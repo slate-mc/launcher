@@ -42,7 +42,7 @@ use slate_minecraft::{
     RuleContext,
 };
 use slate_modpack_api_contracts::{
-    Architecture as ModpackArchitecture, InstallPlan, InstallPlanRequest, LoaderKind,
+    Architecture as ModpackArchitecture, Hashes, InstallPlan, InstallPlanRequest, LoaderKind,
     ModInstallPlanRequest, ModProjectReference, Modpack, ModpackVersion, PackFileType,
     Platform as ModpackPlatform, ProviderReference, ProvidersResponse, ResolveModsRequest,
     SearchResponse, VersionPage,
@@ -1648,7 +1648,7 @@ async fn instance_mod_install(
     let (loader, loader_version) = instance_mod_target(&instance)?;
     let mut merged_plan: Option<InstallPlan> = None;
     let mut pending_by_identity = BTreeMap::<String, NewInstanceMod>::new();
-    let mut planned_destinations = BTreeMap::<String, String>::new();
+    let mut planned_destinations = BTreeMap::<String, PlannedModDestination>::new();
     for selection in &request.mods {
         let root_identity = format!("{}:{}", selection.provider, selection.project_id.trim());
         if installed.identities.contains(&root_identity) {
@@ -1704,26 +1704,6 @@ async fn instance_mod_install(
                 }
                 continue;
             }
-            let normalized_destination = normalized_content_path(&download.destination);
-            if installed.paths.contains(&normalized_destination) {
-                return Err(AppError::new(
-                    "mod.file_conflict",
-                    format!(
-                        "{} conflicts with an existing mod file named {}.",
-                        selection.display_name, download.destination
-                    ),
-                ));
-            }
-            if let Some(existing_id) = planned_destinations.get(&normalized_destination) {
-                if existing_id == &download.id {
-                    continue;
-                }
-                return Err(AppError::new(
-                    "mod.file_conflict",
-                    "Two selected mods resolve to different files with the same name.",
-                ));
-            }
-            planned_destinations.insert(normalized_destination, download.id.clone());
             let display_name = if dependency_identity == root_identity {
                 selection.display_name.trim().to_owned()
             } else {
@@ -1737,6 +1717,52 @@ async fn instance_mod_install(
                     .unwrap_or(file_name)
                     .to_owned()
             };
+            let normalized_destination = normalized_content_path(&download.destination);
+            if installed.paths.contains(&normalized_destination) {
+                return Err(AppError::new(
+                    "mod.file_conflict",
+                    format!(
+                        "{} conflicts with an existing mod file named {}.",
+                        selection.display_name, download.destination
+                    ),
+                ));
+            }
+            if let Some(existing) = planned_destinations.get(&normalized_destination) {
+                if !same_mod_artifact(
+                    existing.size,
+                    &existing.hashes,
+                    download.size,
+                    &download.hashes,
+                ) {
+                    return Err(AppError::new(
+                        "mod.file_conflict",
+                        format!(
+                            "{} and {} resolve to different files named {}. Deselect one and try again.",
+                            existing.requested_name, selection.display_name, download.destination
+                        ),
+                    ));
+                }
+                pending_by_identity.insert(
+                    dependency_identity,
+                    NewInstanceMod {
+                        provider,
+                        project_id,
+                        version_id,
+                        display_name,
+                        file_path: download.destination,
+                        hashes: download.hashes,
+                    },
+                );
+                continue;
+            }
+            planned_destinations.insert(
+                normalized_destination,
+                PlannedModDestination {
+                    size: download.size,
+                    hashes: download.hashes.clone(),
+                    requested_name: selection.display_name.trim().to_owned(),
+                },
+            );
             pending_by_identity.insert(
                 dependency_identity,
                 NewInstanceMod {
@@ -1790,6 +1816,33 @@ async fn instance_mod_install(
 struct InstalledModIndex {
     identities: HashSet<String>,
     paths: HashSet<String>,
+}
+
+struct PlannedModDestination {
+    size: u64,
+    hashes: Hashes,
+    requested_name: String,
+}
+
+fn same_mod_artifact(left_size: u64, left: &Hashes, right_size: u64, right: &Hashes) -> bool {
+    if left_size != right_size {
+        return false;
+    }
+    let comparisons = [
+        (left.sha512.as_deref(), right.sha512.as_deref()),
+        (left.sha256.as_deref(), right.sha256.as_deref()),
+        (left.sha1.as_deref(), right.sha1.as_deref()),
+    ];
+    let mut matched = false;
+    for (left, right) in comparisons {
+        if let (Some(left), Some(right)) = (left, right) {
+            if !left.eq_ignore_ascii_case(right) {
+                return false;
+            }
+            matched = true;
+        }
+    }
+    matched
 }
 
 async fn installed_mod_index(
@@ -3149,8 +3202,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_mod_download_id;
-    use slate_modpack_api_contracts::Provider;
+    use super::{parse_mod_download_id, same_mod_artifact};
+    use slate_modpack_api_contracts::{Hashes, Provider};
 
     #[test]
     fn mod_install_plan_ids_preserve_dependency_identity() {
@@ -3172,5 +3225,31 @@ mod tests {
         );
         assert_eq!(parse_mod_download_id("ftb:1:2"), None);
         assert_eq!(parse_mod_download_id("modrinth:missing-version"), None);
+    }
+
+    #[test]
+    fn equivalent_cross_provider_files_share_one_download() {
+        let modrinth = Hashes {
+            sha512: Some("a".repeat(128)),
+            sha256: None,
+            sha1: Some("b".repeat(40)),
+        };
+        let curseforge = Hashes {
+            sha512: None,
+            sha256: None,
+            sha1: Some("b".repeat(40)),
+        };
+        assert!(same_mod_artifact(42, &modrinth, 42, &curseforge));
+        assert!(!same_mod_artifact(42, &modrinth, 43, &curseforge));
+        assert!(!same_mod_artifact(
+            42,
+            &modrinth,
+            42,
+            &Hashes {
+                sha512: None,
+                sha256: None,
+                sha1: Some("c".repeat(40)),
+            }
+        ));
     }
 }

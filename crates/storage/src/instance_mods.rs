@@ -92,10 +92,13 @@ impl Database {
         {
             sqlx::query(
                 "UPDATE instance_mods SET enabled = ?, file_path = ? \
-                 WHERE instance_id = ? AND provider = ? AND project_id = ? AND file_path = ?",
+                 WHERE instance_id = ? AND file_path = ? AND EXISTS(SELECT 1 FROM instance_mods \
+                 WHERE instance_id = ? AND provider = ? AND project_id = ? AND file_path = ?)",
             )
             .bind(i64::from(change.enabled))
             .bind(change.updated_file_path)
+            .bind(instance_id.to_string())
+            .bind(change.target.file_path)
             .bind(instance_id.to_string())
             .bind(provider.as_str())
             .bind(project_id)
@@ -129,9 +132,12 @@ impl Database {
             .await?;
         if let (Some(provider), Some(project_id)) = (target.provider, target.project_id) {
             sqlx::query(
-                "DELETE FROM instance_mods WHERE instance_id = ? AND provider = ? \
-                 AND project_id = ? AND file_path = ?",
+                "DELETE FROM instance_mods WHERE instance_id = ? AND file_path = ? \
+                 AND EXISTS(SELECT 1 FROM instance_mods WHERE instance_id = ? AND provider = ? \
+                 AND project_id = ? AND file_path = ?)",
             )
+            .bind(instance_id.to_string())
+            .bind(target.file_path)
             .bind(instance_id.to_string())
             .bind(provider.as_str())
             .bind(project_id)
@@ -304,23 +310,37 @@ mod tests {
                     },
                     message: "Installed".to_owned(),
                 },
-                vec![NewInstanceMod {
-                    provider: Provider::Modrinth,
-                    project_id: "AANobbMI".to_owned(),
-                    version_id: "version".to_owned(),
-                    display_name: "Sodium".to_owned(),
-                    file_path: "mods/sodium.jar".to_owned(),
-                    hashes: Hashes {
-                        sha512: None,
-                        sha256: Some("a".repeat(64)),
-                        sha1: None,
+                vec![
+                    NewInstanceMod {
+                        provider: Provider::Modrinth,
+                        project_id: "AANobbMI".to_owned(),
+                        version_id: "version".to_owned(),
+                        display_name: "Sodium".to_owned(),
+                        file_path: "mods/sodium.jar".to_owned(),
+                        hashes: Hashes {
+                            sha512: None,
+                            sha256: Some("a".repeat(64)),
+                            sha1: None,
+                        },
                     },
-                }],
+                    NewInstanceMod {
+                        provider: Provider::CurseForge,
+                        project_id: "394468".to_owned(),
+                        version_id: "file".to_owned(),
+                        display_name: "Sodium".to_owned(),
+                        file_path: "mods/sodium.jar".to_owned(),
+                        hashes: Hashes {
+                            sha512: None,
+                            sha256: Some("a".repeat(64)),
+                            sha1: None,
+                        },
+                    },
+                ],
             )
             .await?;
 
         let mods = database.list_instance_mods(instance.id).await?;
-        assert_eq!(mods.len(), 1);
+        assert_eq!(mods.len(), 2);
         assert_eq!(mods[0].display_name, "Sodium");
 
         let installed = database.get_instance(instance.id).await?;
@@ -340,8 +360,12 @@ mod tests {
             )
             .await?;
         let disabled = database.list_instance_mods(instance.id).await?;
-        assert!(!disabled[0].enabled);
-        assert_eq!(disabled[0].file_path, "mods/sodium.jar.disabled");
+        assert!(disabled.iter().all(|record| !record.enabled));
+        assert!(
+            disabled
+                .iter()
+                .all(|record| record.file_path == "mods/sodium.jar.disabled")
+        );
 
         let revised = database.get_instance(instance.id).await?;
         assert_eq!(revised.revision, installed.revision + 1);
