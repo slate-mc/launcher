@@ -55,6 +55,7 @@ pub struct InstallOutcome {
     pub runtime: ManagedJavaRuntime,
     pub downloaded_artifacts: usize,
     pub reused_artifacts: usize,
+    pub installed_content_files: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -338,6 +339,7 @@ where
         InstallPhase::Commit,
         "Finalizing the installed revision",
     ));
+    let installed_content_files = content_artifacts.len();
     let installed_manifest = InstalledRevisionManifest {
         schema_version: 2,
         instance_id: request.instance_id,
@@ -363,6 +365,7 @@ where
         runtime,
         downloaded_artifacts: summary.downloaded,
         reused_artifacts: summary.reused,
+        installed_content_files,
     })
 }
 

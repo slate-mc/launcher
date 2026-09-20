@@ -1029,10 +1029,19 @@ async fn queue_instance_install(
                     executable_ref: outcome.runtime.executable.to_string_lossy().into_owned(),
                     source_digest: outcome.runtime.package_sha256,
                 };
-                let message = format!(
-                    "Installed and verified {} files; reused {} cached files",
-                    outcome.downloaded_artifacts, outcome.reused_artifacts
-                );
+                let message = if outcome.installed_content_files > 0 {
+                    format!(
+                        "Ready with {} verified pack files; downloaded {} game files and reused {} cached files",
+                        outcome.installed_content_files,
+                        outcome.downloaded_artifacts,
+                        outcome.reused_artifacts
+                    )
+                } else {
+                    format!(
+                        "Installed and verified {} files; reused {} cached files",
+                        outcome.downloaded_artifacts, outcome.reused_artifacts
+                    )
+                };
                 let completion = if let Some(installed_mod) = pending_mod {
                     task_state
                         .database

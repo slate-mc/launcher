@@ -126,7 +126,16 @@ where
         .try_collect::<BTreeMap<_, _>>()
         .await?;
 
-    for action in &plan.extract {
+    let extract_total = plan.extract.len();
+    for (index, action) in plan.extract.iter().enumerate() {
+        on_progress(
+            total,
+            total,
+            format!(
+                "Extracting pack overrides · {} of {extract_total} archives",
+                index + 1
+            ),
+        );
         let archive = staged_downloads
             .get(&action.download_id)
             .ok_or_else(|| ContentInstallError::UnknownArchive(action.download_id.clone()))?
@@ -143,6 +152,11 @@ where
         .await??;
     }
 
+    on_progress(
+        total,
+        total,
+        "Applying verified content to the instance".to_owned(),
+    );
     let staging_for_commit = staging.clone();
     let game_for_commit = game_directory.to_path_buf();
     let backup_for_commit = backup.clone();
@@ -157,6 +171,7 @@ where
     })
     .await??;
 
+    on_progress(total, total, "Indexing installed pack content".to_owned());
     let storage_root = storage_root.to_path_buf();
     let artifacts = tokio::task::spawn_blocking(move || {
         let mut artifacts = Vec::with_capacity(installed_paths.len());
@@ -171,6 +186,11 @@ where
         Ok::<_, ContentInstallError>(artifacts)
     })
     .await??;
+    on_progress(
+        total,
+        total,
+        format!("Installed and indexed {} pack files", artifacts.len()),
+    );
     remove_managed_path(&staging).await?;
     remove_managed_path(&backup).await?;
     Ok(artifacts)
