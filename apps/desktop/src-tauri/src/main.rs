@@ -27,6 +27,8 @@ mod settings_commands;
 mod storage_commands;
 mod storage_management;
 mod storage_support;
+mod support_commands;
+mod support_report;
 mod validation;
 
 use account_commands::*;
@@ -72,35 +74,36 @@ use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, ApplyModpackUpdateRequest, AuthCancelRequest,
     AuthFlowStateDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary,
     CheckModpackUpdateRequest, ClearStorageCategoryRequest, CreateInstanceRequest,
-    CreateInstanceSnapshotRequest, CreateSavedServerRequest, DeleteInstanceSnapshotRequest,
-    DeleteTrashedInstanceRequest, DuplicateInstanceRequest, EmptyInstanceTrashRequest,
-    ExportInstanceRequest, GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
-    GetInstanceGameOptionsRequest, ImportInstanceRequest, InstallInstanceRequest,
-    InstallJobStateDto, InstallJobSummary, InstallModRequest, InstallModpackRequest,
-    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceContentFileSummary,
-    InstanceContentFilesRequest, InstanceContentKindDto, InstanceDirectoryKindDto,
-    InstanceGameOptionsSummary, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
-    InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
-    InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, JavaRuntimeSummary,
-    JavaSelectionModeDto, LaunchInstanceRequest, LauncherBehaviorDto, LoaderKindDto,
-    LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto, MinecraftAccountStatusDto,
-    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
-    MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
-    ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackUpdateSummary,
-    ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
-    OnboardingStateSummary, OpenInstanceDirectoryRequest, PerformancePresetDto, PingServerRequest,
-    PreflightSummary, ProcessPriorityDto, ReduceMotionPreferenceDto,
-    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
-    RenameInstanceRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
-    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
-    ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
-    SetDefaultAccountRequest, SetFavoriteRequest, SetInstanceContentFileEnabledRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
-    StopGameSessionRequest, StorageCategoryDto, StorageCategorySummary, StorageCleanupResult,
-    StorageOverview, SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
-    TrashedInstanceSummary, UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest,
-    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest,
-    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    CreateInstanceSnapshotRequest, CreateSavedServerRequest, CreateSupportReportRequest,
+    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
+    EmptyInstanceTrashRequest, ExportInstanceRequest, GameSessionStateDto, GameSessionSummary,
+    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
+    InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, InstallModRequest,
+    InstallModpackRequest, InstanceArtworkAsset, InstanceArtworkKindDto,
+    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
+    InstanceDirectoryKindDto, InstanceGameOptionsSummary, InstanceModOriginDto,
+    InstanceModResolution, InstanceModSummary, InstanceModeDto, InstanceModsRequest,
+    InstanceSettingsSummary, InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary,
+    InstanceWindowModeDto, JavaRuntimeSummary, JavaSelectionModeDto, LaunchInstanceRequest,
+    LauncherBehaviorDto, LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto,
+    MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
+    MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
+    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
+    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
+    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
+    PerformancePresetDto, PingServerRequest, PreflightSummary, ProcessPriorityDto,
+    ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
+    RemoveSavedServerRequest, RenameInstanceRequest, RestoreInstanceSnapshotRequest,
+    RestoreTrashedInstanceRequest, SavedServerSummary, SelectInstanceArtworkRequest,
+    SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto,
+    SessionLogSubscription, SetDefaultAccountRequest, SetFavoriteRequest,
+    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
+    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    StorageCategoryDto, StorageCategorySummary, StorageCleanupResult, StorageOverview,
+    SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview, ThemePreferenceDto,
+    TrashInstanceRequest, TrashedInstanceSummary, UnsubscribeSessionLogRequest,
+    UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, LoaderFamily, ManagementMode,
@@ -153,6 +156,7 @@ use storage_management::{
     stage_instance_deletion,
 };
 use storage_support::*;
+use support_commands::*;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -708,6 +712,8 @@ fn main() {
             onboarding_get,
             onboarding_select_storage,
             onboarding_complete,
+            support_report_preview_get,
+            support_report_export,
             modpack_providers,
             modpacks_search,
             mods_search,

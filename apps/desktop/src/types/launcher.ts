@@ -18,6 +18,17 @@ export const onboardingStateSchema = z.object({
   customStorageSelected: z.boolean(),
 });
 
+export const supportReportPreviewSchema = z.object({
+  diagnosticFileCount: z.number().int().nonnegative(),
+  diagnosticBytes: z.number().int().nonnegative(),
+});
+
+export const supportReportExportSchema = z.object({
+  reportId: z.string().uuid(),
+  fileName: z.string().min(1),
+  bytes: z.number().int().nonnegative(),
+});
+
 export const loaderKindSchema = z.enum(["vanilla", "fabric", "neoForge"]);
 export const instanceModeSchema = z.enum(["vanilla", "modded", "pvp"]);
 export const setupStateSchema = z.enum([
@@ -611,6 +622,8 @@ export const instanceModResolutionListSchema = z.array(
 
 export type Bootstrap = z.infer<typeof bootstrapSchema>;
 export type OnboardingState = z.infer<typeof onboardingStateSchema>;
+export type SupportReportPreview = z.infer<typeof supportReportPreviewSchema>;
+export type SupportReportExport = z.infer<typeof supportReportExportSchema>;
 export type LauncherInstance = z.infer<typeof instanceSummarySchema>;
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 export type InstanceArtworkKind = "icon" | "banner";

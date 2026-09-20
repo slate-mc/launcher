@@ -5,7 +5,7 @@ use tracing_appender::non_blocking::{NonBlockingBuilder, WorkerGuard};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::util::SubscriberInitExt;
 
-const LOG_PREFIX: &str = "slate-desktop.jsonl";
+pub(super) const LOG_PREFIX: &str = "slate-desktop.jsonl";
 const MAX_LOG_FILES: usize = 15;
 const MAX_LOG_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_LOG_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);

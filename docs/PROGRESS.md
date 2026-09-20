@@ -38,6 +38,9 @@ Last updated: September 20, 2026
 - Structured desktop/API tracing with request correlation, install and session lifecycle events,
   daily JSON launcher diagnostics, a bounded non-blocking event buffer, and automatic age/count/size
   retention.
+- User-reviewed support reports can package selected launcher diagnostics, installation activity,
+  and anonymous compatibility details into a local archive. The exporter removes credentials,
+  player identity, and absolute paths and never includes worlds, screenshots, or Minecraft chat.
 - First-run onboarding guides new players through Minecraft account connection, storage choice,
   managed Java readiness, and first-instance creation. Existing libraries bypass it automatically,
   and a chosen storage location becomes the default for future instances.
@@ -50,10 +53,10 @@ Last updated: September 20, 2026
 Verified on Windows on September 20, 2026:
 
 - Frontend lint passes with zero warnings.
-- 12 Vitest/Testing Library tests pass.
+- 13 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes. It still reports a large initial JavaScript chunk.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 118 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 120 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -73,9 +76,10 @@ Verified on Windows on September 20, 2026:
 6. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-7. **Operational readiness:** structured local tracing is active. Crash reporting, privacy-aware
-   product analytics, remote feature controls, hosted backend telemetry, offline delivery, and the
-   in-app support-report pipeline still need production implementations.
+7. **Operational readiness:** structured local tracing and local support-report export are active.
+   Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
+   telemetry, offline delivery, and private support-report submission still need production
+   implementations.
 
 ## Observability, rollout, and support plan
 
@@ -86,9 +90,9 @@ Verified on Windows on September 20, 2026:
 | Product analytics | PostHog | Instrument onboarding, installation, content management, and launch funnels with explicit privacy controls and no secrets or raw diagnostic payloads. |
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
 | Backend observability | OpenTelemetry to Grafana Cloud | Export API traces, latency, dependency failures, logs, and resource metrics with production sampling and retention policies. |
-| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs and a bounded non-blocking writer are implemented. Add a durable offline delivery queue and the user review/export surface. |
+| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, and sanitized user-reviewed report export are implemented. Add a durable offline delivery queue. |
 | Updates | Tauri updater plus the slate release API | Ship signed launcher updates, controlled channels and rollouts, rollback protection, and clear recovery behavior. |
-| Support reports | In-app report flow plus private object storage | Let users review and submit sanitized diagnostics, upload them securely, and receive a report ID without exposing storage details. |
+| Support reports | In-app report flow plus private object storage | Local review/export and report IDs are implemented. Add authenticated short-lived uploads to private object storage without exposing storage details. |
 
 ## Quality and documentation gaps
 
@@ -99,8 +103,8 @@ Verified on Windows on September 20, 2026:
   visual behavior; complete keyboard and screen-reader testing.
 - Add localization/message catalogs before user-facing copy grows further.
 - Add virtualization for very large mod, activity, and log views.
-- Finish rule-based diagnostics and repair explanations, then connect them to the bounded local
-  diagnostics and support-report pipeline above.
+- Finish rule-based diagnostics and repair explanations, then include their sanitized results in
+  the support-report pipeline above.
 - Required specification documents still missing: `ROUTES.md`, `GAME_PROTOCOL.md`, `MANIFESTS.md`,
   `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `PRIVACY.md`, `COMPATIBILITY.md`, `RELEASING.md`, and
   `OPERATIONS.md`. Existing architecture, IPC, testing, security, and dependency docs also need a
@@ -117,6 +121,5 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add the user-reviewed support-report export path over the diagnostics foundation, then add native
-clean-install smoke coverage so release claims are evidence-based rather than inferred from unit
-tests.
+Add native clean-install smoke coverage so release claims are evidence-based rather than inferred
+from unit tests, then connect private support-report submission and production observability.

@@ -16,6 +16,7 @@ mod onboarding;
 mod schema;
 mod server;
 mod settings;
+mod support;
 mod system;
 
 pub use bootstrap::{BootstrapResponse, CapabilitySummary};
@@ -66,6 +67,7 @@ pub use server::{
 pub use settings::{
     AppPreferencesDto, ReduceMotionPreferenceDto, ThemePreferenceDto, UpdateAppPreferencesRequest,
 };
+pub use support::{CreateSupportReportRequest, SupportReportExport, SupportReportPreview};
 pub use system::{
     ClearStorageCategoryRequest, DeleteTrashedInstanceRequest, EmptyInstanceTrashRequest,
     JavaRuntimeSummary, PreflightSummary, RestoreTrashedInstanceRequest, StorageCategoryDto,

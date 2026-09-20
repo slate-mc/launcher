@@ -2,25 +2,25 @@ use crate::{
     AppError, AppPreferencesDto, ApplyModpackUpdateRequest, AuthFlowStatus, AuthStartResponse,
     BootstrapResponse, CheckModpackUpdateRequest, ClearStorageCategoryRequest,
     CreateInstanceRequest, CreateInstanceSnapshotRequest, CreateSavedServerRequest,
-    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
-    EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest, GameSessionSummary,
-    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
-    InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
-    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceGameOptionsSummary,
-    InstanceModResolution, InstanceModSummary, InstanceModsRequest, InstanceSnapshotSummary,
-    InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
-    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModSearchRequest,
-    ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackUpdateSummary,
-    ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
-    OnboardingStateSummary, OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary,
-    RedactedLaunchPlan, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
-    RemoveSavedServerRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
-    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
-    ServerStatusSummary, SessionLogEvent, SessionLogSubscription,
+    CreateSupportReportRequest, DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest,
+    DuplicateInstanceRequest, EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest,
+    GameSessionSummary, GetInstanceArtworkRequest, GetInstanceGameOptionsRequest,
+    ImportInstanceRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
+    InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
+    InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary, InstanceModsRequest,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
+    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
+    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
+    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
+    PingServerRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
+    RemoveInstanceModRequest, RemoveSavedServerRequest, RestoreInstanceSnapshotRequest,
+    RestoreTrashedInstanceRequest, SavedServerSummary, SelectInstanceArtworkRequest,
+    SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent, SessionLogSubscription,
     SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
-    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
-    UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
+    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
     UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
@@ -118,6 +118,12 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             "onboarding-state-summary",
             schema_for!(OnboardingStateSummary),
         ),
+        ("support-report-preview", schema_for!(SupportReportPreview)),
+        (
+            "create-support-report-request",
+            schema_for!(CreateSupportReportRequest),
+        ),
+        ("support-report-export", schema_for!(SupportReportExport)),
         ("preflight-summary", schema_for!(PreflightSummary)),
         ("storage-overview", schema_for!(StorageOverview)),
         (
@@ -305,7 +311,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 82);
+        assert_eq!(schemas.len(), 85);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

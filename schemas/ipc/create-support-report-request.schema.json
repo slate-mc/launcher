@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CreateSupportReportRequest",
+  "type": "object",
+  "properties": {
+    "includeInstallActivity": {
+      "type": "boolean"
+    },
+    "includeInstanceSummary": {
+      "type": "boolean"
+    },
+    "includeLauncherLogs": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "includeLauncherLogs",
+    "includeInstallActivity",
+    "includeInstanceSummary"
+  ]
+}

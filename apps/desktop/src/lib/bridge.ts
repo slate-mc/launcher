@@ -23,6 +23,8 @@ import {
   onboardingStateSchema,
   preferencesSchema,
   preflightSchema,
+  supportReportExportSchema,
+  supportReportPreviewSchema,
   defaultInstanceSettings,
   type AppPreferences,
   type Bootstrap,
@@ -49,6 +51,8 @@ import {
   type InstanceGameOptions,
   type InstanceSnapshot,
   type Preflight,
+  type SupportReportExport,
+  type SupportReportPreview,
 } from "../types/launcher";
 
 import {
@@ -269,6 +273,26 @@ export async function completeOnboarding(): Promise<OnboardingState> {
   }
   requirePreview();
   return { completed: true, customStorageSelected: false };
+}
+
+export async function getSupportReportPreview(): Promise<SupportReportPreview> {
+  if (bridgeMode === "native") {
+    return supportReportPreviewSchema.parse(
+      await invoke("support_report_preview_get"),
+    );
+  }
+  return { diagnosticFileCount: 0, diagnosticBytes: 0 };
+}
+
+export async function exportSupportReport(input: {
+  includeLauncherLogs: boolean;
+  includeInstallActivity: boolean;
+  includeInstanceSummary: boolean;
+}): Promise<SupportReportExport | undefined> {
+  requireNativeContent();
+  const result = await invoke("support_report_export", { request: input });
+  if (result === null) return undefined;
+  return supportReportExportSchema.parse(result);
 }
 
 export async function listInstances(): Promise<LauncherInstance[]> {

@@ -38,6 +38,7 @@ import {
   startMinecraftAuth,
 } from "../../lib/bridge";
 import { getUserFacingError } from "../../lib/userFacingError";
+import { SupportReportPanel } from "./SupportReportPanel";
 
 export function DownloadsPage() {
   const jobsQuery = useQuery({
@@ -55,7 +56,10 @@ export function DownloadsPage() {
         description="Track base-game, loader, modpack, and mod installation work."
       />
       {jobsQuery.isPending ? (
-        <div className="mx-auto grid max-w-[940px] gap-3 px-8 py-7" aria-label="Loading downloads">
+        <div
+          className="mx-auto grid max-w-[940px] gap-3 px-8 py-7"
+          aria-label="Loading downloads"
+        >
           <div className="h-20 animate-pulse rounded-control bg-app-surface" />
           <div className="h-20 animate-pulse rounded-control bg-app-surface" />
         </div>
@@ -140,7 +144,10 @@ export function ActivityPage() {
         description="See the Minecraft games currently running through slate."
       />
       {sessionsQuery.isPending ? (
-        <div className="mx-auto max-w-[940px] px-8 py-7" aria-label="Loading game activity">
+        <div
+          className="mx-auto max-w-[940px] px-8 py-7"
+          aria-label="Loading game activity"
+        >
           <div className="h-20 animate-pulse rounded-control bg-app-surface" />
         </div>
       ) : sessionsQuery.isError || instancesQuery.isError ? (
@@ -496,7 +503,6 @@ export function AccountsPage() {
             </div>
           )}
         </section>
-
       </div>
     </div>
   );
@@ -531,6 +537,7 @@ export function HelpPage() {
           title="Recovery"
           description="Removed instances stay in Storage until you restore them or confirm permanent deletion. Snapshots provide additional restore points."
         />
+        <SupportReportPanel />
       </div>
     </div>
   );
