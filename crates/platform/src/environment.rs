@@ -54,7 +54,7 @@ const fn allowed_variable_names() -> &'static [&'static str] {
         "LOCALAPPDATA",
         "NUMBER_OF_PROCESSORS",
         "OS",
-        "Path",
+        "PATH",
         "PATHEXT",
         "PROCESSOR_ARCHITECTURE",
         "PROCESSOR_IDENTIFIER",
