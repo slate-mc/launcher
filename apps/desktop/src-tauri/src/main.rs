@@ -2,7 +2,9 @@
 
 mod instance_content;
 
-use instance_content::{InstanceModFile, scan_instance_mods};
+use instance_content::{
+    FileMove, InstanceModFile, scan_instance_mods, set_instance_mod_enabled, trash_instance_mod,
+};
 use slate_auth::{
     AuthError, CredentialVault, MICROSOFT_CONSUMER_TENANT, MinecraftAuthClient,
     MinecraftAuthConfig, MinecraftSession, SLATE_MICROSOFT_CLIENT_ID,
@@ -18,11 +20,11 @@ use slate_contracts::{
     MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
     MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
     ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackVersionRequest,
-    ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto, RenameInstanceRequest,
-    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest,
-    SetFavoriteRequest, StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto,
-    TrashInstanceRequest, UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest,
-    UpdateInstanceConfigurationRequest,
+    ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto, RemoveInstanceModRequest,
+    RenameInstanceRequest, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
+    SetDefaultAccountRequest, SetFavoriteRequest, SetInstanceModEnabledRequest,
+    StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
+    UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, LoaderFamily, ManagementMode,
@@ -53,8 +55,9 @@ use slate_process::{
 };
 use slate_storage::{
     AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, CompletedInstall, Database,
-    InstallJobRecord, InstalledRuntime, InstanceModRecord, InstanceRecord, JobState, NewInstance,
-    NewInstanceMod, NewModpackSource, ReduceMotionPreference, StorageError, ThemePreference,
+    InstallJobRecord, InstalledRuntime, InstanceModEnabledChange, InstanceModRecord,
+    InstanceModTarget, InstanceRecord, JobState, NewInstance, NewInstanceMod, NewModpackSource,
+    ReduceMotionPreference, StorageError, ThemePreference,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
@@ -511,6 +514,183 @@ async fn instance_mods_resolve(
             }
         })
         .collect())
+}
+
+#[tauri::command]
+async fn instance_mod_set_enabled(
+    state: tauri::State<'_, DesktopState>,
+    request: SetInstanceModEnabledRequest,
+) -> Result<InstanceSummary, AppError> {
+    let reference =
+        validate_instance_mod_reference(request.provider, request.project_id.as_deref())?;
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    prepare_instance_content_change(state.inner(), instance_id, request.expected_revision).await?;
+    let paths = state.paths.clone();
+    let file_path = request.file_path.clone();
+    let enabled = request.enabled;
+    let file_move = tokio::task::spawn_blocking(move || {
+        set_instance_mod_enabled(&paths, instance_id, &file_path, enabled)
+    })
+    .await
+    .map_err(|_| content_file_error())?
+    .map_err(|_| content_file_error())?;
+    let updated_file_path = file_move
+        .updated_file_path
+        .as_deref()
+        .ok_or_else(content_file_error)?;
+    let database_result = state
+        .database
+        .set_instance_mod_enabled(
+            instance_id,
+            request.expected_revision,
+            InstanceModEnabledChange {
+                target: InstanceModTarget {
+                    provider: reference.map(|(provider, _)| provider),
+                    project_id: reference.map(|(_, project_id)| project_id),
+                    file_path: &request.file_path,
+                },
+                updated_file_path,
+                enabled: request.enabled,
+            },
+        )
+        .await;
+    finish_instance_content_change(
+        state.inner(),
+        instance_id,
+        file_move,
+        database_result,
+        "slate could not update that mod.",
+    )
+    .await
+}
+
+#[tauri::command]
+async fn instance_mod_remove(
+    state: tauri::State<'_, DesktopState>,
+    request: RemoveInstanceModRequest,
+) -> Result<InstanceSummary, AppError> {
+    let reference =
+        validate_instance_mod_reference(request.provider, request.project_id.as_deref())?;
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    prepare_instance_content_change(state.inner(), instance_id, request.expected_revision).await?;
+    let paths = state.paths.clone();
+    let file_path = request.file_path.clone();
+    let file_move =
+        tokio::task::spawn_blocking(move || trash_instance_mod(&paths, instance_id, &file_path))
+            .await
+            .map_err(|_| content_file_error())?
+            .map_err(|_| content_file_error())?;
+    let database_result = state
+        .database
+        .remove_instance_mod(
+            instance_id,
+            request.expected_revision,
+            InstanceModTarget {
+                provider: reference.map(|(provider, _)| provider),
+                project_id: reference.map(|(_, project_id)| project_id),
+                file_path: &request.file_path,
+            },
+        )
+        .await;
+    finish_instance_content_change(
+        state.inner(),
+        instance_id,
+        file_move,
+        database_result,
+        "slate could not remove that mod.",
+    )
+    .await
+}
+
+fn validate_instance_mod_reference(
+    provider: Option<slate_modpack_api_contracts::Provider>,
+    project_id: Option<&str>,
+) -> Result<Option<(slate_modpack_api_contracts::Provider, &str)>, AppError> {
+    match (provider, project_id) {
+        (None, None) => Ok(None),
+        (Some(provider), Some(project_id))
+            if provider != slate_modpack_api_contracts::Provider::Ftb
+                && !project_id.is_empty()
+                && project_id.len() <= 128
+                && project_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')) =>
+        {
+            Ok(Some((provider, project_id)))
+        }
+        _ => Err(AppError::new(
+            "mod.invalid_reference",
+            "The installed mod reference is invalid.",
+        )),
+    }
+}
+
+async fn prepare_instance_content_change(
+    state: &DesktopState,
+    instance_id: InstanceId,
+    expected_revision: u64,
+) -> Result<(), AppError> {
+    refresh_exited_sessions(state).await;
+    if state
+        .processes
+        .active_for_instance(instance_id)
+        .map_err(process_state_error)?
+        .is_some()
+    {
+        return Err(AppError::new(
+            "local.instance_running",
+            "Stop Minecraft before changing this instance's content.",
+        ));
+    }
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    if instance.revision != expected_revision {
+        return Err(AppError::new(
+            "local.instance_changed",
+            "That instance changed in another view. Reload it and try again.",
+        ));
+    }
+    Ok(())
+}
+
+async fn finish_instance_content_change(
+    state: &DesktopState,
+    instance_id: InstanceId,
+    file_move: FileMove,
+    database_result: Result<(), StorageError>,
+    fallback: &'static str,
+) -> Result<InstanceSummary, AppError> {
+    if let Err(error) = database_result {
+        let rollback = tokio::task::spawn_blocking(move || file_move.rollback()).await;
+        if !matches!(rollback, Ok(Ok(()))) {
+            return Err(AppError::new(
+                "local.content_rollback_failed",
+                "slate could not restore the mod after the change failed. The instance needs attention.",
+            ));
+        }
+        return Err(map_storage_error(error, fallback));
+    }
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map(instance_summary)
+        .map_err(|error| {
+            map_storage_error(
+                error,
+                "slate changed the mod but could not refresh the instance.",
+            )
+        })
+}
+
+fn content_file_error() -> AppError {
+    AppError::new(
+        "local.mod_file_change_failed",
+        "slate could not safely change that mod file.",
+    )
 }
 
 #[tauri::command]
@@ -2364,6 +2544,10 @@ fn map_storage_error(error: StorageError, fallback: &'static str) -> AppError {
             "local.instance_changed",
             "That instance changed in another view. Reload it and try again.",
         ),
+        StorageError::InstanceBusy => AppError::new(
+            "local.instance_busy",
+            "Wait for the current installation or stop Minecraft before changing instance content.",
+        ),
         _ => AppError::new("local.storage_unavailable", fallback).retryable(true),
     }
 }
@@ -2724,6 +2908,8 @@ fn main() {
             modpack_install,
             instance_mods_list,
             instance_mods_resolve,
+            instance_mod_set_enabled,
+            instance_mod_remove,
             instance_mod_install,
         ])
         .run(tauri::generate_context!());

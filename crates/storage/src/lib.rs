@@ -14,7 +14,9 @@ pub use installations::{
     CompletedInstall, InstallJobRecord, InstalledRevisionRecord, InstalledRuntime, JobState,
     PendingInstall,
 };
-pub use instance_mods::{InstanceModRecord, NewInstanceMod};
+pub use instance_mods::{
+    InstanceModEnabledChange, InstanceModRecord, InstanceModTarget, NewInstanceMod,
+};
 pub use instances::{InstanceRecord, ModpackSourceRecord, NewInstance, NewModpackSource};
 pub use servers::{NewSavedServer, SavedServerRecord};
 pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference};

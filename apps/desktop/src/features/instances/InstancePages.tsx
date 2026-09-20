@@ -13,6 +13,7 @@ import {
   LoaderCircle,
   Plus,
   Play,
+  Power,
   RotateCcw,
   Save,
   Search,
@@ -44,8 +45,10 @@ import {
   listGameSessions,
   listInstallJobs,
   listInstanceMods,
+  removeInstanceMod,
   renameInstance,
   resolveInstanceMods,
+  setInstanceModEnabled,
   setInstanceFavorite,
   searchMods,
   trashInstance,
@@ -689,6 +692,7 @@ function Content({ instance }: { instance: LauncherInstance }) {
   >("relevance");
   const [page, setPage] = useState(1);
   const [installJobId, setInstallJobId] = useState<string>();
+  const [removeTargetPath, setRemoveTargetPath] = useState<string>();
   const [notice, setNotice] = useState<{
     tone: "positive" | "danger";
     title: string;
@@ -760,6 +764,72 @@ function Content({ instance }: { instance: LauncherInstance }) {
       setNotice({
         tone: "danger",
         title: "Mod was not queued",
+        message: contentErrorMessage(error),
+      }),
+  });
+  const refreshContentAfterMutation = async (
+    updated: LauncherInstance,
+    title: string,
+    message: string,
+  ) => {
+    queryClient.setQueryData(["instance", instance.id], updated);
+    setNotice({ tone: "positive", title, message });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["instance-mods", instance.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-mod-resolutions", instance.id],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["instances"] }),
+    ]);
+  };
+  const toggleMutation = useMutation({
+    mutationFn: ({ item, enabled }: { item: InstanceMod; enabled: boolean }) =>
+      setInstanceModEnabled({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+        filePath: item.filePath,
+        provider: item.provider ?? undefined,
+        projectId: item.projectId ?? undefined,
+        enabled,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, variables) =>
+      refreshContentAfterMutation(
+        updated,
+        variables.enabled ? "Mod enabled" : "Mod disabled",
+        `${variables.item.displayName} will ${variables.enabled ? "load" : "stay disabled"} the next time Minecraft starts.`,
+      ),
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Mod was not changed",
+        message: contentErrorMessage(error),
+      }),
+  });
+  const removeMutation = useMutation({
+    mutationFn: (item: InstanceMod) =>
+      removeInstanceMod({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+        filePath: item.filePath,
+        provider: item.provider ?? undefined,
+        projectId: item.projectId ?? undefined,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, item) => {
+      setRemoveTargetPath(undefined);
+      return refreshContentAfterMutation(
+        updated,
+        "Mod moved to trash",
+        `${item.displayName} was removed from this instance and can be recovered from slate’s trash.`,
+      );
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Mod was not removed",
         message: contentErrorMessage(error),
       }),
   });
@@ -843,6 +913,8 @@ function Content({ instance }: { instance: LauncherInstance }) {
     installMutation.isPending ||
     installJob?.state === "queued" ||
     installJob?.state === "running";
+  const contentMutationPending =
+    toggleMutation.isPending || removeMutation.isPending;
 
   return (
     <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6">
@@ -1144,7 +1216,30 @@ function Content({ instance }: { instance: LauncherInstance }) {
             {visibleInstalled.length ? (
               <div className="divide-y divide-app-separator/45 px-5">
                 {visibleInstalled.map((item) => (
-                  <InstalledModRow key={item.filePath} item={item} />
+                  <InstalledModRow
+                    key={item.filePath}
+                    item={item}
+                    disabled={installing || contentMutationPending}
+                    confirmingRemove={removeTargetPath === item.filePath}
+                    pendingAction={
+                      toggleMutation.isPending &&
+                      toggleMutation.variables?.item.filePath === item.filePath
+                        ? "toggle"
+                        : removeMutation.isPending &&
+                            removeMutation.variables?.filePath === item.filePath
+                          ? "remove"
+                          : undefined
+                    }
+                    onToggle={() =>
+                      toggleMutation.mutate({
+                        item,
+                        enabled: !item.enabled,
+                      })
+                    }
+                    onRequestRemove={() => setRemoveTargetPath(item.filePath)}
+                    onCancelRemove={() => setRemoveTargetPath(undefined)}
+                    onConfirmRemove={() => removeMutation.mutate(item)}
+                  />
                 ))}
               </div>
             ) : (
@@ -1215,7 +1310,25 @@ function ModSearchResult({
   );
 }
 
-function InstalledModRow({ item }: { item: InstanceMod }) {
+function InstalledModRow({
+  item,
+  disabled,
+  confirmingRemove,
+  pendingAction,
+  onToggle,
+  onRequestRemove,
+  onCancelRemove,
+  onConfirmRemove,
+}: {
+  item: InstanceMod;
+  disabled: boolean;
+  confirmingRemove: boolean;
+  pendingAction?: "toggle" | "remove";
+  onToggle: () => void;
+  onRequestRemove: () => void;
+  onCancelRemove: () => void;
+  onConfirmRemove: () => void;
+}) {
   const originLabel = item.provider
     ? `${modProviderName(item.provider)} · ${item.origin === "modpack" ? "Modpack" : "Added"}`
     : item.origin === "modpack"
@@ -1258,16 +1371,81 @@ function InstalledModRow({ item }: { item: InstanceMod }) {
           {item.filePath}
         </p>
       </div>
-      <div className="text-right">
-        <p className="m-0 font-mono text-[9px] text-app-secondary">
-          {item.versionId ?? formatContentFileSize(item.fileSize)}
-        </p>
-        {item.installedAt ? (
-          <p className="mt-1 mb-0 text-[10px] text-app-muted">
-            Installed {formatDate(item.installedAt)}
+      {confirmingRemove ? (
+        <div className="flex max-w-[360px] items-center justify-end gap-2">
+          <p className="m-0 text-right text-[10px]/[14px] text-app-warning">
+            Removing this mod may break dependent mods.{" "}
+            {item.origin === "modpack"
+              ? "Reinstalling the pack will restore it."
+              : "It will move to slate’s trash."}
           </p>
-        ) : null}
-      </div>
+          <button
+            type="button"
+            className="h-8 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary"
+            disabled={disabled}
+            onClick={onCancelRemove}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-danger/45 bg-app-danger/10 px-3 text-[11px] font-bold text-app-danger disabled:opacity-45"
+            disabled={disabled}
+            onClick={onConfirmRemove}
+          >
+            {pendingAction === "remove" ? (
+              <LoaderCircle
+                size={13}
+                className="animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            ) : (
+              <Trash2 size={13} aria-hidden="true" />
+            )}
+            Remove
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-end gap-3">
+          <div className="text-right">
+            <p className="m-0 font-mono text-[9px] text-app-secondary">
+              {item.versionId ?? formatContentFileSize(item.fileSize)}
+            </p>
+            {item.installedAt ? (
+              <p className="mt-1 mb-0 text-[10px] text-app-muted">
+                Installed {formatDate(item.installedAt)}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary hover:border-app-accent/45 hover:text-app-text disabled:opacity-45"
+            disabled={disabled}
+            onClick={onToggle}
+          >
+            {pendingAction === "toggle" ? (
+              <LoaderCircle
+                size={13}
+                className="animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            ) : (
+              <Power size={13} aria-hidden="true" />
+            )}
+            {item.enabled ? "Disable" : "Enable"}
+          </button>
+          <button
+            type="button"
+            className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-muted hover:border-app-danger/45 hover:text-app-danger disabled:opacity-45"
+            disabled={disabled}
+            onClick={onRequestRemove}
+            aria-label={`Remove ${item.displayName}`}
+            title="Remove mod"
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </article>
   );
 }

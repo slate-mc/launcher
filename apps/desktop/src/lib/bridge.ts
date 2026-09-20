@@ -489,6 +489,33 @@ export async function resolveInstanceMods(
   );
 }
 
+export async function setInstanceModEnabled(input: {
+  instanceId: string;
+  expectedRevision: number;
+  filePath: string;
+  provider?: Exclude<Provider, "ftb">;
+  projectId?: string;
+  enabled: boolean;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_mod_set_enabled", { request: input }),
+  );
+}
+
+export async function removeInstanceMod(input: {
+  instanceId: string;
+  expectedRevision: number;
+  filePath: string;
+  provider?: Exclude<Provider, "ftb">;
+  projectId?: string;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_mod_remove", { request: input }),
+  );
+}
+
 export async function installMod(input: {
   instanceId: string;
   expectedRevision: number;

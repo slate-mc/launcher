@@ -6,7 +6,8 @@ use crate::{
     LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
     ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
     ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary, RedactedLaunchPlan,
-    SessionLogEvent, SessionLogSubscription, StopGameSessionRequest, SubscribeSessionLogRequest,
+    RemoveInstanceModRequest, SessionLogEvent, SessionLogSubscription,
+    SetInstanceModEnabledRequest, StopGameSessionRequest, SubscribeSessionLogRequest,
     UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
 };
 use schemars::{Schema, schema_for};
@@ -107,6 +108,14 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         ("mod-search-request", schema_for!(ModSearchRequest)),
         ("install-mod-request", schema_for!(InstallModRequest)),
         ("instance-mods-request", schema_for!(InstanceModsRequest)),
+        (
+            "set-instance-mod-enabled-request",
+            schema_for!(SetInstanceModEnabledRequest),
+        ),
+        (
+            "remove-instance-mod-request",
+            schema_for!(RemoveInstanceModRequest),
+        ),
         ("instance-mod-list", schema_for!(Vec<InstanceModSummary>)),
         (
             "instance-mod-resolution-list",
@@ -144,7 +153,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 40);
+        assert_eq!(schemas.len(), 42);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

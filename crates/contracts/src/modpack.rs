@@ -95,6 +95,27 @@ pub struct InstanceModsRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SetInstanceModEnabledRequest {
+    pub instance_id: uuid::Uuid,
+    pub expected_revision: u64,
+    pub file_path: String,
+    pub provider: Option<Provider>,
+    pub project_id: Option<String>,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveInstanceModRequest {
+    pub instance_id: uuid::Uuid,
+    pub expected_revision: u64,
+    pub file_path: String,
+    pub provider: Option<Provider>,
+    pub project_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum InstanceModOriginDto {
     Added,
     Modpack,

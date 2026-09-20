@@ -115,6 +115,8 @@ pub enum StorageError {
     InstalledRevisionNotFound,
     #[error("instance revision changed; expected {expected}")]
     RevisionConflict { expected: u64 },
+    #[error("instance content cannot change while an installation is active")]
+    InstanceBusy,
     #[error("page limit must be between 1 and 1000")]
     InvalidPageLimit,
     #[error("managed relative path is invalid")]

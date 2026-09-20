@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RemoveInstanceModRequest",
+  "type": "object",
+  "properties": {
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "filePath": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "projectId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Provider"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "instanceId",
+    "expectedRevision",
+    "filePath"
+  ],
+  "$defs": {
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "curseforge",
+        "modrinth",
+        "ftb"
+      ]
+    }
+  }
+}
