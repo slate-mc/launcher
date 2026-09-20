@@ -79,7 +79,10 @@ export function HomePage() {
       accountId: string;
     }) => launchInstance(instanceId, accountId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["game-sessions"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["game-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      ]);
     },
   });
   const stopMutation = useMutation({
@@ -230,7 +233,7 @@ export function HomePage() {
               {instanceTechnicalLine(selected)}
             </p>
             <p className="mt-1 mb-0 text-[13px] text-app-secondary">
-              Last played {selected.lastPlayed ?? "not yet"}
+              Last played {formatLastPlayed(selected.lastPlayed, "not yet")}
             </p>
           </div>
         </div>
@@ -497,7 +500,7 @@ export function HomePage() {
                     : setupStateLabel(instance.setupState)}
                 </span>
                 <span className="text-xs text-app-secondary max-[1180px]:hidden">
-                  {instance.lastPlayed ?? "Never"}
+                  {formatLastPlayed(instance.lastPlayed)}
                 </span>
               </button>
             ))}
@@ -544,6 +547,31 @@ export function HomePage() {
       </div>
     </div>
   );
+}
+
+function formatLastPlayed(value?: string, empty = "Never") {
+  if (!value) return empty;
+  const playedAt = new Date(value);
+  if (Number.isNaN(playedAt.valueOf())) return value;
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - playedAt.valueOf()) / 1000),
+  );
+  if (elapsedSeconds < 60) return "Just now";
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60)
+    return `${elapsedMinutes} ${elapsedMinutes === 1 ? "minute" : "minutes"} ago`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24)
+    return `${elapsedHours} ${elapsedHours === 1 ? "hour" : "hours"} ago`;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 7)
+    return `${elapsedDays} ${elapsedDays === 1 ? "day" : "days"} ago`;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: playedAt.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+  }).format(playedAt);
 }
 
 function HomeSkeleton() {

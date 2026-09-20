@@ -2432,6 +2432,7 @@ fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
         }),
         created_at: record.created_at,
         updated_at: record.updated_at,
+        last_played: record.last_played,
     }
 }
 

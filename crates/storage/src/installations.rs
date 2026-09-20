@@ -708,9 +708,12 @@ fn parse_uuid(value: String, field: &'static str) -> Result<Uuid, StorageError> 
 
 #[cfg(test)]
 mod tests {
-    use super::JobState;
-    use crate::{Database, NewInstance};
-    use slate_domain::{InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId};
+    use super::{InstalledRuntime, JobState};
+    use crate::{AuthenticatedAccount, Database, NewInstance};
+    use slate_domain::{
+        InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId, SessionId,
+    };
+    use uuid::Uuid;
 
     #[test]
     fn job_states_match_database_values() {
@@ -807,6 +810,84 @@ mod tests {
             .ok_or("missing install job")?;
         assert_eq!(job.state, JobState::Cancelled);
         assert_eq!(job.phase, "cancelled");
+        database.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn instance_last_played_tracks_sessions_that_reached_running()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let instance = database
+            .create_instance(NewInstance {
+                name: InstanceName::parse("Played")?,
+                mode: InstanceMode::Vanilla,
+                management_mode: ManagementMode::Local,
+                root_id: root,
+                minecraft_version: "1.21.1".to_owned(),
+                loader_kind: LoaderFamily::Vanilla,
+                loader_version: None,
+                memory_mb: 4096,
+                modpack_source: None,
+            })
+            .await?;
+        let pending = database
+            .begin_instance_install(instance.id, instance.revision, RequestId::new())
+            .await?;
+        database
+            .complete_instance_install(
+                pending.job.id,
+                pending.revision_id,
+                "manifest-digest",
+                "1.21.1",
+                InstalledRuntime {
+                    vendor: "test".to_owned(),
+                    release_name: "java-21".to_owned(),
+                    java_version: "21.0.1".to_owned(),
+                    major: 21,
+                    os: "windows".to_owned(),
+                    arch: "x86_64".to_owned(),
+                    executable_ref: "C:/slate/runtimes/java.exe".to_owned(),
+                    source_digest: "runtime-digest".to_owned(),
+                },
+                "Installed",
+            )
+            .await?;
+        let account = database
+            .upsert_authenticated_account(AuthenticatedAccount {
+                profile_id: Uuid::new_v4(),
+                display_name: "Player".to_owned(),
+                credential_ref: "credential-ref".to_owned(),
+                skin_url: None,
+            })
+            .await?;
+        let session_id = SessionId::new();
+        database
+            .create_session_starting(instance.id, pending.revision_id, session_id, account.id)
+            .await?;
+
+        assert!(
+            database
+                .get_instance(instance.id)
+                .await?
+                .last_played
+                .is_none()
+        );
+
+        database.mark_session_running(session_id, 42).await?;
+
+        let played = database
+            .get_instance(instance.id)
+            .await?
+            .last_played
+            .ok_or("missing last played timestamp")?;
+        assert!(!played.is_empty());
+        assert_eq!(
+            database.list_instances(10).await?[0].last_played.as_deref(),
+            Some(played.as_str())
+        );
         database.close().await;
         Ok(())
     }

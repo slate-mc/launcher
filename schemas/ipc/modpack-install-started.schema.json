@@ -113,6 +113,12 @@
           "type": "string",
           "format": "uuid"
         },
+        "lastPlayed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "loaderKind": {
           "$ref": "#/$defs/LoaderKindDto"
         },

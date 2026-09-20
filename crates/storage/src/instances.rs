@@ -63,6 +63,7 @@ pub struct InstanceRecord {
     pub modpack_source: Option<ModpackSourceRecord>,
     pub created_at: String,
     pub updated_at: String,
+    pub last_played: Option<String>,
 }
 
 impl Database {
@@ -191,7 +192,9 @@ impl Database {
              m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
              m.version_id AS modpack_version_id, m.selected_optional_json, \
              m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url, \
-             m.banner_url AS modpack_banner_url \
+             m.banner_url AS modpack_banner_url, \
+             (SELECT MAX(s.started_at) FROM sessions s WHERE s.instance_id = i.id \
+              AND s.state IN ('running', 'exited', 'crashed', 'cancelled')) AS last_played \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.id = ? AND i.trashed_at IS NULL",
@@ -216,7 +219,9 @@ impl Database {
              m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
              m.version_id AS modpack_version_id, m.selected_optional_json, \
              m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url, \
-             m.banner_url AS modpack_banner_url \
+             m.banner_url AS modpack_banner_url, \
+             (SELECT MAX(s.started_at) FROM sessions s WHERE s.instance_id = i.id \
+              AND s.state IN ('running', 'exited', 'crashed', 'cancelled')) AS last_played \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.trashed_at IS NULL \
@@ -485,6 +490,7 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
         modpack_source,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
+        last_played: row.try_get("last_played")?,
     })
 }
 

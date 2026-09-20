@@ -275,7 +275,11 @@ function Overview({ instance }: { instance: LauncherInstance }) {
     mutationFn: ({ accountId }: { accountId: string }) =>
       launchInstance(instance.id, accountId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["game-sessions"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["game-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      ]);
     },
   });
   const stopMutation = useMutation({

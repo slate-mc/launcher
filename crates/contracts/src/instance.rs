@@ -115,6 +115,8 @@ pub struct InstanceSummary {
     pub modpack_source: Option<ModpackSourceSummary>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_played: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
