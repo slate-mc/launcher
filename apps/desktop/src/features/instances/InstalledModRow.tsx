@@ -40,6 +40,7 @@ export function InstalledModRow({
   onToggle,
   onPin,
   onUpdate,
+  onResolveRelationships,
   onRequestRemove,
   onCancelRemove,
   onConfirmRemove,
@@ -47,17 +48,21 @@ export function InstalledModRow({
   item: InstanceMod;
   disabled: boolean;
   confirmingRemove: boolean;
-  pendingAction?: "toggle" | "pin" | "update" | "remove";
+  pendingAction?: "toggle" | "pin" | "update" | "remove" | "relationships";
   instanceId: string;
   onToggle: () => void;
   onPin: () => void;
   onUpdate: (versionId: string) => void;
+  onResolveRelationships: () => Promise<void>;
   onRequestRemove: () => void;
   onCancelRemove: () => void;
   onConfirmRemove: () => void;
 }) {
   const [versionOpen, setVersionOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
+  const [relationshipsRequested, setRelationshipsRequested] = useState(
+    item.dependencies.length > 0 || item.requiredBy.length > 0,
+  );
   const [selectedVersionId, setSelectedVersionId] = useState(
     item.versionId ?? "",
   );
@@ -202,22 +207,44 @@ export function InstalledModRow({
               type="button"
               className={`inline-flex size-8 items-center justify-center rounded-control border bg-app-bg hover:border-app-accent/45 hover:text-app-accent disabled:opacity-45 ${relationshipsOpen ? "border-app-accent/40 text-app-accent" : "border-app-separator text-app-secondary"}`}
               disabled={
-                disabled ||
-                (item.dependencies.length === 0 && item.requiredBy.length === 0)
+                disabled || !item.provider || !item.projectId || !item.versionId
               }
               onClick={() => {
                 setVersionOpen(false);
-                setRelationshipsOpen((open) => !open);
+                const opening = !relationshipsOpen;
+                setRelationshipsOpen(opening);
+                if (
+                  opening &&
+                  !relationshipsRequested &&
+                  item.dependencies.length === 0 &&
+                  item.requiredBy.length === 0
+                ) {
+                  setRelationshipsRequested(true);
+                  void onResolveRelationships().catch(() =>
+                    setRelationshipsRequested(false),
+                  );
+                }
               }}
               aria-label={`Show relationships for ${item.displayName}`}
               aria-expanded={relationshipsOpen}
               title={
-                item.dependencies.length === 0 && item.requiredBy.length === 0
-                  ? "No recorded mod relationships"
-                  : "Show dependencies and dependents"
+                item.provider && item.projectId && item.versionId
+                  ? item.dependencies.length === 0 &&
+                    item.requiredBy.length === 0
+                    ? "Check dependencies"
+                    : "Show dependencies and dependents"
+                  : "Dependencies are not available for this file"
               }
             >
-              <Network size={14} aria-hidden="true" />
+              {pendingAction === "relationships" ? (
+                <LoaderCircle
+                  size={14}
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Network size={14} aria-hidden="true" />
+              )}
             </button>
             <button
               type="button"
@@ -305,6 +332,16 @@ export function InstalledModRow({
       {relationshipsOpen ? (
         <tr className="border-b border-app-separator/50 bg-app-raised/25">
           <td colSpan={7} className="px-4 py-4">
+            {pendingAction === "relationships" ? (
+              <p className="mt-0 mb-3 inline-flex items-center gap-2 text-[10px] text-app-muted">
+                <LoaderCircle
+                  size={12}
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+                Checking this mod’s dependencies…
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 gap-8 max-[840px]:grid-cols-1">
               <ModRelationshipList
                 label="Depends on"

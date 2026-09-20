@@ -8,6 +8,7 @@ import {
   instanceContentFileListSchema,
   instanceGameOptionsSchema,
   instanceModHistorySchema,
+  instanceModReferenceListSchema,
   instanceSnapshotListSchema,
   instanceSnapshotSchema,
   instanceModListSchema,
@@ -463,6 +464,19 @@ export async function listInstanceModHistory(input: {
   requireNativeContent();
   return instanceModHistorySchema.parse(
     await invoke("instance_mod_history", { request: input }),
+  );
+}
+
+export async function resolveInstanceModRelationships(input: {
+  instanceId: string;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+  versionId: string;
+  filePath: string;
+}) {
+  requireNativeContent();
+  return instanceModReferenceListSchema.parse(
+    await invoke("instance_mod_relationships_resolve", { request: input }),
   );
 }
 

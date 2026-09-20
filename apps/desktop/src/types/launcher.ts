@@ -589,6 +589,9 @@ export const instanceModReferenceSchema = z.object({
   projectId: z.string().min(1),
   displayName: z.string().min(1).nullable(),
 });
+export const instanceModReferenceListSchema = z.array(
+  instanceModReferenceSchema,
+);
 
 export const instanceModSchema = z.object({
   provider: z.enum(["curseforge", "modrinth"]).nullable(),
@@ -653,6 +656,8 @@ export const instanceModResolutionSchema = z.object({
   versionId: z.string().min(1).nullable(),
   displayName: z.string().min(1).nullable(),
   iconUrl: z.string().url().nullable(),
+  dependencies: z.array(instanceModReferenceSchema).default([]),
+  requiredBy: z.array(instanceModReferenceSchema).default([]),
 });
 
 export const instanceModResolutionListSchema = z.array(

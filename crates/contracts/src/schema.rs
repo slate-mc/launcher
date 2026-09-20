@@ -17,15 +17,15 @@ use crate::{
     MoveInstallJobRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
     OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
     RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
-    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
-    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
-    ServerStatusSummary, SessionLogEvent, SessionLogSubscription, SetInstallJobPausedRequest,
-    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
-    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
-    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
-    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
-    UpdateSavedServerRequest,
+    ResolveInstanceModRelationshipsRequest, RestoreInstanceSnapshotRequest,
+    RestoreTrashedInstanceRequest, RetryInstallJobRequest, SavedServerSummary,
+    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
+    SessionLogSubscription, SetInstallJobPausedRequest, SetInstanceContentFileEnabledRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
+    StopGameSessionRequest, StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
+    SupportReportExport, SupportReportPreview, UnsubscribeSessionLogRequest,
+    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
+    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -283,6 +283,14 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(Vec<InstanceModHistorySummary>),
         ),
         (
+            "resolve-instance-mod-relationships-request",
+            schema_for!(ResolveInstanceModRelationshipsRequest),
+        ),
+        (
+            "instance-mod-reference-list",
+            schema_for!(Vec<crate::InstanceModReferenceSummary>),
+        ),
+        (
             "update-instance-mod-request",
             schema_for!(UpdateInstanceModRequest),
         ),
@@ -364,7 +372,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 98);
+        assert_eq!(schemas.len(), 100);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

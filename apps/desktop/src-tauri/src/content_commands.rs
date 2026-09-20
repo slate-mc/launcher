@@ -218,6 +218,131 @@ pub(super) async fn instance_mod_history(
 }
 
 #[tauri::command]
+pub(super) async fn instance_mod_relationships_resolve(
+    state: tauri::State<'_, DesktopState>,
+    request: ResolveInstanceModRelationshipsRequest,
+) -> Result<Vec<InstanceModReferenceSummary>, AppError> {
+    validate_instance_mod_reference(Some(request.provider), Some(&request.project_id))?;
+    let version_id = request.version_id.trim();
+    if version_id.is_empty()
+        || version_id.len() > 128
+        || !version_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(AppError::new(
+            "mod.invalid_version",
+            "That installed mod version is invalid.",
+        ));
+    }
+    let file_path = ManagedRelativePath::parse(request.file_path.trim())
+        .map_err(|_| {
+            AppError::new(
+                "mod.invalid_reference",
+                "That installed mod has an invalid file path.",
+            )
+        })?
+        .to_string();
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let installed = installed_mod_index(state.inner(), &instance).await?;
+    let root_identity = format!("{}:{}", request.provider, request.project_id.trim());
+    let matches_installed = installed
+        .versions
+        .get(&root_identity)
+        .is_some_and(|known| known == version_id)
+        && installed.paths.get(&root_identity).is_some_and(|known| {
+            normalized_content_path(known) == normalized_content_path(&file_path)
+        });
+    if !matches_installed {
+        return Err(AppError::new(
+            "mod.not_installed",
+            "That mod is no longer installed at the selected location.",
+        ));
+    }
+
+    let (loader, loader_version) = instance_mod_target(&instance)?;
+    let plan = state
+        .modpacks
+        .mod_install_plan(
+            request.provider,
+            request.project_id.trim(),
+            &ModInstallPlanRequest {
+                minecraft_version: instance.minecraft_version.clone(),
+                loader,
+                loader_version: Some(loader_version),
+                version_id: Some(version_id.to_owned()),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)?;
+    validate_instance_mod_plan(
+        &instance,
+        request.provider,
+        request.project_id.trim(),
+        &plan,
+    )?;
+    if plan.instance.version_id != version_id {
+        return Err(AppError::new(
+            "mod.resolution_mismatch",
+            "Dependencies could not be confirmed for this mod version.",
+        ));
+    }
+
+    let mut root_found = false;
+    let mut dependencies = BTreeMap::<String, InstanceModDependency>::new();
+    for download in plan.downloads {
+        let (provider, project_id, resolved_version_id) = parse_mod_download_id(&download.id)
+            .ok_or_else(|| {
+                AppError::new(
+                    "mod.invalid_plan",
+                    "The mod service returned an invalid dependency identity.",
+                )
+            })?;
+        let identity = format!("{provider}:{project_id}");
+        if identity == root_identity {
+            root_found = resolved_version_id == version_id;
+        } else {
+            dependencies.insert(
+                identity,
+                InstanceModDependency {
+                    provider,
+                    project_id,
+                },
+            );
+        }
+    }
+    if !root_found {
+        return Err(AppError::new(
+            "mod.resolution_mismatch",
+            "Dependencies could not be confirmed for this mod version.",
+        ));
+    }
+    let dependency_set = NewInstanceModDependencySet {
+        root_provider: request.provider,
+        root_project_id: request.project_id.trim().to_owned(),
+        dependencies: dependencies.values().cloned().collect(),
+    };
+    state
+        .database
+        .replace_instance_mod_dependencies(instance_id, dependency_set)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not save mod relationships."))?;
+    Ok(dependencies
+        .into_values()
+        .map(|dependency| InstanceModReferenceSummary {
+            provider: dependency.provider,
+            project_id: dependency.project_id,
+            display_name: None,
+        })
+        .collect())
+}
+
+#[tauri::command]
 pub(super) async fn instance_mod_import(
     app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,
@@ -715,12 +840,49 @@ pub(super) async fn instance_mods_resolve(
         .into_iter()
         .map(|project| ((project.provider, project.project_id.clone()), project))
         .collect::<BTreeMap<_, _>>();
+    let relationships = state
+        .database
+        .list_instance_mod_dependencies(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load mod relationships."))?;
+    let mut dependencies_by_root = BTreeMap::<
+        (slate_modpack_api_contracts::Provider, String),
+        Vec<InstanceModReferenceSummary>,
+    >::new();
+    let mut dependents_by_dependency = BTreeMap::<
+        (slate_modpack_api_contracts::Provider, String),
+        Vec<InstanceModReferenceSummary>,
+    >::new();
+    for relationship in relationships {
+        dependencies_by_root
+            .entry((
+                relationship.root_provider,
+                relationship.root_project_id.clone(),
+            ))
+            .or_default()
+            .push(InstanceModReferenceSummary {
+                provider: relationship.dependency_provider,
+                project_id: relationship.dependency_project_id.clone(),
+                display_name: relationship.dependency_display_name,
+            });
+        dependents_by_dependency
+            .entry((
+                relationship.dependency_provider,
+                relationship.dependency_project_id,
+            ))
+            .or_default()
+            .push(InstanceModReferenceSummary {
+                provider: relationship.root_provider,
+                project_id: relationship.root_project_id,
+                display_name: relationship.root_display_name,
+            });
+    }
 
     Ok(references_by_path
         .into_iter()
         .map(|(file_path, reference)| {
-            let project =
-                resolved_by_project.get(&(reference.provider, reference.project_id.clone()));
+            let identity = (reference.provider, reference.project_id.clone());
+            let project = resolved_by_project.get(&identity);
             InstanceModResolution {
                 file_path,
                 provider: reference.provider,
@@ -728,6 +890,14 @@ pub(super) async fn instance_mods_resolve(
                 version_id: reference.version_id,
                 display_name: project.map(|project| project.name.clone()),
                 icon_url: project.and_then(|project| project.icon_url.clone()),
+                dependencies: dependencies_by_root
+                    .get(&identity)
+                    .cloned()
+                    .unwrap_or_default(),
+                required_by: dependents_by_dependency
+                    .get(&identity)
+                    .cloned()
+                    .unwrap_or_default(),
             }
         })
         .collect())

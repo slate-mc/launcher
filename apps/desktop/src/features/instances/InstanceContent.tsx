@@ -18,6 +18,7 @@ import {
   listInstallJobs,
   listInstanceMods,
   removeInstanceMod,
+  resolveInstanceModRelationships,
   resolveInstanceMods,
   searchMods,
   setInstanceModEnabled,
@@ -319,6 +320,34 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
         message: contentErrorMessage(error),
       }),
   });
+  const relationshipMutation = useMutation({
+    mutationFn: (item: InstanceMod) => {
+      if (!item.provider || !item.projectId || !item.versionId) {
+        throw new UserFacingError(
+          "Dependencies are not available for this mod file.",
+        );
+      }
+      return resolveInstanceModRelationships({
+        instanceId: instance.id,
+        provider: item.provider,
+        projectId: item.projectId,
+        versionId: item.versionId,
+        filePath: item.filePath,
+      });
+    },
+    onMutate: () => setNotice(undefined),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["instance-mod-resolutions", instance.id],
+      });
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Dependencies could not be loaded",
+        message: contentErrorMessage(error),
+      }),
+  });
 
   useEffect(() => {
     if (
@@ -367,6 +396,22 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
       resolution,
     ]),
   );
+  const resolutionsByIdentity = new Map(
+    (resolutionQuery.data ?? []).map((resolution) => [
+      `${resolution.provider}:${resolution.projectId}`,
+      resolution,
+    ]),
+  );
+  const resolveReferenceNames = (references: InstanceMod["dependencies"]) =>
+    references.map((reference) => ({
+      ...reference,
+      displayName:
+        reference.displayName ??
+        resolutionsByIdentity.get(
+          `${reference.provider}:${reference.projectId}`,
+        )?.displayName ??
+        null,
+    }));
   const installed = (installedQuery.data ?? []).map((item) => {
     const resolution = resolutionsByPath.get(normalizedModPath(item.filePath));
     return resolution
@@ -377,8 +422,14 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
           versionId: resolution.versionId ?? item.versionId,
           displayName: resolution.displayName ?? item.displayName,
           iconUrl: resolution.iconUrl ?? item.iconUrl,
+          dependencies: resolveReferenceNames(resolution.dependencies),
+          requiredBy: resolveReferenceNames(resolution.requiredBy),
         }
-      : item;
+      : {
+          ...item,
+          dependencies: resolveReferenceNames(item.dependencies),
+          requiredBy: resolveReferenceNames(item.requiredBy),
+        };
   });
   const normalizedInstalledFilter = installedFilter.trim().toLocaleLowerCase();
   const visibleInstalled = installed
@@ -419,6 +470,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
     installJob?.state === "paused";
   const contentMutationPending =
     importMutation.isPending ||
+    relationshipMutation.isPending ||
     toggleMutation.isPending ||
     pinModMutation.isPending ||
     removeMutation.isPending;
@@ -857,23 +909,32 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                           updateModMutation.variables?.item.filePath ===
                             item.filePath
                             ? "update"
-                            : toggleMutation.isPending &&
-                                toggleMutation.variables?.item.filePath ===
+                            : relationshipMutation.isPending &&
+                                relationshipMutation.variables?.filePath ===
                                   item.filePath
-                              ? "toggle"
-                              : pinModMutation.isPending &&
-                                  pinModMutation.variables?.item.filePath ===
+                              ? "relationships"
+                              : toggleMutation.isPending &&
+                                  toggleMutation.variables?.item.filePath ===
                                     item.filePath
-                                ? "pin"
-                                : removeMutation.isPending &&
-                                    removeMutation.variables?.filePath ===
+                                ? "toggle"
+                                : pinModMutation.isPending &&
+                                    pinModMutation.variables?.item.filePath ===
                                       item.filePath
-                                  ? "remove"
-                                  : undefined
+                                  ? "pin"
+                                  : removeMutation.isPending &&
+                                      removeMutation.variables?.filePath ===
+                                        item.filePath
+                                    ? "remove"
+                                    : undefined
                         }
                         instanceId={instance.id}
                         onUpdate={(versionId) =>
                           updateModMutation.mutate({ item, versionId })
+                        }
+                        onResolveRelationships={() =>
+                          relationshipMutation
+                            .mutateAsync(item)
+                            .then(() => undefined)
                         }
                         onToggle={() =>
                           toggleMutation.mutate({

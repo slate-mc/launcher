@@ -175,6 +175,49 @@ impl Database {
             .collect()
     }
 
+    pub async fn replace_instance_mod_dependencies(
+        &self,
+        instance_id: InstanceId,
+        dependency_set: NewInstanceModDependencySet,
+    ) -> Result<(), StorageError> {
+        let mut transaction = self.pool.begin().await?;
+        let instance_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM instances WHERE id = ? AND trashed_at IS NULL)",
+        )
+        .bind(instance_id.to_string())
+        .fetch_one(&mut *transaction)
+        .await?;
+        if !instance_exists {
+            transaction.rollback().await?;
+            return Err(StorageError::InstanceNotFound);
+        }
+        sqlx::query(
+            "DELETE FROM instance_mod_dependencies WHERE instance_id = ? \
+             AND root_provider = ? AND root_project_id = ?",
+        )
+        .bind(instance_id.to_string())
+        .bind(dependency_set.root_provider.as_str())
+        .bind(dependency_set.root_project_id.trim())
+        .execute(&mut *transaction)
+        .await?;
+        for dependency in dependency_set.dependencies {
+            sqlx::query(
+                "INSERT OR IGNORE INTO instance_mod_dependencies \
+                 (instance_id, root_provider, root_project_id, dependency_provider, \
+                  dependency_project_id) VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(instance_id.to_string())
+            .bind(dependency_set.root_provider.as_str())
+            .bind(dependency_set.root_project_id.trim())
+            .bind(dependency.provider.as_str())
+            .bind(dependency.project_id.trim())
+            .execute(&mut *transaction)
+            .await?;
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
     pub async fn set_instance_mod_enabled(
         &self,
         instance_id: InstanceId,
@@ -230,18 +273,6 @@ impl Database {
             .await?;
         if let (Some(provider), Some(project_id)) = (target.provider, target.project_id) {
             sqlx::query(
-                "DELETE FROM instance_mod_dependencies WHERE instance_id = ? AND \
-                 ((root_provider = ? AND root_project_id = ?) OR \
-                  (dependency_provider = ? AND dependency_project_id = ?))",
-            )
-            .bind(instance_id.to_string())
-            .bind(provider.as_str())
-            .bind(project_id)
-            .bind(provider.as_str())
-            .bind(project_id)
-            .execute(&mut *transaction)
-            .await?;
-            sqlx::query(
                 "UPDATE instance_mods SET pinned = ? WHERE instance_id = ? AND file_path = ? \
                  AND provider = ? AND project_id = ?",
             )
@@ -278,6 +309,18 @@ impl Database {
             .begin_content_mutation(instance_id, expected_revision)
             .await?;
         if let (Some(provider), Some(project_id)) = (target.provider, target.project_id) {
+            sqlx::query(
+                "DELETE FROM instance_mod_dependencies WHERE instance_id = ? AND \
+                 ((root_provider = ? AND root_project_id = ?) OR \
+                  (dependency_provider = ? AND dependency_project_id = ?))",
+            )
+            .bind(instance_id.to_string())
+            .bind(provider.as_str())
+            .bind(project_id)
+            .bind(provider.as_str())
+            .bind(project_id)
+            .execute(&mut *transaction)
+            .await?;
             sqlx::query(
                 "DELETE FROM instance_mods WHERE instance_id = ? AND file_path = ? \
                  AND EXISTS(SELECT 1 FROM instance_mods WHERE instance_id = ? AND provider = ? \
@@ -536,7 +579,27 @@ mod tests {
         );
 
         let revised = database.get_instance(instance.id).await?;
-        assert_eq!(revised.revision, installed.revision + 1);
+        database
+            .set_instance_mod_pinned(
+                instance.id,
+                revised.revision,
+                InstanceModTarget {
+                    provider: Some(Provider::Modrinth),
+                    project_id: Some("AANobbMI"),
+                    file_path: "mods/sodium.jar.disabled",
+                },
+                true,
+            )
+            .await?;
+        assert_eq!(
+            database
+                .list_instance_mod_dependencies(instance.id)
+                .await?
+                .len(),
+            1
+        );
+        let revised = database.get_instance(instance.id).await?;
+        assert_eq!(revised.revision, installed.revision + 2);
         let pending_update = database
             .begin_instance_install(instance.id, revised.revision, RequestId::new())
             .await?;
@@ -594,6 +657,26 @@ mod tests {
                 .await?
                 .is_empty()
         );
+        database
+            .replace_instance_mod_dependencies(
+                instance.id,
+                NewInstanceModDependencySet {
+                    root_provider: Provider::Modrinth,
+                    root_project_id: "AANobbMI".to_owned(),
+                    dependencies: vec![InstanceModDependency {
+                        provider: Provider::CurseForge,
+                        project_id: "394468".to_owned(),
+                    }],
+                },
+            )
+            .await?;
+        assert_eq!(
+            database
+                .list_instance_mod_dependencies(instance.id)
+                .await?
+                .len(),
+            1
+        );
 
         let updated_instance = database.get_instance(instance.id).await?;
         database
@@ -608,6 +691,12 @@ mod tests {
             )
             .await?;
         assert!(database.list_instance_mods(instance.id).await?.is_empty());
+        assert!(
+            database
+                .list_instance_mod_dependencies(instance.id)
+                .await?
+                .is_empty()
+        );
         assert_eq!(
             database.get_instance(instance.id).await?.revision,
             updated_instance.revision + 1

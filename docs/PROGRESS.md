@@ -29,7 +29,8 @@ Last updated: September 20, 2026
   localhost; production uses `https://api.slatelauncher.org`.
 - Discover-to-install modpack flow plus compatible CurseForge/Modrinth mod search inside an
   instance, multi-select installation, required dependency installation, duplicate reuse, installed
-  mod resolution, icons, enable/disable, removal, and version pinning.
+  mod resolution, icons, enable/disable, removal, version pinning, exact-version changes, recent
+  version rollback, and persisted dependency/dependent views for added and modpack-managed mods.
 - Compatible modpack update checks and transactional in-place updates with automatic snapshots,
   obsolete pack-file removal, preservation of user-added mods and atomic pack/loader version
   changes.
@@ -69,22 +70,18 @@ Verified on Windows on September 20, 2026:
 
 ## F1 release blockers
 
-1. **Content updates:** modpack and per-mod update/downgrade work end to end with verified,
-   transactional file replacement. Recent provider-backed versions can be restored from each mod's
-   version history, and new individual-mod installs record dependency/dependent relationships.
-   Existing-pack relationship backfill remains incomplete.
-2. **Import coverage:** slate portable archives and local mod JARs work, but importing
+1. **Import coverage:** slate portable archives and local mod JARs work, but importing
    CurseForge/Modrinth packs and importing from other launchers are not complete.
-3. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
+2. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
    validated local ZIP import and can be inventoried and managed after installation. Provider
    browsing, updates, and ordering remain incomplete.
-4. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
+3. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
-5. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
+4. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-6. **Operational readiness:** structured local tracing and local support-report export are active.
+5. **Operational readiness:** structured local tracing and local support-report export are active.
    Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
    telemetry, offline delivery, and private support-report submission still need production
    implementations.

@@ -149,6 +149,16 @@ pub struct InstanceModHistorySummary {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ResolveInstanceModRelationshipsRequest {
+    pub instance_id: uuid::Uuid,
+    pub provider: Provider,
+    pub project_id: String,
+    pub version_id: String,
+    pub file_path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateInstanceModRequest {
     pub instance_id: uuid::Uuid,
     pub expected_revision: u64,
@@ -241,6 +251,8 @@ pub struct InstanceModResolution {
     pub version_id: Option<String>,
     pub display_name: Option<String>,
     pub icon_url: Option<String>,
+    pub dependencies: Vec<InstanceModReferenceSummary>,
+    pub required_by: Vec<InstanceModReferenceSummary>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
