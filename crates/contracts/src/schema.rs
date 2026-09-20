@@ -9,10 +9,10 @@ use crate::{
     ImportLocalModRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
     InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
     InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary, InstanceModsRequest,
-    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
-    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
-    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest,
+    LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
+    MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
     MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
     PingServerRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
     RemoveInstanceModRequest, RemoveSavedServerRequest, RestoreInstanceSnapshotRequest,
@@ -277,6 +277,11 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(InstanceContentFilesRequest),
         ),
         (
+            "instance-worlds-request",
+            schema_for!(InstanceWorldsRequest),
+        ),
+        ("instance-world-list", schema_for!(Vec<String>)),
+        (
             "import-local-content-file-request",
             schema_for!(ImportLocalContentFileRequest),
         ),
@@ -328,7 +333,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 89);
+        assert_eq!(schemas.len(), 91);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

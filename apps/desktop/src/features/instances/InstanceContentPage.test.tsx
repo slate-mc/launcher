@@ -32,7 +32,7 @@ describe("instance content", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers local ZIP import for resource and shader packs", async () => {
+  it("offers local ZIP import and requires a world for data packs", async () => {
     render(<App />);
 
     fireEvent.click(
@@ -49,8 +49,7 @@ describe("instance content", () => {
     expect(
       await screen.findByRole("heading", { name: "Data packs" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Import ZIP" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import ZIP" })).toBeDisabled();
+    expect(screen.getByText("No worlds found")).toBeInTheDocument();
   });
 });

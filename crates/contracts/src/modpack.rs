@@ -215,9 +215,17 @@ pub struct InstanceContentFilesRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InstanceWorldsRequest {
+    pub instance_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportLocalContentFileRequest {
     pub instance_id: Uuid,
     pub kind: InstanceContentKindDto,
+    #[serde(default)]
+    pub world_name: Option<String>,
     pub expected_revision: u64,
 }
 

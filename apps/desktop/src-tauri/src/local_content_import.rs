@@ -8,10 +8,11 @@ use tempfile::NamedTempFile;
 
 const MAXIMUM_LOCAL_CONTENT_SIZE: u64 = 1024 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum LocalContentImportKind {
     Mod(LoaderFamily),
     Pack(InstanceContentKind),
+    DataPack(String),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -46,7 +47,7 @@ impl ImportedLocalFile {
 
 pub(crate) fn validate_local_content_source(
     source: &Path,
-    kind: LocalContentImportKind,
+    kind: &LocalContentImportKind,
 ) -> Result<(), LocalContentImportError> {
     let metadata = std::fs::symlink_metadata(source)?;
     if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() == 0 {
@@ -57,7 +58,7 @@ pub(crate) fn validate_local_content_source(
     }
     let expected_extension = match kind {
         LocalContentImportKind::Mod(_) => ".jar",
-        LocalContentImportKind::Pack(_) => ".zip",
+        LocalContentImportKind::Pack(_) | LocalContentImportKind::DataPack(_) => ".zip",
     };
     let file_name = source
         .file_name()
@@ -76,7 +77,7 @@ pub(crate) fn ensure_local_content_not_installed(
     paths: &AppPaths,
     instance_id: InstanceId,
     source: &Path,
-    kind: LocalContentImportKind,
+    kind: &LocalContentImportKind,
 ) -> Result<(), LocalContentImportError> {
     let file_name = source
         .file_name()
@@ -87,7 +88,7 @@ pub(crate) fn ensure_local_content_not_installed(
     if paths
         .instance(instance_id)
         .join("game")
-        .join(directory)
+        .join(&directory)
         .join(file_name)
         .try_exists()?
     {
@@ -100,7 +101,7 @@ pub(crate) fn import_local_content(
     paths: &AppPaths,
     instance_id: InstanceId,
     source: &Path,
-    kind: LocalContentImportKind,
+    kind: &LocalContentImportKind,
 ) -> Result<ImportedLocalFile, LocalContentImportError> {
     validate_local_content_source(source, kind)?;
     ensure_local_content_not_installed(paths, instance_id, source, kind)?;
@@ -113,7 +114,15 @@ pub(crate) fn import_local_content(
     ensure_existing_plain_directory(&instance_root)?;
     ensure_existing_plain_directory(&game_directory)?;
     let (directory, prefix) = destination(kind)?;
-    let content_directory = game_directory.join(directory);
+    let content_directory = game_directory.join(&directory);
+    if let LocalContentImportKind::DataPack(world_name) = kind {
+        ensure_existing_plain_directory(&game_directory.join("saves"))?;
+        let world_directory = game_directory.join("saves").join(world_name);
+        ensure_existing_plain_directory(&world_directory)?;
+        if !world_directory.join("level.dat").is_file() {
+            return Err(LocalContentImportError::InvalidArchive);
+        }
+    }
     ensure_plain_directory(&content_directory)?;
     let destination = content_directory.join(file_name);
 
@@ -146,25 +155,30 @@ pub(crate) fn import_local_content(
 }
 
 fn destination(
-    kind: LocalContentImportKind,
-) -> Result<(&'static str, &'static str), LocalContentImportError> {
+    kind: &LocalContentImportKind,
+) -> Result<(PathBuf, String), LocalContentImportError> {
     match kind {
-        LocalContentImportKind::Mod(_) => Ok(("mods", "mods")),
+        LocalContentImportKind::Mod(_) => Ok((PathBuf::from("mods"), "mods".to_owned())),
         LocalContentImportKind::Pack(InstanceContentKind::Resource) => {
-            Ok(("resourcepacks", "resourcepacks"))
+            Ok((PathBuf::from("resourcepacks"), "resourcepacks".to_owned()))
         }
         LocalContentImportKind::Pack(InstanceContentKind::Shader) => {
-            Ok(("shaderpacks", "shaderpacks"))
+            Ok((PathBuf::from("shaderpacks"), "shaderpacks".to_owned()))
         }
         LocalContentImportKind::Pack(InstanceContentKind::Data) => {
             Err(LocalContentImportError::InvalidArchive)
         }
+        LocalContentImportKind::DataPack(world_name) if safe_component(world_name) => Ok((
+            PathBuf::from("saves").join(world_name).join("datapacks"),
+            format!("saves/{world_name}/datapacks"),
+        )),
+        LocalContentImportKind::DataPack(_) => Err(LocalContentImportError::InvalidArchive),
     }
 }
 
 fn validate_archive(
     path: &Path,
-    kind: LocalContentImportKind,
+    kind: &LocalContentImportKind,
 ) -> Result<(), LocalContentImportError> {
     let file = File::open(path)?;
     let mut archive =
@@ -181,6 +195,7 @@ fn validate_archive(
         LocalContentImportKind::Pack(InstanceContentKind::Resource) => {
             archive.by_name("pack.mcmeta").is_ok()
         }
+        LocalContentImportKind::DataPack(_) => archive.by_name("pack.mcmeta").is_ok(),
         LocalContentImportKind::Pack(InstanceContentKind::Shader) => archive
             .file_names()
             .any(|name| name == "shaders/" || name.starts_with("shaders/")),
@@ -267,7 +282,7 @@ mod tests {
             &paths,
             instance_id,
             &source,
-            LocalContentImportKind::Mod(LoaderFamily::Fabric),
+            &LocalContentImportKind::Mod(LoaderFamily::Fabric),
         )?;
 
         assert_eq!(imported.file_path, "mods/sodium.jar");
@@ -289,7 +304,7 @@ mod tests {
                 &paths,
                 instance_id,
                 &source,
-                LocalContentImportKind::Mod(LoaderFamily::NeoForge),
+                &LocalContentImportKind::Mod(LoaderFamily::NeoForge),
             ),
             Err(LocalContentImportError::WrongLoader)
         ));
@@ -297,14 +312,14 @@ mod tests {
             &paths,
             instance_id,
             &source,
-            LocalContentImportKind::Mod(LoaderFamily::Fabric),
+            &LocalContentImportKind::Mod(LoaderFamily::Fabric),
         )?;
         assert!(matches!(
             import_local_content(
                 &paths,
                 instance_id,
                 &source,
-                LocalContentImportKind::Mod(LoaderFamily::Fabric),
+                &LocalContentImportKind::Mod(LoaderFamily::Fabric),
             ),
             Err(LocalContentImportError::AlreadyInstalled)
         ));
@@ -323,17 +338,43 @@ mod tests {
             &paths,
             instance_id,
             &resource,
-            LocalContentImportKind::Pack(InstanceContentKind::Resource),
+            &LocalContentImportKind::Pack(InstanceContentKind::Resource),
         )?;
         let shader = import_local_content(
             &paths,
             instance_id,
             &shader,
-            LocalContentImportKind::Pack(InstanceContentKind::Shader),
+            &LocalContentImportKind::Pack(InstanceContentKind::Shader),
         )?;
 
         assert_eq!(resource.file_path, "resourcepacks/resources.zip");
         assert_eq!(shader.file_path, "shaderpacks/shaders.zip");
+        Ok(())
+    }
+
+    #[test]
+    fn imports_a_data_pack_only_into_the_selected_world() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let (temporary, paths, instance_id) = test_paths()?;
+        std::fs::create_dir_all(paths.instance(instance_id).join("game/saves/Survival"))?;
+        std::fs::write(
+            paths
+                .instance(instance_id)
+                .join("game/saves/Survival/level.dat"),
+            b"level",
+        )?;
+        let source = temporary.path().join("recipes.zip");
+        write_archive(&source, "pack.mcmeta")?;
+
+        let imported = import_local_content(
+            &paths,
+            instance_id,
+            &source,
+            &LocalContentImportKind::DataPack("Survival".to_owned()),
+        )?;
+
+        assert_eq!(imported.file_path, "saves/Survival/datapacks/recipes.zip");
+        assert!(imported.destination.is_file());
         Ok(())
     }
 }

@@ -96,6 +96,35 @@ pub(crate) fn scan_instance_mods(
     Ok(mods)
 }
 
+pub(crate) fn scan_instance_worlds(
+    paths: &AppPaths,
+    instance_id: InstanceId,
+) -> Result<Vec<String>, io::Error> {
+    let saves_directory = paths.instance(instance_id).join("game").join("saves");
+    let entries = match std::fs::read_dir(saves_directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let mut worlds = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let metadata = std::fs::symlink_metadata(entry.path())?;
+        if metadata.file_type().is_symlink()
+            || !metadata.is_dir()
+            || !entry.path().join("level.dat").is_file()
+        {
+            continue;
+        }
+        let world_name = entry.file_name().to_string_lossy().into_owned();
+        if safe_component(&world_name) {
+            worlds.push(world_name);
+        }
+    }
+    worlds.sort_by_key(|name| name.to_ascii_lowercase());
+    Ok(worlds)
+}
+
 pub(crate) fn set_instance_mod_enabled(
     paths: &AppPaths,
     instance_id: InstanceId,
@@ -444,7 +473,7 @@ fn display_name_from_file(file_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        InstanceContentKind, scan_instance_content, scan_instance_mods,
+        InstanceContentKind, scan_instance_content, scan_instance_mods, scan_instance_worlds,
         set_instance_content_enabled, set_instance_mod_enabled, trash_instance_content,
         trash_instance_mod,
     };
@@ -574,6 +603,7 @@ mod tests {
         std::fs::create_dir_all(game.join("shaderpacks"))?;
         std::fs::write(game.join("shaderpacks/complementary.zip.disabled"), b"zip")?;
         std::fs::create_dir_all(game.join("saves/Survival/datapacks"))?;
+        std::fs::write(game.join("saves/Survival/level.dat"), b"level")?;
         std::fs::write(game.join("saves/Survival/datapacks/recipes.zip"), b"zip")?;
 
         let resource_packs =
@@ -586,6 +616,7 @@ mod tests {
         let data_packs = scan_instance_content(&paths, instance_id, InstanceContentKind::Data)?;
         assert_eq!(data_packs.len(), 1);
         assert_eq!(data_packs[0].world_name.as_deref(), Some("Survival"));
+        assert_eq!(scan_instance_worlds(&paths, instance_id)?, ["Survival"]);
         Ok(())
     }
 

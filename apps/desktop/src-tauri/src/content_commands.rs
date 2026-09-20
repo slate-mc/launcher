@@ -149,13 +149,14 @@ pub(super) async fn instance_mod_import(
     let paths = paths_for_instance(state.inner(), &instance);
     let paths_for_validation = paths.clone();
     let source_for_validation = source.clone();
+    let validation_kind = import_kind.clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<(), LocalContentImportError> {
-        validate_local_content_source(&source_for_validation, import_kind)?;
+        validate_local_content_source(&source_for_validation, &validation_kind)?;
         ensure_local_content_not_installed(
             &paths_for_validation,
             instance_id,
             &source_for_validation,
-            import_kind,
+            &validation_kind,
         )
     })
     .await
@@ -164,7 +165,7 @@ pub(super) async fn instance_mod_import(
     create_automatic_snapshot_if_enabled(state.inner(), &instance).await?;
 
     let imported = tauri::async_runtime::spawn_blocking(move || {
-        import_local_content(&paths, instance_id, &source, import_kind)
+        import_local_content(&paths, instance_id, &source, &import_kind)
     })
     .await
     .map_err(|_| local_mod_import_error(LocalContentImportError::InvalidArchive))?
@@ -236,9 +237,27 @@ async fn rollback_imported_content(imported: ImportedLocalFile) -> Result<(), Ap
     } else {
         Err(AppError::new(
             "local.content_rollback_failed",
-            "slate could not remove the copied mod after the change failed. The instance needs attention.",
+            "slate could not remove the copied content after the change failed. The instance needs attention.",
         ))
     }
+}
+
+#[tauri::command]
+pub(super) async fn instance_worlds_list(
+    state: tauri::State<'_, DesktopState>,
+    request: InstanceWorldsRequest,
+) -> Result<Vec<String>, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let paths = paths_for_instance(state.inner(), &instance);
+    tauri::async_runtime::spawn_blocking(move || scan_instance_worlds(&paths, instance_id))
+        .await
+        .map_err(|_| content_file_error())?
+        .map_err(|_| content_file_error())
 }
 
 #[tauri::command]
@@ -251,7 +270,7 @@ pub(super) async fn instance_content_file_import(
     let instance =
         prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
             .await?;
-    ensure_local_pack_import_target(&instance, request.kind)?;
+    local_pack_import_kind(&instance, request.kind, request.world_name.as_deref())?;
     let picked = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
@@ -268,18 +287,34 @@ pub(super) async fn instance_content_file_import(
     let instance =
         prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
             .await?;
-    ensure_local_pack_import_target(&instance, request.kind)?;
-    let import_kind = LocalContentImportKind::Pack(content_kind(request.kind));
+    let import_kind =
+        local_pack_import_kind(&instance, request.kind, request.world_name.as_deref())?;
     let paths = paths_for_instance(state.inner(), &instance);
+    if let LocalContentImportKind::DataPack(world_name) = &import_kind {
+        let paths_for_worlds = paths.clone();
+        let worlds = tauri::async_runtime::spawn_blocking(move || {
+            scan_instance_worlds(&paths_for_worlds, instance_id)
+        })
+        .await
+        .map_err(|_| content_file_error())?
+        .map_err(|_| content_file_error())?;
+        if !worlds.contains(world_name) {
+            return Err(AppError::new(
+                "content.world_unavailable",
+                "That world is no longer available. Choose another world and try again.",
+            ));
+        }
+    }
     let paths_for_validation = paths.clone();
     let source_for_validation = source.clone();
+    let validation_kind = import_kind.clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<(), LocalContentImportError> {
-        validate_local_content_source(&source_for_validation, import_kind)?;
+        validate_local_content_source(&source_for_validation, &validation_kind)?;
         ensure_local_content_not_installed(
             &paths_for_validation,
             instance_id,
             &source_for_validation,
-            import_kind,
+            &validation_kind,
         )
     })
     .await
@@ -288,7 +323,7 @@ pub(super) async fn instance_content_file_import(
     create_automatic_snapshot_if_enabled(state.inner(), &instance).await?;
 
     let imported = tauri::async_runtime::spawn_blocking(move || {
-        import_local_content(&paths, instance_id, &source, import_kind)
+        import_local_content(&paths, instance_id, &source, &import_kind)
     })
     .await
     .map_err(|_| local_pack_import_error(LocalContentImportError::InvalidArchive))?
@@ -312,23 +347,42 @@ pub(super) async fn instance_content_file_import(
         .map_err(|error| map_storage_error(error, "slate could not refresh the instance."))
 }
 
-fn ensure_local_pack_import_target(
+fn local_pack_import_kind(
     instance: &InstanceRecord,
     kind: InstanceContentKindDto,
-) -> Result<(), AppError> {
-    if kind == InstanceContentKindDto::DataPack {
-        return Err(AppError::new(
-            "content.world_required",
-            "Choose a world before importing a data pack.",
-        ));
-    }
+    world_name: Option<&str>,
+) -> Result<LocalContentImportKind, AppError> {
     if instance.setup_state != slate_domain::InstanceSetupState::Ready {
         return Err(AppError::new(
             "local.instance_not_ready",
             "Finish installing or repair this instance before adding content packs.",
         ));
     }
-    Ok(())
+    match kind {
+        InstanceContentKindDto::ResourcePack => {
+            Ok(LocalContentImportKind::Pack(InstanceContentKind::Resource))
+        }
+        InstanceContentKindDto::ShaderPack => {
+            Ok(LocalContentImportKind::Pack(InstanceContentKind::Shader))
+        }
+        InstanceContentKindDto::DataPack => {
+            let world_name = world_name.filter(|value| {
+                !value.is_empty()
+                    && value.len() <= 240
+                    && !matches!(*value, "." | "..")
+                    && !value.contains(['/', '\\', ':'])
+                    && !value.chars().any(char::is_control)
+            });
+            world_name
+                .map(|value| LocalContentImportKind::DataPack(value.to_owned()))
+                .ok_or_else(|| {
+                    AppError::new(
+                        "content.world_required",
+                        "Choose a world before importing a data pack.",
+                    )
+                })
+        }
+    }
 }
 
 fn local_pack_import_error(error: LocalContentImportError) -> AppError {

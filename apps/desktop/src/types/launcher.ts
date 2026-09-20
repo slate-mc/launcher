@@ -611,6 +611,8 @@ export const instanceContentFileSchema = z.object({
 
 export const instanceContentFileListSchema = z.array(instanceContentFileSchema);
 
+export const instanceWorldListSchema = z.array(z.string().min(1));
+
 export const instanceModResolutionSchema = z.object({
   filePath: z.string().min(1),
   provider: z.enum(["curseforge", "modrinth"]),

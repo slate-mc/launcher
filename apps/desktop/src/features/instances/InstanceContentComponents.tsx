@@ -22,6 +22,7 @@ import {
   importLocalContentFile,
   installInstance,
   listInstanceContentFiles,
+  listInstanceWorlds,
   removeInstanceContentFile,
   setInstanceContentFileEnabled,
 } from "../../lib/bridge";
@@ -97,6 +98,7 @@ export function InstanceFileContent({
 }) {
   const queryClient = useQueryClient();
   const [removeTarget, setRemoveTarget] = useState<string>();
+  const [worldName, setWorldName] = useState("");
   const [notice, setNotice] = useState<{
     tone: "positive" | "danger";
     title: string;
@@ -106,6 +108,13 @@ export function InstanceFileContent({
     queryKey: ["instance-content-files", instance.id, kind],
     queryFn: () => listInstanceContentFiles(instance.id, kind),
   });
+  const worldsQuery = useQuery({
+    queryKey: ["instance-worlds", instance.id],
+    queryFn: () => listInstanceWorlds(instance.id),
+    enabled: kind === "dataPack",
+  });
+  const worlds = worldsQuery.data ?? [];
+  const selectedWorldName = worlds.includes(worldName) ? worldName : worlds[0];
   const refresh = async (updated: LauncherInstance, message: string) => {
     queryClient.setQueryData(["instance", instance.id], updated);
     await Promise.all([
@@ -149,6 +158,7 @@ export function InstanceFileContent({
       importLocalContentFile({
         instanceId: instance.id,
         kind,
+        worldName: kind === "dataPack" ? selectedWorldName : undefined,
         expectedRevision: instance.revision,
       }),
     onMutate: () => setNotice(undefined),
@@ -233,24 +243,51 @@ export function InstanceFileContent({
             </p>
           </span>
           <div className="flex items-center gap-2">
-            {kind !== "dataPack" ? (
-              <button
-                type="button"
-                className={secondaryButtonClass}
-                disabled={busy || restoreMutation.isPending}
-                onClick={() => importMutation.mutate()}
-              >
-                {importMutation.isPending ? (
+            {kind === "dataPack" ? (
+              worldsQuery.isPending ? (
+                <span className="inline-flex items-center gap-2 text-[11px] text-app-secondary">
                   <LoaderCircle
                     className="animate-spin motion-reduce:animate-none"
                     size={14}
                   />
-                ) : (
-                  <FileUp size={14} />
-                )}
-                {importMutation.isPending ? "Importing" : "Import ZIP"}
-              </button>
+                  Loading worlds
+                </span>
+              ) : worlds.length ? (
+                <div className="w-44">
+                  <ContentSelect
+                    label="Target world"
+                    value={selectedWorldName ?? ""}
+                    options={worlds.map((world) => [world, world] as const)}
+                    onChange={setWorldName}
+                    compact
+                  />
+                </div>
+              ) : (
+                <span className="text-[11px] text-app-muted">
+                  No worlds found
+                </span>
+              )
             ) : null}
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              disabled={
+                busy ||
+                restoreMutation.isPending ||
+                (kind === "dataPack" && !selectedWorldName)
+              }
+              onClick={() => importMutation.mutate()}
+            >
+              {importMutation.isPending ? (
+                <LoaderCircle
+                  className="animate-spin motion-reduce:animate-none"
+                  size={14}
+                />
+              ) : (
+                <FileUp size={14} />
+              )}
+              {importMutation.isPending ? "Importing" : "Import ZIP"}
+            </button>
             {instance.modpackSource ? (
               <button
                 type="button"
@@ -396,8 +433,10 @@ export function InstanceFileContent({
             title={`No ${label.toLocaleLowerCase()} detected`}
             description={
               kind === "dataPack"
-                ? "Install or create a data pack inside a world’s datapacks folder."
-                : `Place compatible archives in this instance’s ${label.toLocaleLowerCase()} folder.`
+                ? worlds.length
+                  ? "Choose a world above to import a compatible data-pack ZIP."
+                  : "Create and save a world in Minecraft before adding a data pack."
+                : `Import a compatible ZIP into this instance’s ${label.toLocaleLowerCase()} folder.`
             }
           />
         )}

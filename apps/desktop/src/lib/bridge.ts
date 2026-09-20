@@ -13,6 +13,7 @@ import {
   instanceModResolutionListSchema,
   instanceSummaryListSchema,
   instanceSummarySchema,
+  instanceWorldListSchema,
   modpackInstallStartedSchema,
   modpackUpdateSummarySchema,
   modpackProjectSchema,
@@ -462,9 +463,19 @@ export async function listInstanceContentFiles(
   );
 }
 
+export async function listInstanceWorlds(
+  instanceId: string,
+): Promise<string[]> {
+  if (bridgeMode !== "native") return [];
+  return instanceWorldListSchema.parse(
+    await invoke("instance_worlds_list", { request: { instanceId } }),
+  );
+}
+
 export async function importLocalContentFile(input: {
   instanceId: string;
   kind: InstanceContentKind;
+  worldName?: string;
   expectedRevision: number;
 }): Promise<LauncherInstance> {
   requireNativeContent();
