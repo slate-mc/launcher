@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus, RotateCcw, Search, Star } from "lucide-react";
 import { useMemo, useState } from "react";
-import { ContentArtwork } from "../../components/ContentArtwork";
+import { InstanceArtwork } from "../../components/InstanceArtwork";
 import {
   EmptyState,
   PageHeader,
@@ -184,10 +184,8 @@ export function LibraryPage() {
                   params={{ instanceId: instance.id }}
                   className="flex min-w-0 items-center gap-3 text-app-text no-underline"
                 >
-                  <ContentArtwork
-                    src={instance.modpackSource?.iconUrl}
-                    name={instance.name}
-                    stableKey={instance.id}
+                  <InstanceArtwork
+                    instance={instance}
                     className="size-10 rounded-lg border border-app-separator/70"
                   />
                   <span className="min-w-0">

@@ -112,6 +112,17 @@ pub struct SetInstanceModEnabledRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SetInstanceModPinnedRequest {
+    pub instance_id: uuid::Uuid,
+    pub expected_revision: u64,
+    pub file_path: String,
+    pub provider: Option<Provider>,
+    pub project_id: Option<String>,
+    pub pinned: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoveInstanceModRequest {
     pub instance_id: uuid::Uuid,
     pub expected_revision: u64,

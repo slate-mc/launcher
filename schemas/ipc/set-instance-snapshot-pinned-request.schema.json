@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SetInstanceSnapshotPinnedRequest",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "pinned": {
+      "type": "boolean"
+    },
+    "snapshotId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "id",
+    "snapshotId",
+    "pinned"
+  ]
+}

@@ -127,6 +127,77 @@ pub struct UpdateInstanceSettings {
 }
 
 impl Database {
+    pub async fn copy_instance_profile(
+        &self,
+        source_id: InstanceId,
+        destination_id: InstanceId,
+    ) -> Result<(), StorageError> {
+        let now = now_rfc3339()?;
+        let mut transaction = self.pool.begin().await?;
+        sqlx::query(
+            "UPDATE instances SET group_id = (SELECT group_id FROM instances WHERE id = ?), \
+             preferred_account_id = (SELECT preferred_account_id FROM instances WHERE id = ?), \
+             updated_at = ? WHERE id = ? AND trashed_at IS NULL",
+        )
+        .bind(source_id.to_string())
+        .bind(source_id.to_string())
+        .bind(&now)
+        .bind(destination_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query("DELETE FROM instance_settings WHERE instance_id = ?")
+            .bind(destination_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "INSERT INTO instance_settings \
+             (instance_id, description, notes, tags_json, icon_mime, banner_mime, \
+              banner_position_x, banner_position_y, window_mode, resolution_width, \
+              resolution_height, launcher_behavior, game_language, quick_play_server, \
+              process_priority, memory_mode, initial_memory_mb, java_mode, custom_java_path, \
+              custom_java_label, performance_preset, jvm_arguments_json, environment_json, \
+              backup_before_changes, backup_retention, log_retention_days, created_at, updated_at) \
+             SELECT ?, description, notes, tags_json, icon_mime, banner_mime, banner_position_x, \
+              banner_position_y, window_mode, resolution_width, resolution_height, \
+              launcher_behavior, game_language, quick_play_server, process_priority, memory_mode, \
+              initial_memory_mb, java_mode, custom_java_path, custom_java_label, \
+              performance_preset, jvm_arguments_json, environment_json, backup_before_changes, \
+              backup_retention, log_retention_days, ?, ? FROM instance_settings WHERE instance_id = ?",
+        )
+        .bind(destination_id.to_string())
+        .bind(&now)
+        .bind(&now)
+        .bind(source_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn advance_instance_revision(
+        &self,
+        instance_id: InstanceId,
+        expected_revision: u64,
+    ) -> Result<(), StorageError> {
+        let stored_revision =
+            i64::try_from(expected_revision).map_err(|_| StorageError::RevisionConflict {
+                expected: expected_revision,
+            })?;
+        let updated = sqlx::query(
+            "UPDATE instances SET revision = revision + 1, updated_at = ? \
+             WHERE id = ? AND revision = ? AND trashed_at IS NULL",
+        )
+        .bind(now_rfc3339()?)
+        .bind(instance_id.to_string())
+        .bind(stored_revision)
+        .execute(&self.pool)
+        .await?;
+        if updated.rows_affected() == 0 {
+            return self.revision_error(instance_id, stored_revision).await;
+        }
+        Ok(())
+    }
+
     pub async fn update_instance_settings(
         &self,
         instance_id: InstanceId,

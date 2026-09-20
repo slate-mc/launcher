@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { cn } from "../lib/cn";
 
 export function ContentBanner({
@@ -7,6 +7,7 @@ export function ContentBanner({
   name,
   className,
   imageClassName,
+  imageStyle,
   eager = false,
 }: {
   bannerSrc?: string | null;
@@ -14,6 +15,7 @@ export function ContentBanner({
   name: string;
   className?: string;
   imageClassName?: string;
+  imageStyle?: CSSProperties;
   eager?: boolean;
 }) {
   const [failedBanner, setFailedBanner] = useState<string>();
@@ -36,6 +38,7 @@ export function ContentBanner({
           src={banner}
           alt=""
           className={cn("size-full object-cover", imageClassName)}
+          style={imageStyle}
           loading={eager ? "eager" : "lazy"}
           decoding="async"
           referrerPolicy="no-referrer"

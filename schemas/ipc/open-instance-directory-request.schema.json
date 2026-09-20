@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenInstanceDirectoryRequest",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "$ref": "#/$defs/InstanceDirectoryKindDto"
+    }
+  },
+  "required": [
+    "id",
+    "kind"
+  ],
+  "$defs": {
+    "InstanceDirectoryKindDto": {
+      "type": "string",
+      "enum": [
+        "game",
+        "mods",
+        "logs",
+        "screenshots",
+        "saves",
+        "crashReports"
+      ]
+    }
+  }
+}

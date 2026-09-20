@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DuplicateInstanceRequest",
+  "type": "object",
+  "properties": {
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "includeScreenshots": {
+      "type": "boolean"
+    },
+    "includeSettings": {
+      "type": "boolean"
+    },
+    "includeWorlds": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "includeWorlds",
+    "includeScreenshots",
+    "includeSettings",
+    "expectedRevision"
+  ]
+}

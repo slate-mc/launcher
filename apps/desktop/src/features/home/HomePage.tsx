@@ -29,8 +29,10 @@ import {
   previewUpdates,
 } from "../../lib/bridge";
 import { cn } from "../../lib/cn";
-import { ContentArtwork } from "../../components/ContentArtwork";
-import { ContentBanner } from "../../components/ContentBanner";
+import {
+  InstanceArtwork as InstanceProfileArtwork,
+  InstanceBanner,
+} from "../../components/InstanceArtwork";
 import { MinecraftHead } from "../../components/MinecraftHead";
 import type {
   LauncherInstance,
@@ -197,27 +199,24 @@ export function HomePage() {
         className="relative isolate min-h-[360px] overflow-hidden border-b border-app-separator/55 bg-[#18221d]"
         aria-labelledby="continue-heading"
       >
-        <ContentBanner
-          bannerSrc={
+        <InstanceBanner
+          instance={selected}
+          fallbackBanner={
             selected.modpackSource?.bannerUrl ??
             selectedPackArtworkQuery.data?.banner_url
           }
-          iconSrc={
+          fallbackIcon={
             selected.modpackSource?.iconUrl ??
             selectedPackArtworkQuery.data?.icon_url
           }
-          name={`${selected.name} banner`}
           eager
           className="absolute inset-0 -z-30 size-full rounded-none opacity-[.86]"
         />
         <div className="hero-shade absolute inset-0 -z-20" aria-hidden="true" />
         <div className="absolute top-[68px] left-8 flex max-w-[620px] items-start gap-5">
-          <ContentArtwork
-            src={
-              selected.modpackSource?.iconUrl ??
-              selectedPackArtworkQuery.data?.icon_url
-            }
-            name={selected.name}
+          <InstanceProfileArtwork
+            instance={selected}
+            fallbackSrc={selectedPackArtworkQuery.data?.icon_url}
             className="mt-1 size-[72px] rounded-control border border-app-separator/80 shadow-[0_12px_30px_rgb(0_0_0_/_28%)]"
             eager
           />
@@ -470,7 +469,7 @@ export function HomePage() {
                       {instance.name}
                     </strong>
                     <small className="mt-px block overflow-hidden text-[11px] text-app-muted text-ellipsis whitespace-nowrap">
-                      {instance.description ?? "Local instance"}
+                      {instance.settings.description || "Local instance"}
                     </small>
                   </span>
                 </span>
@@ -620,10 +619,8 @@ function InstanceArtwork({
   compact?: boolean;
 }) {
   return (
-    <ContentArtwork
-      src={instance.modpackSource?.iconUrl}
-      name={instance.name}
-      stableKey={instance.id}
+    <InstanceProfileArtwork
+      instance={instance}
       className={cn(
         "size-11 rounded-lg border border-app-separator/70",
         compact && "h-14 w-[58px] rounded-[7px] max-[1180px]:w-12",

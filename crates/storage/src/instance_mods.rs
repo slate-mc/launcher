@@ -121,6 +121,44 @@ impl Database {
         Ok(())
     }
 
+    pub async fn set_instance_mod_pinned(
+        &self,
+        instance_id: InstanceId,
+        expected_revision: u64,
+        target: InstanceModTarget<'_>,
+        pinned: bool,
+    ) -> Result<(), StorageError> {
+        let mut transaction = self
+            .begin_content_mutation(instance_id, expected_revision)
+            .await?;
+        if let (Some(provider), Some(project_id)) = (target.provider, target.project_id) {
+            sqlx::query(
+                "UPDATE instance_mods SET pinned = ? WHERE instance_id = ? AND file_path = ? \
+                 AND provider = ? AND project_id = ?",
+            )
+            .bind(i64::from(pinned))
+            .bind(instance_id.to_string())
+            .bind(target.file_path)
+            .bind(provider.as_str())
+            .bind(project_id)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        insert_content_audit(
+            &mut transaction,
+            instance_id,
+            expected_revision,
+            if pinned {
+                "instance.mod.pinned"
+            } else {
+                "instance.mod.unpinned"
+            },
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
     pub async fn remove_instance_mod(
         &self,
         instance_id: InstanceId,

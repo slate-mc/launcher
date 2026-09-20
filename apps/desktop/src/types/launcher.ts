@@ -111,6 +111,20 @@ export const instanceArtworkAssetSchema = z.object({
   dataBase64: z.string(),
 });
 
+export const instanceGameOptionsSchema = z.object({
+  fileExists: z.boolean(),
+  values: z.record(z.string(), z.string()),
+});
+
+export const instanceSnapshotSchema = z.object({
+  id: z.string().uuid(),
+  sizeBytes: z.number().int().nonnegative(),
+  pinned: z.boolean(),
+  createdAt: z.string(),
+});
+
+export const instanceSnapshotListSchema = z.array(instanceSnapshotSchema);
+
 export const providerSchema = z.enum(["curseforge", "modrinth", "ftb"]);
 export const contentLoaderSchema = z.enum([
   "vanilla",
@@ -482,6 +496,8 @@ export type Bootstrap = z.infer<typeof bootstrapSchema>;
 export type LauncherInstance = z.infer<typeof instanceSummarySchema>;
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 export type InstanceArtworkKind = "icon" | "banner";
+export type InstanceGameOptions = z.infer<typeof instanceGameOptionsSchema>;
+export type InstanceSnapshot = z.infer<typeof instanceSnapshotSchema>;
 export type CreateInstanceInput = z.infer<typeof createInstanceSchema>;
 export type LoaderKind = z.infer<typeof loaderKindSchema>;
 export type AppPreferences = z.infer<typeof preferencesSchema>;

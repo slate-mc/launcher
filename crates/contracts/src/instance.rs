@@ -331,6 +331,101 @@ pub struct InstanceArtworkAsset {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetInstanceGameOptionsRequest {
+    pub id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInstanceGameOptionsRequest {
+    pub id: Uuid,
+    pub values: BTreeMap<String, String>,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceGameOptionsSummary {
+    pub file_exists: bool,
+    pub values: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstanceDirectoryKindDto {
+    Game,
+    Mods,
+    Logs,
+    Screenshots,
+    Saves,
+    CrashReports,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenInstanceDirectoryRequest {
+    pub id: Uuid,
+    pub kind: InstanceDirectoryKindDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateInstanceRequest {
+    pub id: Uuid,
+    pub name: String,
+    pub include_worlds: bool,
+    pub include_screenshots: bool,
+    pub include_settings: bool,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceSnapshotSummary {
+    pub id: Uuid,
+    pub size_bytes: u64,
+    pub pinned: bool,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceSnapshotsRequest {
+    pub id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateInstanceSnapshotRequest {
+    pub id: Uuid,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreInstanceSnapshotRequest {
+    pub id: Uuid,
+    pub snapshot_id: Uuid,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteInstanceSnapshotRequest {
+    pub id: Uuid,
+    pub snapshot_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetInstanceSnapshotPinnedRequest {
+    pub id: Uuid,
+    pub snapshot_id: Uuid,
+    pub pinned: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetFavoriteRequest {
     pub id: Uuid,
     pub favorite: bool,

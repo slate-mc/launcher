@@ -27,6 +27,8 @@ tauri-plugin-opener = "=2.5.2"
 tauri-plugin-dialog.workspace = true
 time.workspace = true
 tokio.workspace = true
+thiserror.workspace = true
+sysinfo.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 

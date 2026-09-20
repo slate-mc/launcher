@@ -1,16 +1,19 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
-    CreateInstanceRequest, EventEnvelope, GameSessionSummary, GetInstanceArtworkRequest,
-    InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
-    InstanceModResolution, InstanceModSummary, InstanceModsRequest, InstanceSummary,
+    CreateInstanceRequest, CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest,
+    DuplicateInstanceRequest, EventEnvelope, GameSessionSummary, GetInstanceArtworkRequest,
+    GetInstanceGameOptionsRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
+    InstallModpackRequest, InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary,
+    InstanceModsRequest, InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary,
     LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
     MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
-    ModpackSearchRequest, ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary,
-    RedactedLaunchPlan, RemoveInstanceModRequest, SelectInstanceArtworkRequest,
-    SelectInstanceJavaRequest, SessionLogEvent, SessionLogSubscription,
-    SetInstanceModEnabledRequest, StopGameSessionRequest, SubscribeSessionLogRequest,
-    UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceSettingsRequest,
+    ModpackSearchRequest, ModpackVersionRequest, ModpackVersionsRequest,
+    OpenInstanceDirectoryRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceModRequest,
+    RestoreInstanceSnapshotRequest, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    SessionLogEvent, SessionLogSubscription, SetInstanceModEnabledRequest,
+    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    SubscribeSessionLogRequest, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -45,6 +48,50 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         (
             "get-instance-artwork-request",
             schema_for!(GetInstanceArtworkRequest),
+        ),
+        (
+            "get-instance-game-options-request",
+            schema_for!(GetInstanceGameOptionsRequest),
+        ),
+        (
+            "update-instance-game-options-request",
+            schema_for!(UpdateInstanceGameOptionsRequest),
+        ),
+        (
+            "instance-game-options-summary",
+            schema_for!(InstanceGameOptionsSummary),
+        ),
+        (
+            "open-instance-directory-request",
+            schema_for!(OpenInstanceDirectoryRequest),
+        ),
+        (
+            "duplicate-instance-request",
+            schema_for!(DuplicateInstanceRequest),
+        ),
+        (
+            "instance-snapshot-summary",
+            schema_for!(InstanceSnapshotSummary),
+        ),
+        (
+            "instance-snapshots-request",
+            schema_for!(InstanceSnapshotsRequest),
+        ),
+        (
+            "create-instance-snapshot-request",
+            schema_for!(CreateInstanceSnapshotRequest),
+        ),
+        (
+            "restore-instance-snapshot-request",
+            schema_for!(RestoreInstanceSnapshotRequest),
+        ),
+        (
+            "delete-instance-snapshot-request",
+            schema_for!(DeleteInstanceSnapshotRequest),
+        ),
+        (
+            "set-instance-snapshot-pinned-request",
+            schema_for!(SetInstanceSnapshotPinnedRequest),
         ),
         ("app-preferences", schema_for!(AppPreferencesDto)),
         ("preflight-summary", schema_for!(PreflightSummary)),
@@ -131,6 +178,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(SetInstanceModEnabledRequest),
         ),
         (
+            "set-instance-mod-pinned-request",
+            schema_for!(SetInstanceModPinnedRequest),
+        ),
+        (
             "remove-instance-mod-request",
             schema_for!(RemoveInstanceModRequest),
         ),
@@ -171,7 +222,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 46);
+        assert_eq!(schemas.len(), 58);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

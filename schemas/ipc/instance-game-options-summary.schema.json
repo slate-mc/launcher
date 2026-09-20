@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InstanceGameOptionsSummary",
+  "type": "object",
+  "properties": {
+    "fileExists": {
+      "type": "boolean"
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "fileExists",
+    "values"
+  ]
+}

@@ -8,15 +8,19 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  Copy,
   Cpu,
   Download,
   FolderArchive,
+  FolderOpen,
   Heart,
   Layers3,
   LoaderCircle,
   Monitor,
   Image as ImageIcon,
   Plus,
+  Pin,
+  PinOff,
   Play,
   Power,
   RotateCcw,
@@ -31,6 +35,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { ComboBox } from "../../components/ComboBox";
 import { ContentArtwork } from "../../components/ContentArtwork";
+import { InstanceArtwork as InstanceProfileArtwork } from "../../components/InstanceArtwork";
 import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import { SessionLogPanel } from "../../components/SessionLogPanel";
 import {
@@ -40,6 +45,10 @@ import {
 } from "../../components/PageScaffold";
 import {
   forceStopGameSession,
+  createInstanceSnapshot,
+  deleteInstanceSnapshot,
+  duplicateInstance,
+  getInstanceGameOptions,
   getInstance,
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
@@ -50,17 +59,23 @@ import {
   listGameSessions,
   listInstallJobs,
   listInstanceMods,
+  listInstanceSnapshots,
+  openInstanceDirectory,
   removeInstanceMod,
   renameInstance,
   resetInstanceArtwork,
+  restoreInstanceSnapshot,
   resolveInstanceMods,
   selectInstanceArtwork,
   selectInstanceJava,
+  setInstanceSnapshotPinned,
   setInstanceModEnabled,
+  setInstanceModPinned,
   setInstanceFavorite,
   searchMods,
   trashInstance,
   updateInstanceConfiguration,
+  updateInstanceGameOptions,
   updateInstanceSettings,
 } from "../../lib/bridge";
 import {
@@ -178,10 +193,8 @@ function InstanceHeader({
         All instances
       </Link>
       <div className="flex items-center gap-4">
-        <ContentArtwork
-          src={instance.modpackSource?.iconUrl}
-          name={instance.name}
-          stableKey={instance.id}
+        <InstanceProfileArtwork
+          instance={instance}
           className="size-14 rounded-control border border-app-separator"
         />
         <div className="min-w-0">
@@ -853,6 +866,30 @@ function Content({ instance }: { instance: LauncherInstance }) {
         message: contentErrorMessage(error),
       }),
   });
+  const pinModMutation = useMutation({
+    mutationFn: ({ item, pinned }: { item: InstanceMod; pinned: boolean }) =>
+      setInstanceModPinned({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+        filePath: item.filePath,
+        provider: item.provider ?? undefined,
+        projectId: item.projectId ?? undefined,
+        pinned,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, variables) =>
+      refreshContentAfterMutation(
+        updated,
+        variables.pinned ? "Mod version pinned" : "Mod version unpinned",
+        `${variables.item.displayName} ${variables.pinned ? "will stay on this version during updates" : "can receive compatible updates"}.`,
+      ),
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Mod pin was not changed",
+        message: contentErrorMessage(error),
+      }),
+  });
   const removeMutation = useMutation({
     mutationFn: (item: InstanceMod) =>
       removeInstanceMod({
@@ -970,7 +1007,7 @@ function Content({ instance }: { instance: LauncherInstance }) {
     installJob?.state === "queued" ||
     installJob?.state === "running";
   const contentMutationPending =
-    toggleMutation.isPending || removeMutation.isPending;
+    toggleMutation.isPending || pinModMutation.isPending || removeMutation.isPending;
   const installedIdentityPending =
     installedQuery.isPending ||
     (Boolean(installedQuery.data?.length) && resolutionQuery.isFetching);
@@ -1444,6 +1481,9 @@ function Content({ instance }: { instance: LauncherInstance }) {
                           toggleMutation.variables?.item.filePath ===
                             item.filePath
                             ? "toggle"
+                            : pinModMutation.isPending &&
+                                pinModMutation.variables?.item.filePath === item.filePath
+                              ? "pin"
                             : removeMutation.isPending &&
                                 removeMutation.variables?.filePath ===
                                   item.filePath
@@ -1455,6 +1495,9 @@ function Content({ instance }: { instance: LauncherInstance }) {
                             item,
                             enabled: !item.enabled,
                           })
+                        }
+                        onPin={() =>
+                          pinModMutation.mutate({ item, pinned: !item.pinned })
                         }
                         onRequestRemove={() =>
                           setRemoveTargetPath(item.filePath)
@@ -1643,6 +1686,7 @@ function InstalledModRow({
   confirmingRemove,
   pendingAction,
   onToggle,
+  onPin,
   onRequestRemove,
   onCancelRemove,
   onConfirmRemove,
@@ -1650,8 +1694,9 @@ function InstalledModRow({
   item: InstanceMod;
   disabled: boolean;
   confirmingRemove: boolean;
-  pendingAction?: "toggle" | "remove";
+  pendingAction?: "toggle" | "pin" | "remove";
   onToggle: () => void;
+  onPin: () => void;
   onRequestRemove: () => void;
   onCancelRemove: () => void;
   onConfirmRemove: () => void;
@@ -1707,6 +1752,7 @@ function InstalledModRow({
           <StatusPill tone={item.enabled ? "positive" : "neutral"}>
             {item.enabled ? "Enabled" : "Disabled"}
           </StatusPill>
+          {item.pinned ? <span className="mt-1 block text-[9px] font-bold text-app-accent">Version pinned</span> : null}
         </td>
         <td className="px-4 py-2.5 text-right font-mono text-[9px] text-app-secondary">
           {formatContentFileSize(item.fileSize)}
@@ -1716,6 +1762,16 @@ function InstalledModRow({
         </td>
         <td className="px-4 py-2.5">
           <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              className={`inline-flex size-8 items-center justify-center rounded-control border bg-app-bg hover:border-app-accent/45 hover:text-app-accent disabled:opacity-45 ${item.pinned ? "border-app-accent/40 text-app-accent" : "border-app-separator text-app-secondary"}`}
+              disabled={disabled || !item.provider || !item.projectId}
+              onClick={onPin}
+              aria-label={`${item.pinned ? "Unpin" : "Pin"} ${item.displayName}`}
+              title={item.provider ? (item.pinned ? "Allow compatible updates" : "Keep this exact version") : "Local files cannot be version pinned"}
+            >
+              {pendingAction === "pin" ? <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" /> : item.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+            </button>
             <button
               type="button"
               className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary hover:border-app-accent/45 hover:text-app-text disabled:opacity-45"
@@ -2534,16 +2590,7 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
           ) : null}
 
           {section === "game" ? (
-            <SettingsPanel title="Game configuration" description="Common options are applied without discarding settings added by Minecraft or mods.">
-              <InlineNotice title="Preserves mod-specific settings">
-                slate updates recognized keys in options.txt and leaves every unknown line intact. Language and fullscreen are already managed from Launch behavior.
-              </InlineNotice>
-              <div className="grid grid-cols-2 gap-5">
-                <Field label="Language"><input className={inputClass} value={draft.gameLanguage} onChange={(event) => setDraft({ ...draft, gameLanguage: event.target.value })} /></Field>
-                <Field label="Fullscreen"><select className={inputClass} value={draft.windowMode === "fullscreen" ? "true" : "false"} onChange={(event) => setDraft({ ...draft, windowMode: event.target.value === "true" ? "fullscreen" : "windowed" })}><option value="false">Off</option><option value="true">On</option></select></Field>
-              </div>
-              <p className="m-0 border-t border-app-separator/55 pt-5 text-[11px]/[17px] text-app-secondary">Video, audio, controls, accessibility, and multiplayer editors will appear after the instance has generated an options.txt file. Until then, slate will create only the recognized launch-safe keys.</p>
-            </SettingsPanel>
+            <GameOptionsEditor instance={instance} />
           ) : null}
 
           {section === "safety" ? (
@@ -2556,6 +2603,7 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
                 <NumberField label="Snapshots to keep" value={draft.backupRetention} min={1} max={50} onChange={(value) => setDraft({ ...draft, backupRetention: value })} />
                 <NumberField label="Log retention (days)" value={draft.logRetentionDays} min={1} max={365} onChange={(value) => setDraft({ ...draft, logRetentionDays: value })} />
               </div>
+              <LifecycleActions instance={instance} />
               <div className="border-t border-app-separator/55 pt-5">
                 <h3 className="m-0 text-xs font-bold">Repair</h3>
                 <p className="mt-1 mb-4 text-[11px] text-app-secondary">Verify the selected runtime revision and download only missing or changed files.</p>
@@ -2569,13 +2617,367 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
           <p className={`m-0 text-xs ${error ? "text-app-danger" : "text-app-secondary"}`} role={error ? "alert" : "status"}>
             {error ? contentErrorMessage(error) : message}
           </p>
-          <button type="button" className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:opacity-50" disabled={busy} onClick={saveSettings}>
-            {settingsMutation.isPending ? <RotateCcw className="animate-spin" size={16} /> : <Check size={16} />}
-            Save settings
-          </button>
+          {section === "game" ? (
+            <span className="text-[11px] text-app-muted">Game configuration has its own guarded save action.</span>
+          ) : (
+            <button type="button" className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:opacity-50" disabled={busy} onClick={saveSettings}>
+              {settingsMutation.isPending ? <RotateCcw className="animate-spin" size={16} /> : <Check size={16} />}
+              Save settings
+            </button>
+          )}
         </footer>
       </section>
     </div>
+  );
+}
+
+function GameOptionsEditor({ instance }: { instance: LauncherInstance }) {
+  const query = useQuery({
+    queryKey: ["instance-game-options", instance.id],
+    queryFn: () => getInstanceGameOptions(instance.id),
+  });
+  if (query.isPending) {
+    return <div className="h-80 animate-pulse rounded-control bg-app-raised" aria-label="Loading game configuration" />;
+  }
+  if (query.isError) {
+    return <InlineNotice tone="warning" title="Game configuration unavailable">slate could not read options.txt. Close Minecraft and try again.</InlineNotice>;
+  }
+  return (
+    <GameOptionsForm
+      key={`${instance.revision}:${JSON.stringify(query.data.values)}`}
+      instance={instance}
+      fileExists={query.data.fileExists}
+      initialValues={query.data.values}
+    />
+  );
+}
+
+function LifecycleActions({ instance }: { instance: LauncherInstance }) {
+  const queryClient = useQueryClient();
+  const [duplicateName, setDuplicateName] = useState(`${instance.name} copy`);
+  const [copyWorlds, setCopyWorlds] = useState(true);
+  const [copyScreenshots, setCopyScreenshots] = useState(false);
+  const [copySettings, setCopySettings] = useState(true);
+  const [restoreTarget, setRestoreTarget] = useState<string>();
+  const [deleteTarget, setDeleteTarget] = useState<string>();
+  const [message, setMessage] = useState<string>();
+  const snapshotsQuery = useQuery({
+    queryKey: ["instance-snapshots", instance.id],
+    queryFn: () => listInstanceSnapshots(instance.id),
+  });
+  const duplicateMutation = useMutation({
+    mutationFn: () =>
+      duplicateInstance({
+        id: instance.id,
+        name: duplicateName,
+        includeWorlds: copyWorlds,
+        includeScreenshots: copyScreenshots,
+        includeSettings: copySettings,
+        expectedRevision: instance.revision,
+      }),
+    onSuccess: async (duplicate) => {
+      await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      setMessage(`${duplicate.name} was created and is ready to install.`);
+    },
+  });
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createInstanceSnapshot({
+        id: instance.id,
+        expectedRevision: instance.revision,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["instance-snapshots", instance.id],
+      });
+      setMessage("Snapshot created.");
+    },
+  });
+  const restoreMutation = useMutation({
+    mutationFn: (snapshotId: string) =>
+      restoreInstanceSnapshot({
+        id: instance.id,
+        snapshotId,
+        expectedRevision: instance.revision,
+      }),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(["instance", instance.id], updated);
+      await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      setRestoreTarget(undefined);
+      setMessage("Snapshot restored. Personal game files now match that restore point.");
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (snapshotId: string) =>
+      deleteInstanceSnapshot({ id: instance.id, snapshotId }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["instance-snapshots", instance.id],
+      });
+      setDeleteTarget(undefined);
+    },
+  });
+  const pinMutation = useMutation({
+    mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) =>
+      setInstanceSnapshotPinned({
+        id: instance.id,
+        snapshotId: id,
+        pinned,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["instance-snapshots", instance.id],
+      });
+    },
+  });
+  const error =
+    duplicateMutation.error ??
+    createMutation.error ??
+    restoreMutation.error ??
+    deleteMutation.error ??
+    pinMutation.error;
+
+  return (
+    <>
+      <section className="border-t border-app-separator/55 pt-5">
+        <h3 className="m-0 text-xs font-bold">Open instance folders</h3>
+        <p className="mt-1 mb-4 text-[11px] text-app-secondary">Paths stay behind the native boundary. slate creates a missing standard folder before opening it.</p>
+        <div className="flex flex-wrap gap-2">
+          {([
+            ["game", "Game"], ["mods", "Mods"], ["saves", "Worlds"],
+            ["screenshots", "Screenshots"], ["logs", "Logs"], ["crashReports", "Crash reports"],
+          ] as const).map(([kind, label]) => (
+            <button key={kind} type="button" className={secondaryButtonClass} onClick={() => void openInstanceDirectory(instance.id, kind)}>
+              <FolderOpen size={14} />{label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-t border-app-separator/55 pt-5">
+        <h3 className="m-0 text-xs font-bold">Duplicate instance</h3>
+        <p className="mt-1 mb-4 text-[11px] text-app-secondary">Create a clean copy of this runtime definition, then choose which personal files follow it.</p>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+          <input className="h-9 rounded-control border border-app-separator bg-app-bg px-3 text-xs outline-none focus:border-app-accent" value={duplicateName} maxLength={80} onChange={(event) => setDuplicateName(event.target.value)} />
+          <button type="button" className={secondaryButtonClass} disabled={!duplicateName.trim() || duplicateMutation.isPending} onClick={() => duplicateMutation.mutate()}>
+            {duplicateMutation.isPending ? <RotateCcw className="animate-spin" size={14} /> : <Copy size={14} />}Duplicate
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-5 text-[11px] text-app-secondary">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={copyWorlds} onChange={(event) => setCopyWorlds(event.target.checked)} />Worlds</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={copyScreenshots} onChange={(event) => setCopyScreenshots(event.target.checked)} />Screenshots</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={copySettings} onChange={(event) => setCopySettings(event.target.checked)} />Settings and artwork</label>
+        </div>
+      </section>
+
+      <section className="border-t border-app-separator/55 pt-5">
+        <div className="flex items-start justify-between gap-5">
+          <span><h3 className="m-0 text-xs font-bold">Snapshots</h3><p className="mt-1 mb-0 text-[11px] text-app-secondary">Stopped-state copies of the game directory. Pinned snapshots do not count toward retention.</p></span>
+          <button type="button" className={secondaryButtonClass} disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>
+            {createMutation.isPending ? <RotateCcw className="animate-spin" size={14} /> : <FolderArchive size={14} />}Create snapshot
+          </button>
+        </div>
+        <div className="mt-4 divide-y divide-app-separator/50 border-y border-app-separator/50">
+          {snapshotsQuery.isPending ? <p className="py-4 text-xs text-app-secondary">Loading snapshots…</p> : null}
+          {snapshotsQuery.data?.length === 0 ? <p className="py-4 text-xs text-app-secondary">No snapshots yet.</p> : null}
+          {snapshotsQuery.data?.map((snapshot) => (
+            <div key={snapshot.id} className="flex min-h-12 items-center gap-3 py-2">
+              <span className="grid size-8 place-items-center rounded-control bg-app-raised text-app-secondary"><FolderArchive size={14} /></span>
+              <span className="min-w-0 flex-1"><strong className="block text-[11px]">{formatDate(snapshot.createdAt)}</strong><span className="font-mono text-[10px] text-app-muted">{formatContentFileSize(snapshot.sizeBytes)}</span></span>
+              <button type="button" className="p-2 text-app-secondary hover:text-app-text" title={snapshot.pinned ? "Unpin snapshot" : "Pin snapshot"} onClick={() => pinMutation.mutate({ id: snapshot.id, pinned: !snapshot.pinned })}>{snapshot.pinned ? <PinOff size={14} /> : <Pin size={14} />}</button>
+              {restoreTarget === snapshot.id ? (
+                <span className="flex items-center gap-2 rounded-control border border-app-warning/45 bg-app-warning/5 px-2 py-1">
+                  <span className="text-[10px] text-app-secondary">Replace current files?</span>
+                  <button type="button" className="text-[10px] font-bold text-app-warning" disabled={restoreMutation.isPending} onClick={() => restoreMutation.mutate(snapshot.id)}>Confirm</button>
+                  <button type="button" className="text-[10px] font-bold text-app-secondary" disabled={restoreMutation.isPending} onClick={() => setRestoreTarget(undefined)}>Cancel</button>
+                </span>
+              ) : (
+                <button type="button" className="text-[11px] font-bold text-app-accent" disabled={restoreMutation.isPending} onClick={() => { setDeleteTarget(undefined); setRestoreTarget(snapshot.id); }}>Restore</button>
+              )}
+              {deleteTarget === snapshot.id ? (
+                <span className="flex items-center gap-2 rounded-control border border-app-danger/45 bg-app-danger/5 px-2 py-1">
+                  <span className="text-[10px] text-app-secondary">Delete permanently?</span>
+                  <button type="button" className="text-[10px] font-bold text-app-danger" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(snapshot.id)}>Delete</button>
+                  <button type="button" className="text-[10px] font-bold text-app-secondary" disabled={deleteMutation.isPending} onClick={() => setDeleteTarget(undefined)}>Cancel</button>
+                </span>
+              ) : (
+                <button type="button" className="p-2 text-app-muted hover:text-app-danger" title="Delete snapshot" disabled={deleteMutation.isPending} onClick={() => { setRestoreTarget(undefined); setDeleteTarget(snapshot.id); }}><Trash2 size={14} /></button>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {error || message ? <p className={`m-0 text-xs ${error ? "text-app-danger" : "text-app-secondary"}`} role={error ? "alert" : "status"}>{error ? contentErrorMessage(error) : message}</p> : null}
+    </>
+  );
+}
+
+function GameOptionsForm({
+  instance,
+  fileExists,
+  initialValues,
+}: {
+  instance: LauncherInstance;
+  fileExists: boolean;
+  initialValues: Record<string, string>;
+}) {
+  const queryClient = useQueryClient();
+  const [values, setValues] = useState(() => ({
+    graphicsMode: "1",
+    renderDistance: "12",
+    simulationDistance: "12",
+    guiScale: "0",
+    entityDistanceScaling: "1.0",
+    particles: "0",
+    mipmapLevels: "4",
+    enableVsync: "true",
+    maxFps: "120",
+    bobView: "true",
+    mouseSensitivity: "0.5",
+    invertYMouse: "false",
+    autoJump: "false",
+    toggleCrouch: "false",
+    toggleSprint: "false",
+    showSubtitles: "false",
+    narrator: "0",
+    chatVisibility: "0",
+    chatOpacity: "1.0",
+    textBackgroundOpacity: "0.5",
+    darknessEffectScale: "1.0",
+    damageTiltStrength: "1.0",
+    directionalAudio: "false",
+    realmsNotifications: "true",
+    allowServerListing: "true",
+    chatLinks: "true",
+    chatLinksPrompt: "true",
+    soundCategory_master: "1.0",
+    soundCategory_music: "1.0",
+    soundCategory_weather: "1.0",
+    soundCategory_hostile: "1.0",
+    soundCategory_player: "1.0",
+    ...initialValues,
+  }));
+  const mutation = useMutation({
+    mutationFn: () =>
+      updateInstanceGameOptions({
+        id: instance.id,
+        values,
+        expectedRevision: instance.revision,
+      }),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(["instance", instance.id], updated);
+      await queryClient.invalidateQueries({
+        queryKey: ["instance-game-options", instance.id],
+      });
+    },
+  });
+  const update = (key: string, value: string) =>
+    setValues((current) => ({ ...current, [key]: value }));
+
+  return (
+    <SettingsPanel
+      title="Game configuration"
+      description="Edit common Minecraft options without discarding settings added by the game or mods."
+    >
+      <InlineNotice title="Unknown keys are preserved">
+        {fileExists
+          ? "slate updates only the recognized keys below. Mod-specific and future Minecraft options stay byte-for-byte unchanged."
+          : "Minecraft has not created options.txt yet. Saving creates it with only the recognized choices below."}
+      </InlineNotice>
+
+      <GameOptionSection title="Video">
+        <Field label="Graphics quality">
+          <select className={inputClass} value={values.graphicsMode} onChange={(event) => update("graphicsMode", event.target.value)}>
+            <option value="0">Fast</option><option value="1">Fancy</option><option value="2">Fabulous</option>
+          </select>
+        </Field>
+        <GameOptionNumber label="Render distance" value={values.renderDistance} min={2} max={64} suffix="chunks" onChange={(value) => update("renderDistance", value)} />
+        <GameOptionNumber label="Simulation distance" value={values.simulationDistance} min={2} max={32} suffix="chunks" onChange={(value) => update("simulationDistance", value)} />
+        <GameOptionNumber label="Maximum frame rate" value={values.maxFps} min={10} max={260} suffix="FPS" onChange={(value) => update("maxFps", value)} />
+        <GameOptionNumber label="GUI scale" value={values.guiScale} min={0} max={8} onChange={(value) => update("guiScale", value)} />
+        <GameOptionRange label="Entity distance" value={values.entityDistanceScaling} min={0.5} max={5} step={0.1} onChange={(value) => update("entityDistanceScaling", value)} />
+        <GameOptionCheckbox label="Vertical sync" checked={values.enableVsync === "true"} onChange={(checked) => update("enableVsync", String(checked))} />
+        <GameOptionCheckbox label="View bobbing" checked={values.bobView === "true"} onChange={(checked) => update("bobView", String(checked))} />
+      </GameOptionSection>
+
+      <GameOptionSection title="Audio">
+        <GameOptionRange label="Master volume" value={values.soundCategory_master} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_master", value)} />
+        <GameOptionRange label="Music" value={values.soundCategory_music} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_music", value)} />
+        <GameOptionRange label="Weather" value={values.soundCategory_weather} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_weather", value)} />
+        <GameOptionRange label="Hostile creatures" value={values.soundCategory_hostile} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_hostile", value)} />
+        <GameOptionRange label="Players" value={values.soundCategory_player} min={0} max={1} step={0.01} percentage onChange={(value) => update("soundCategory_player", value)} />
+        <GameOptionCheckbox label="Directional audio" checked={values.directionalAudio === "true"} onChange={(checked) => update("directionalAudio", String(checked))} />
+      </GameOptionSection>
+
+      <GameOptionSection title="Controls & accessibility">
+        <GameOptionRange label="Mouse sensitivity" value={values.mouseSensitivity} min={0} max={1} step={0.01} percentage onChange={(value) => update("mouseSensitivity", value)} />
+        <GameOptionRange label="Chat opacity" value={values.chatOpacity} min={0} max={1} step={0.01} percentage onChange={(value) => update("chatOpacity", value)} />
+        <GameOptionRange label="Darkness pulse strength" value={values.darknessEffectScale} min={0} max={1} step={0.01} percentage onChange={(value) => update("darknessEffectScale", value)} />
+        <GameOptionRange label="Damage tilt strength" value={values.damageTiltStrength} min={0} max={1} step={0.01} percentage onChange={(value) => update("damageTiltStrength", value)} />
+        <GameOptionCheckbox label="Auto jump" checked={values.autoJump === "true"} onChange={(checked) => update("autoJump", String(checked))} />
+        <GameOptionCheckbox label="Invert mouse" checked={values.invertYMouse === "true"} onChange={(checked) => update("invertYMouse", String(checked))} />
+        <GameOptionCheckbox label="Toggle crouch" checked={values.toggleCrouch === "true"} onChange={(checked) => update("toggleCrouch", String(checked))} />
+        <GameOptionCheckbox label="Toggle sprint" checked={values.toggleSprint === "true"} onChange={(checked) => update("toggleSprint", String(checked))} />
+        <GameOptionCheckbox label="Show subtitles" checked={values.showSubtitles === "true"} onChange={(checked) => update("showSubtitles", String(checked))} />
+      </GameOptionSection>
+
+      <GameOptionSection title="Multiplayer">
+        <GameOptionCheckbox label="Allow server listing" checked={values.allowServerListing === "true"} onChange={(checked) => update("allowServerListing", String(checked))} />
+        <GameOptionCheckbox label="Realms notifications" checked={values.realmsNotifications === "true"} onChange={(checked) => update("realmsNotifications", String(checked))} />
+        <GameOptionCheckbox label="Open links in chat" checked={values.chatLinks === "true"} onChange={(checked) => update("chatLinks", String(checked))} />
+        <GameOptionCheckbox label="Prompt before opening links" checked={values.chatLinksPrompt === "true"} onChange={(checked) => update("chatLinksPrompt", String(checked))} />
+      </GameOptionSection>
+
+      <div className="flex items-center justify-between border-t border-app-separator/55 pt-5">
+        <p className={`m-0 text-xs ${mutation.isError ? "text-app-danger" : "text-app-secondary"}`} role={mutation.isError ? "alert" : "status"}>
+          {mutation.isError ? contentErrorMessage(mutation.error) : mutation.isSuccess ? "Game configuration saved." : "Changes apply on the next launch."}
+        </p>
+        <button type="button" className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:opacity-50" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+          {mutation.isPending ? <RotateCcw className="animate-spin" size={15} /> : <Save size={15} />}
+          Save game configuration
+        </button>
+      </div>
+    </SettingsPanel>
+  );
+}
+
+function GameOptionSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-app-separator/55 pt-5">
+      <h3 className="col-span-2 m-0 text-xs font-bold">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function GameOptionCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex h-10 items-center justify-between rounded-control border border-app-separator/70 bg-app-bg/35 px-3 text-xs font-semibold">
+      {label}
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
+  );
+}
+
+function GameOptionNumber({ label, value, min, max, suffix, onChange }: { label: string; value: string; min: number; max: number; suffix?: string; onChange: (value: string) => void }) {
+  return (
+    <Field label={label}>
+      <span className="relative block">
+        <input className={`${inputClass} ${suffix ? "pr-16" : ""}`} type="number" min={min} max={max} value={value} onChange={(event) => onChange(event.target.value)} />
+        {suffix ? <span className="absolute right-3 bottom-3 text-[10px] text-app-muted">{suffix}</span> : null}
+      </span>
+    </Field>
+  );
+}
+
+function GameOptionRange({ label, value, min, max, step, percentage = false, onChange }: { label: string; value: string; min: number; max: number; step: number; percentage?: boolean; onChange: (value: string) => void }) {
+  const numeric = Number(value);
+  return (
+    <label className="block text-xs font-bold">
+      <span className="flex justify-between"><span>{label}</span><span className="font-mono text-[10px] text-app-muted">{percentage ? `${Math.round(numeric * 100)}%` : numeric.toFixed(1)}</span></span>
+      <input className="mt-3 w-full accent-app-accent" type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
   );
 }
 

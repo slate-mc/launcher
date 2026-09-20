@@ -8,6 +8,7 @@ mod instance_settings;
 mod instances;
 mod servers;
 mod settings;
+mod snapshots;
 
 pub use accounts::{AccountRecord, AccountStatus, AuthenticatedAccount, LaunchAccount};
 pub use database::{Database, StorageError};
@@ -25,3 +26,4 @@ pub use instance_settings::{
 pub use instances::{InstanceRecord, ModpackSourceRecord, NewInstance, NewModpackSource};
 pub use servers::{NewSavedServer, SavedServerRecord};
 pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference};
+pub use snapshots::InstanceSnapshotRecord;

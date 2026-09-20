@@ -27,13 +27,17 @@ pub use install::{
     InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, ModpackInstallStarted,
 };
 pub use instance::{
-    CreateInstanceRequest, GetInstanceArtworkRequest, InstanceArtworkAsset, InstanceArtworkKindDto,
-    InstanceModeDto, InstanceSettingsSummary, InstanceSetupStateDto, InstanceSummary,
-    InstanceWindowModeDto, JavaSelectionModeDto, LauncherBehaviorDto, LoaderKindDto,
-    ManagementModeDto, MemoryModeDto, ModpackSourceSummary, PerformancePresetDto,
-    ProcessPriorityDto, RenameInstanceRequest, SelectInstanceArtworkRequest,
-    SelectInstanceJavaRequest, SetFavoriteRequest, TrashInstanceRequest,
-    UpdateInstanceConfigurationRequest, UpdateInstanceSettingsRequest,
+    CreateInstanceRequest, CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest,
+    DuplicateInstanceRequest, GetInstanceArtworkRequest, GetInstanceGameOptionsRequest,
+    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceDirectoryKindDto,
+    InstanceGameOptionsSummary, InstanceModeDto, InstanceSettingsSummary, InstanceSetupStateDto,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto,
+    JavaSelectionModeDto, LauncherBehaviorDto, LoaderKindDto, ManagementModeDto, MemoryModeDto,
+    ModpackSourceSummary, OpenInstanceDirectoryRequest, PerformancePresetDto, ProcessPriorityDto,
+    RenameInstanceRequest, RestoreInstanceSnapshotRequest, SelectInstanceArtworkRequest,
+    SelectInstanceJavaRequest, SetFavoriteRequest, SetInstanceSnapshotPinnedRequest,
+    TrashInstanceRequest, UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest,
+    UpdateInstanceSettingsRequest,
 };
 pub use launch::{
     GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,
@@ -45,6 +49,7 @@ pub use modpack::{
     InstanceModResolution, InstanceModSummary, InstanceModsRequest, ModSearchRequest,
     ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackVersionRequest,
     ModpackVersionsRequest, RemoveInstanceModRequest, SetInstanceModEnabledRequest,
+    SetInstanceModPinnedRequest,
 };
 pub use schema::schema_documents;
 pub use settings::{
@@ -53,7 +58,7 @@ pub use settings::{
 pub use system::{JavaRuntimeSummary, PreflightSummary};
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 6;
+pub const DATABASE_SCHEMA_VERSION: u32 = 7;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

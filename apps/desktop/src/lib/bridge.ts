@@ -9,6 +9,9 @@ import {
   installJobListSchema,
   installJobSchema,
   instanceArtworkAssetSchema,
+  instanceGameOptionsSchema,
+  instanceSnapshotListSchema,
+  instanceSnapshotSchema,
   instanceModListSchema,
   instanceModResolutionListSchema,
   instanceSummaryListSchema,
@@ -53,6 +56,8 @@ import {
   type InstanceModResolution,
   type InstanceSettings,
   type InstanceArtworkKind,
+  type InstanceGameOptions,
+  type InstanceSnapshot,
   type Preflight,
   type ServerPreview,
 } from "../types/launcher";
@@ -526,6 +531,20 @@ export async function setInstanceModEnabled(input: {
   );
 }
 
+export async function setInstanceModPinned(input: {
+  instanceId: string;
+  expectedRevision: number;
+  filePath: string;
+  provider?: Exclude<Provider, "ftb">;
+  projectId?: string;
+  pinned: boolean;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_mod_set_pinned", { request: input }),
+  );
+}
+
 export async function removeInstanceMod(input: {
   instanceId: string;
   expectedRevision: number;
@@ -745,6 +764,107 @@ export async function getInstanceArtwork(
   if (value === null || value === undefined) return undefined;
   const asset = instanceArtworkAssetSchema.parse(value);
   return `data:${asset.mimeType};base64,${asset.dataBase64}`;
+}
+
+export async function getInstanceGameOptions(
+  id: string,
+): Promise<InstanceGameOptions> {
+  if (bridgeMode !== "native") return { fileExists: false, values: {} };
+  return instanceGameOptionsSchema.parse(
+    await invoke("instance_game_options_get", { request: { id } }),
+  );
+}
+
+export async function updateInstanceGameOptions(input: {
+  id: string;
+  values: Record<string, string>;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  if (bridgeMode !== "native") {
+    throw new Error("Game options are available only in the slate desktop app.");
+  }
+  return instanceSummarySchema.parse(
+    await invoke("instance_game_options_update", { request: input }),
+  );
+}
+
+export async function openInstanceDirectory(
+  id: string,
+  kind: "game" | "mods" | "logs" | "screenshots" | "saves" | "crashReports",
+): Promise<void> {
+  if (bridgeMode !== "native") return;
+  await invoke("instance_open_directory", { request: { id, kind } });
+}
+
+export async function duplicateInstance(input: {
+  id: string;
+  name: string;
+  includeWorlds: boolean;
+  includeScreenshots: boolean;
+  includeSettings: boolean;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  if (bridgeMode !== "native") {
+    throw new Error("Duplication is available only in the slate desktop app.");
+  }
+  return instanceSummarySchema.parse(
+    await invoke("instance_duplicate", { request: input }),
+  );
+}
+
+export async function listInstanceSnapshots(
+  id: string,
+): Promise<InstanceSnapshot[]> {
+  if (bridgeMode !== "native") return [];
+  return instanceSnapshotListSchema.parse(
+    await invoke("instance_snapshots_list", { request: { id } }),
+  );
+}
+
+export async function createInstanceSnapshot(input: {
+  id: string;
+  expectedRevision: number;
+}): Promise<InstanceSnapshot> {
+  if (bridgeMode !== "native") {
+    throw new Error("Snapshots are available only in the slate desktop app.");
+  }
+  return instanceSnapshotSchema.parse(
+    await invoke("instance_snapshot_create", { request: input }),
+  );
+}
+
+export async function restoreInstanceSnapshot(input: {
+  id: string;
+  snapshotId: string;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  if (bridgeMode !== "native") {
+    throw new Error("Snapshots are available only in the slate desktop app.");
+  }
+  return instanceSummarySchema.parse(
+    await invoke("instance_snapshot_restore", { request: input }),
+  );
+}
+
+export async function deleteInstanceSnapshot(input: {
+  id: string;
+  snapshotId: string;
+}): Promise<void> {
+  if (bridgeMode !== "native") return;
+  await invoke("instance_snapshot_delete", { request: input });
+}
+
+export async function setInstanceSnapshotPinned(input: {
+  id: string;
+  snapshotId: string;
+  pinned: boolean;
+}): Promise<InstanceSnapshot> {
+  if (bridgeMode !== "native") {
+    throw new Error("Snapshots are available only in the slate desktop app.");
+  }
+  return instanceSnapshotSchema.parse(
+    await invoke("instance_snapshot_set_pinned", { request: input }),
+  );
 }
 
 export async function setInstanceFavorite(input: {
