@@ -551,6 +551,20 @@ export async function listInstanceContentFiles(
   );
 }
 
+export async function setInstanceContentPinned(input: {
+  instanceId: string;
+  kind: InstanceContentKind;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+  pinned: boolean;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_content_set_pinned", { request: input }),
+  );
+}
+
 export async function listInstanceWorlds(
   instanceId: string,
 ): Promise<string[]> {

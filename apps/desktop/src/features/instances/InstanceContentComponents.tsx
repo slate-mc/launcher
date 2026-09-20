@@ -5,6 +5,8 @@ import {
   Download,
   FileUp,
   LoaderCircle,
+  Pin,
+  PinOff,
   Plus,
   RotateCcw,
   Search,
@@ -24,6 +26,7 @@ import {
   listInstanceWorlds,
   removeInstanceContentFile,
   searchContent,
+  setInstanceContentPinned,
   setInstanceContentFileEnabled,
 } from "../../lib/bridge";
 import { installJobMessage } from "../../lib/installJobPresentation";
@@ -249,6 +252,33 @@ export function InstanceFileContent({
         message: contentErrorMessage(error),
       }),
   });
+  const pinMutation = useMutation({
+    mutationFn: (file: InstanceContentFile) => {
+      if (!file.provider || !file.projectId) {
+        throw new Error("Updates are not available for that content file.");
+      }
+      return setInstanceContentPinned({
+        instanceId: instance.id,
+        kind,
+        provider: file.provider,
+        projectId: file.projectId,
+        pinned: !file.pinned,
+        expectedRevision: instance.revision,
+      });
+    },
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, file) =>
+      refresh(
+        updated,
+        `${file.displayName} will ${file.pinned ? "receive compatible updates" : "stay on this version"}.`,
+      ),
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Version preference was not changed",
+        message: contentErrorMessage(error),
+      }),
+  });
   const restoreMutation = useMutation({
     mutationFn: () =>
       installInstance({ id: instance.id, expectedRevision: instance.revision }),
@@ -333,6 +363,7 @@ export function InstanceFileContent({
     importMutation.isPending ||
     toggleMutation.isPending ||
     removeMutation.isPending ||
+    pinMutation.isPending ||
     installing;
 
   return (
@@ -703,6 +734,26 @@ export function InstanceFileContent({
                             In-game
                           </span>
                         )}
+                        {file.provider && file.projectId ? (
+                          <button
+                            type="button"
+                            className={`inline-flex size-7 items-center justify-center rounded-control border bg-app-bg disabled:opacity-45 ${file.pinned ? "border-app-accent/40 text-app-accent" : "border-app-separator text-app-secondary hover:border-app-accent/45 hover:text-app-accent"}`}
+                            disabled={busy}
+                            onClick={() => pinMutation.mutate(file)}
+                            aria-label={`${file.pinned ? "Unpin" : "Pin"} ${file.displayName}`}
+                            title={
+                              file.pinned
+                                ? "Allow compatible updates"
+                                : "Keep this version"
+                            }
+                          >
+                            {file.pinned ? (
+                              <PinOff size={13} aria-hidden="true" />
+                            ) : (
+                              <Pin size={13} aria-hidden="true" />
+                            )}
+                          </button>
+                        ) : null}
                         {removeTarget === file.filePath ? (
                           <span className="flex items-center gap-2">
                             <button

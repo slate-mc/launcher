@@ -216,6 +216,7 @@ pub(super) fn content_file_summary(
         icon_url: provider_content
             .as_ref()
             .and_then(|item| item.icon_url.clone()),
+        pinned: provider_content.as_ref().is_some_and(|item| item.pinned),
         installed_at: provider_content.map(|item| item.installed_at),
     }
 }

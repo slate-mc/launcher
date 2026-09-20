@@ -21,12 +21,12 @@ use crate::{
     RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
     SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
     ServerStatusSummary, SessionLogEvent, SessionLogSubscription, SetInstallJobPausedRequest,
-    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
-    SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
-    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
-    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
-    UpdateSavedServerRequest,
+    SetInstanceContentFileEnabledRequest, SetInstanceContentPinnedRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
+    StopGameSessionRequest, StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
+    SupportReportExport, SupportReportPreview, UnsubscribeSessionLogRequest,
+    UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
+    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -339,6 +339,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(SetInstanceContentFileEnabledRequest),
         ),
         (
+            "set-instance-content-pinned-request",
+            schema_for!(SetInstanceContentPinnedRequest),
+        ),
+        (
             "remove-instance-content-file-request",
             schema_for!(RemoveInstanceContentFileRequest),
         ),
@@ -378,7 +382,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 102);
+        assert_eq!(schemas.len(), 103);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

@@ -333,7 +333,19 @@ pub struct InstanceContentFileSummary {
     pub project_id: Option<String>,
     pub version_id: Option<String>,
     pub icon_url: Option<String>,
+    pub pinned: bool,
     pub installed_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetInstanceContentPinnedRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+    pub provider: Provider,
+    pub project_id: String,
+    pub pinned: bool,
+    pub expected_revision: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

@@ -39,7 +39,7 @@ Last updated: September 20, 2026
   pack-vs-user ownership, enable/disable behavior where supported, recoverable removal, local mod
   JAR import, local resource/shader/data-pack ZIP import, and compatible Modrinth browsing and batch
   installation. Provider content uses exact Minecraft/runtime matching, explicit world selection for
-  data packs, verified downloads, duplicate protection, snapshots, and rollback.
+   data packs, verified downloads, duplicate protection, version pinning, snapshots, and rollback.
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
   formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
   authenticated quick join.
@@ -74,7 +74,7 @@ Verified on Windows on September 20, 2026:
 
 1. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
    validated local ZIP import plus compatible Modrinth browsing and batch installation. Provider
-   dependency handling, updates, version pinning, and ordering remain incomplete.
+   dependency handling, updates, downgrade history, and ordering remain incomplete.
 2. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
@@ -125,6 +125,6 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add dependency handling, update management, version pinning, and ordering for provider-managed
+Add dependency handling, update management, downgrade history, and ordering for provider-managed
 resource packs, shaders, and data packs. Then add native clean-install smoke coverage so release
 claims are evidence-based rather than inferred from unit tests.

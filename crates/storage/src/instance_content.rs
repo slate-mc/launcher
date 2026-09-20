@@ -28,6 +28,7 @@ pub struct InstanceProviderContentRecord {
     pub icon_url: Option<String>,
     pub file_path: String,
     pub hashes: Hashes,
+    pub pinned: bool,
     pub installed_at: String,
 }
 
@@ -39,7 +40,7 @@ impl Database {
     ) -> Result<Vec<InstanceProviderContentRecord>, StorageError> {
         sqlx::query(
             "SELECT instance_id, kind, provider, project_id, version_id, display_name, \
-             icon_url, file_path, hashes_json, installed_at FROM instance_provider_content \
+             icon_url, file_path, hashes_json, pinned, installed_at FROM instance_provider_content \
              WHERE instance_id = ? AND kind = ? ORDER BY display_name COLLATE NOCASE, file_path",
         )
         .bind(instance_id.to_string())
@@ -71,6 +72,7 @@ impl Database {
                 icon_url: row.try_get("icon_url")?,
                 file_path: row.try_get("file_path")?,
                 hashes: serde_json::from_str(&row.try_get::<String, _>("hashes_json")?)?,
+                pinned: row.try_get::<i64, _>("pinned")? != 0,
                 installed_at: row.try_get("installed_at")?,
             })
         })
@@ -128,6 +130,44 @@ impl Database {
             instance_id,
             expected_revision,
             "instance.content.removed",
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn set_instance_provider_content_pinned(
+        &self,
+        instance_id: InstanceId,
+        expected_revision: u64,
+        kind: ContentKind,
+        provider: Provider,
+        project_id: &str,
+        pinned: bool,
+    ) -> Result<(), StorageError> {
+        let mut transaction = self
+            .begin_content_mutation(instance_id, expected_revision)
+            .await?;
+        sqlx::query(
+            "UPDATE instance_provider_content SET pinned = ? WHERE instance_id = ? AND kind = ? \
+             AND provider = ? AND project_id = ?",
+        )
+        .bind(i64::from(pinned))
+        .bind(instance_id.to_string())
+        .bind(kind.as_str())
+        .bind(provider.as_str())
+        .bind(project_id.trim())
+        .execute(&mut *transaction)
+        .await?;
+        insert_content_audit(
+            &mut transaction,
+            instance_id,
+            expected_revision,
+            if pinned {
+                "instance.content.pinned"
+            } else {
+                "instance.content.unpinned"
+            },
         )
         .await?;
         transaction.commit().await?;

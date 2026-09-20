@@ -653,6 +653,7 @@ export const instanceContentFileSchema = z.object({
   projectId: z.string().min(1).nullable(),
   versionId: z.string().min(1).nullable(),
   iconUrl: z.string().url().nullable(),
+  pinned: z.boolean(),
   installedAt: z.string().min(1).nullable(),
 });
 

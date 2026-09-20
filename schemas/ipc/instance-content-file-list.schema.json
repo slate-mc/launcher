@@ -50,6 +50,9 @@
         "origin": {
           "$ref": "#/$defs/InstanceModOriginDto"
         },
+        "pinned": {
+          "type": "boolean"
+        },
         "projectId": {
           "type": [
             "string",
@@ -86,7 +89,8 @@
         "enabled",
         "canToggle",
         "origin",
-        "fileSize"
+        "fileSize",
+        "pinned"
       ]
     },
     "InstanceContentKindDto": {

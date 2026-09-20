@@ -733,6 +733,43 @@ pub(super) async fn instance_content_file_set_enabled(
 }
 
 #[tauri::command]
+pub(super) async fn instance_content_set_pinned(
+    state: tauri::State<'_, DesktopState>,
+    request: SetInstanceContentPinnedRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    if request.provider != slate_modpack_api_contracts::Provider::Modrinth
+        || request.project_id.trim().is_empty()
+    {
+        return Err(AppError::new(
+            "content.provider_unavailable",
+            "Updates are not available for that content file.",
+        ));
+    }
+    state
+        .database
+        .set_instance_provider_content_pinned(
+            instance_id,
+            request.expected_revision,
+            provider_content_kind(request.kind),
+            request.provider,
+            request.project_id.trim(),
+            request.pinned,
+        )
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not update that content file."))?;
+    let updated = state
+        .database
+        .get_instance(instance.id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not reload that instance."))?;
+    Ok(instance_summary(updated))
+}
+
+#[tauri::command]
 pub(super) async fn instance_content_file_remove(
     state: tauri::State<'_, DesktopState>,
     request: RemoveInstanceContentFileRequest,

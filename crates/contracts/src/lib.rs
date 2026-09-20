@@ -61,8 +61,8 @@ pub use modpack::{
     ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackUpdateSummary,
     ModpackVersionRequest, ModpackVersionsRequest, RemoveInstanceContentFileRequest,
     RemoveInstanceModRequest, ResolveInstanceModRelationshipsRequest,
-    SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
-    SetInstanceModPinnedRequest, UpdateInstanceModRequest,
+    SetInstanceContentFileEnabledRequest, SetInstanceContentPinnedRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, UpdateInstanceModRequest,
 };
 pub use onboarding::OnboardingStateSummary;
 pub use schema::schema_documents;
