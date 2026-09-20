@@ -22,6 +22,7 @@ import {
   searchMods,
   setInstanceModEnabled,
   setInstanceModPinned,
+  updateInstanceMod,
 } from "../../lib/bridge";
 import { loaderLabel } from "../../lib/format";
 import { installJobMessage } from "../../lib/installJobPresentation";
@@ -278,6 +279,47 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
         message: contentErrorMessage(error),
       }),
   });
+  const updateModMutation = useMutation({
+    mutationFn: ({
+      item,
+      versionId,
+    }: {
+      item: InstanceMod;
+      versionId: string;
+    }) => {
+      if (!item.provider || !item.projectId) {
+        throw new UserFacingError(
+          "This mod is not linked to a supported provider.",
+        );
+      }
+      return updateInstanceMod({
+        instanceId: instance.id,
+        expectedRevision: instance.revision,
+        provider: item.provider,
+        projectId: item.projectId,
+        filePath: item.filePath,
+        displayName: item.displayName,
+        targetVersionId: versionId,
+      });
+    },
+    onMutate: () => setNotice(undefined),
+    onSuccess: async (job) => {
+      setInstallJobId(job.id);
+      queryClient.setQueryData(["install-jobs"], (current: unknown) =>
+        Array.isArray(current) ? [job, ...current] : [job],
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      ]);
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Mod version was not queued",
+        message: contentErrorMessage(error),
+      }),
+  });
 
   useEffect(() => {
     if (
@@ -308,7 +350,9 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
               : ("danger" as const),
           title:
             installJob.state === "succeeded"
-              ? "Mods installed"
+              ? installJob.operation === "modUpdate"
+                ? "Mod version changed"
+                : "Mods installed"
               : "Mod installation stopped",
           message: installJobMessage(installJob),
         }
@@ -367,6 +411,7 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
     .map(([id]) => modProviderName(id as Provider));
   const installing =
     installMutation.isPending ||
+    updateModMutation.isPending ||
     installJob?.state === "queued" ||
     installJob?.state === "running" ||
     installJob?.state === "paused";
@@ -849,19 +894,27 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
                         disabled={installing || contentMutationPending}
                         confirmingRemove={removeTargetPath === item.filePath}
                         pendingAction={
-                          toggleMutation.isPending &&
-                          toggleMutation.variables?.item.filePath ===
+                          updateModMutation.isPending &&
+                          updateModMutation.variables?.item.filePath ===
                             item.filePath
-                            ? "toggle"
-                            : pinModMutation.isPending &&
-                                pinModMutation.variables?.item.filePath ===
+                            ? "update"
+                            : toggleMutation.isPending &&
+                                toggleMutation.variables?.item.filePath ===
                                   item.filePath
-                              ? "pin"
-                              : removeMutation.isPending &&
-                                  removeMutation.variables?.filePath ===
+                              ? "toggle"
+                              : pinModMutation.isPending &&
+                                  pinModMutation.variables?.item.filePath ===
                                     item.filePath
-                                ? "remove"
-                                : undefined
+                                ? "pin"
+                                : removeMutation.isPending &&
+                                    removeMutation.variables?.filePath ===
+                                      item.filePath
+                                  ? "remove"
+                                  : undefined
+                        }
+                        instanceId={instance.id}
+                        onUpdate={(versionId) =>
+                          updateModMutation.mutate({ item, versionId })
                         }
                         onToggle={() =>
                           toggleMutation.mutate({

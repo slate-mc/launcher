@@ -3,6 +3,8 @@ use super::*;
 pub(super) struct InstalledModIndex {
     pub(super) identities: HashSet<String>,
     pub(super) artifacts: HashMap<String, InstalledModArtifact>,
+    pub(super) versions: HashMap<String, String>,
+    pub(super) paths: HashMap<String, String>,
 }
 
 pub(super) struct InstalledModArtifact {
@@ -75,6 +77,8 @@ pub(super) async fn installed_mod_index(
         })
         .collect::<HashMap<_, _>>();
     let mut identities = HashSet::new();
+    let mut versions = HashMap::new();
+    let mut paths = HashMap::new();
     for installed in state
         .database
         .list_instance_mods(instance_id)
@@ -82,7 +86,10 @@ pub(super) async fn installed_mod_index(
         .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?
     {
         if let Some(artifact) = artifacts.get_mut(&normalized_content_path(&installed.file_path)) {
-            identities.insert(format!("{}:{}", installed.provider, installed.project_id));
+            let identity = format!("{}:{}", installed.provider, installed.project_id);
+            identities.insert(identity.clone());
+            versions.insert(identity.clone(), installed.version_id);
+            paths.insert(identity, installed.file_path);
             artifact.known_hashes.push(installed.hashes);
         }
     }
@@ -98,7 +105,12 @@ pub(super) async fn installed_mod_index(
             {
                 artifact.known_hashes.push(file.hashes);
                 if let Some(reference) = file.source {
-                    identities.insert(format!("{}:{}", reference.provider, reference.project_id));
+                    let identity = format!("{}:{}", reference.provider, reference.project_id);
+                    identities.insert(identity.clone());
+                    if let Some(version_id) = reference.version_id {
+                        versions.entry(identity.clone()).or_insert(version_id);
+                    }
+                    paths.entry(identity).or_insert(file.path);
                 }
             }
         }
@@ -106,6 +118,8 @@ pub(super) async fn installed_mod_index(
     Ok(InstalledModIndex {
         identities,
         artifacts,
+        versions,
+        paths,
     })
 }
 

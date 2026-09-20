@@ -69,8 +69,9 @@ Verified on Windows on September 20, 2026:
 
 ## F1 release blockers
 
-1. **Content updates:** modpack updates work end to end. Per-mod update, downgrade,
-   dependency/dependent views, and rollback are not complete; pinning alone is not an updater.
+1. **Content updates:** modpack and per-mod update/downgrade work end to end with verified,
+   transactional file replacement. Dependency/dependent views and explicit per-mod rollback remain
+   incomplete.
 2. **Import coverage:** slate portable archives and local mod JARs work, but importing
    CurseForge/Modrinth packs and importing from other launchers are not complete.
 3. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support

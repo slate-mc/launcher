@@ -7,10 +7,36 @@ pub(super) struct PendingModpackUpdate {
 }
 
 #[derive(Clone, Debug)]
+struct CurrentInstalledMod {
+    version_id: Option<String>,
+    display_name: String,
+    file_path: String,
+    enabled: bool,
+    pinned: bool,
+}
+
+#[derive(Debug, Default)]
+struct PendingModChanges {
+    installed: Vec<NewInstanceMod>,
+    replaced_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 enum RetryableInstallOperation {
     InstanceInstall,
-    ModInstall { mods: Vec<InstallModSelection> },
-    ModpackUpdate { target_version_id: String },
+    ModInstall {
+        mods: Vec<InstallModSelection>,
+    },
+    ModUpdate {
+        provider: slate_modpack_api_contracts::Provider,
+        project_id: String,
+        file_path: String,
+        display_name: String,
+        target_version_id: String,
+    },
+    ModpackUpdate {
+        target_version_id: String,
+    },
 }
 
 impl RetryableInstallOperation {
@@ -18,6 +44,7 @@ impl RetryableInstallOperation {
         match self {
             Self::InstanceInstall => "instance_install",
             Self::ModInstall { .. } => "mod_install",
+            Self::ModUpdate { .. } => "mod_update",
             Self::ModpackUpdate { .. } => "modpack_update",
         }
     }
@@ -26,6 +53,19 @@ impl RetryableInstallOperation {
         match self {
             Self::InstanceInstall => None,
             Self::ModInstall { mods } => Some(serde_json::json!({ "mods": mods })),
+            Self::ModUpdate {
+                provider,
+                project_id,
+                file_path,
+                display_name,
+                target_version_id,
+            } => Some(serde_json::json!({
+                "provider": provider,
+                "projectId": project_id,
+                "filePath": file_path,
+                "displayName": display_name,
+                "targetVersionId": target_version_id,
+            })),
             Self::ModpackUpdate { target_version_id } => {
                 Some(serde_json::json!({ "targetVersionId": target_version_id }))
             }
@@ -62,7 +102,7 @@ async fn instance_install_inner(
         instance,
         request.expected_revision,
         plan,
-        Vec::new(),
+        PendingModChanges::default(),
         None,
         RetryableInstallOperation::InstanceInstall,
     )
@@ -74,10 +114,14 @@ async fn queue_instance_install(
     instance: InstanceRecord,
     expected_revision: u64,
     mut modpack_plan: Option<InstallPlan>,
-    pending_mods: Vec<NewInstanceMod>,
+    mod_changes: PendingModChanges,
     modpack_update: Option<PendingModpackUpdate>,
     operation: RetryableInstallOperation,
 ) -> Result<InstallJobSummary, AppError> {
+    let PendingModChanges {
+        installed: pending_mods,
+        replaced_paths: replaced_mod_paths,
+    } = mod_changes;
     let instance_id = instance.id;
     if state
         .processes
@@ -297,6 +341,11 @@ async fn queue_instance_install(
                         "Updated the pack to {} with {} verified content files",
                         update.version_id, outcome.installed_content_files
                     )
+                } else if !replaced_mod_paths.is_empty() {
+                    format!(
+                        "Updated {} verified mod files without reinstalling the instance",
+                        outcome.installed_content_files
+                    )
                 } else if !pending_mods.is_empty() {
                     format!(
                         "Installed {} verified mod files without reinstalling the base instance",
@@ -331,6 +380,22 @@ async fn queue_instance_install(
                                 version_id: update.version_id,
                                 loader_version: update.loader_version,
                             },
+                        )
+                        .await
+                } else if !replaced_mod_paths.is_empty() {
+                    task_state
+                        .database
+                        .complete_instance_mod_update(
+                            CompletedInstall {
+                                job_id: pending.job.id,
+                                revision_id: pending.revision_id,
+                                manifest_digest: outcome.manifest_digest,
+                                client_version: outcome.resolved_version_id,
+                                runtime,
+                                message,
+                            },
+                            pending_mods,
+                            replaced_mod_paths,
                         )
                         .await
                 } else if pending_mods.is_empty() {
@@ -556,6 +621,54 @@ pub(super) async fn install_job_retry(
             )
             .await
         }
+        Some("mod_update") => {
+            let payload = job
+                .retry_payload
+                .as_ref()
+                .ok_or_else(retry_context_missing)?;
+            let provider = payload
+                .get("provider")
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok())
+                .ok_or_else(retry_context_missing)?;
+            let project_id = payload
+                .get("projectId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(retry_context_missing)?;
+            let target_version_id = payload
+                .get("targetVersionId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(retry_context_missing)?;
+            let file_path = payload
+                .get("filePath")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(retry_context_missing)?;
+            let display_name = payload
+                .get("displayName")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(retry_context_missing)?;
+            instance_mod_update_inner(
+                state.inner(),
+                UpdateInstanceModRequest {
+                    instance_id,
+                    expected_revision,
+                    provider,
+                    project_id,
+                    file_path,
+                    display_name,
+                    target_version_id,
+                },
+            )
+            .await
+        }
         Some("modpack_update") => {
             let target_version_id = job
                 .retry_payload
@@ -776,7 +889,7 @@ async fn modpack_update_apply_inner(
         instance,
         request.expected_revision,
         Some(plan),
-        Vec::new(),
+        PendingModChanges::default(),
         Some(PendingModpackUpdate {
             version_id: latest.id.clone(),
             loader_version: target_loader_version,
@@ -893,7 +1006,7 @@ pub(super) async fn modpack_install(
         record.clone(),
         record.revision,
         Some(plan),
-        Vec::new(),
+        PendingModChanges::default(),
         None,
         RetryableInstallOperation::InstanceInstall,
     )
@@ -1058,6 +1171,8 @@ async fn instance_mod_install_inner(
                         display_name,
                         file_path: download.destination,
                         hashes: download.hashes,
+                        enabled: true,
+                        pinned: false,
                     },
                 );
                 continue;
@@ -1086,6 +1201,8 @@ async fn instance_mod_install_inner(
                         display_name,
                         file_path: download.destination,
                         hashes: download.hashes,
+                        enabled: true,
+                        pinned: false,
                     },
                 );
                 continue;
@@ -1107,6 +1224,8 @@ async fn instance_mod_install_inner(
                     display_name,
                     file_path: download.destination.clone(),
                     hashes: download.hashes.clone(),
+                    enabled: true,
+                    pinned: false,
                 },
             );
             accepted_downloads.push(download);
@@ -1143,9 +1262,371 @@ async fn instance_mod_install_inner(
         instance,
         request.expected_revision,
         Some(plan),
-        pending_by_identity.into_values().collect(),
+        PendingModChanges {
+            installed: pending_by_identity.into_values().collect(),
+            replaced_paths: Vec::new(),
+        },
         None,
         RetryableInstallOperation::ModInstall { mods: request.mods },
+    )
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn instance_mod_update(
+    state: tauri::State<'_, DesktopState>,
+    request: UpdateInstanceModRequest,
+) -> Result<InstallJobSummary, AppError> {
+    instance_mod_update_inner(state.inner(), request).await
+}
+
+async fn instance_mod_update_inner(
+    state: &DesktopState,
+    request: UpdateInstanceModRequest,
+) -> Result<InstallJobSummary, AppError> {
+    refresh_exited_sessions(state).await;
+    validate_instance_mod_reference(Some(request.provider), Some(&request.project_id))?;
+    let display_name = request.display_name.trim();
+    if display_name.is_empty()
+        || display_name.chars().count() > 160
+        || display_name.chars().any(char::is_control)
+    {
+        return Err(AppError::new(
+            "mod.invalid_reference",
+            "That installed mod has invalid details.",
+        ));
+    }
+    let requested_path = ManagedRelativePath::parse(request.file_path.trim())
+        .map_err(|_| {
+            AppError::new(
+                "mod.invalid_reference",
+                "That installed mod has an invalid file path.",
+            )
+        })?
+        .to_string();
+    if !requested_path.starts_with("mods/") {
+        return Err(AppError::new(
+            "mod.invalid_reference",
+            "That installed mod has an invalid file path.",
+        ));
+    }
+    let target_version_id = request.target_version_id.trim();
+    if target_version_id.is_empty()
+        || target_version_id.len() > 128
+        || !target_version_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(AppError::new(
+            "mod.invalid_version",
+            "Choose a valid mod version and try again.",
+        ));
+    }
+
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let installed_records = state
+        .database
+        .list_instance_mods(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?;
+    let root_identity = format!("{}:{}", request.provider, request.project_id.trim());
+    let stored_current = installed_records.iter().find(|record| {
+        record.provider == request.provider && record.project_id == request.project_id.trim()
+    });
+    let current = if let Some(record) = stored_current {
+        if normalized_content_path(&record.file_path) != normalized_content_path(&requested_path) {
+            return Err(AppError::new(
+                "mod.not_installed",
+                "That mod is no longer installed at the selected location.",
+            ));
+        }
+        CurrentInstalledMod {
+            version_id: Some(record.version_id.clone()),
+            display_name: record.display_name.clone(),
+            file_path: record.file_path.clone(),
+            enabled: record.enabled,
+            pinned: record.pinned,
+        }
+    } else {
+        let source = instance.modpack_source.as_ref().ok_or_else(|| {
+            AppError::new(
+                "mod.not_installed",
+                "That mod is no longer installed in this instance.",
+            )
+        })?;
+        let pack_version = state
+            .modpacks
+            .version(source.provider, &source.project_id, &source.version_id)
+            .await
+            .map_err(modpack_api_error)?;
+        let normalized_requested = normalized_content_path(&requested_path);
+        let version_id = pack_version.files.into_iter().find_map(|file| {
+            let reference = file.source?;
+            let normalized_pack_path = normalized_content_path(&file.path);
+            let path_matches = normalized_pack_path == normalized_requested
+                || format!("{normalized_pack_path}.disabled") == normalized_requested;
+            (file.kind == PackFileType::Mod
+                && path_matches
+                && reference.provider == request.provider
+                && reference.project_id == request.project_id.trim())
+            .then_some(reference.version_id)
+            .flatten()
+        });
+        if version_id.is_none() {
+            return Err(AppError::new(
+                "mod.not_installed",
+                "That mod could not be matched to this modpack installation.",
+            ));
+        }
+        CurrentInstalledMod {
+            version_id,
+            display_name: display_name.to_owned(),
+            file_path: requested_path.clone(),
+            enabled: !requested_path.ends_with(".disabled"),
+            pinned: false,
+        }
+    };
+    if current.version_id.as_deref() == Some(target_version_id) {
+        return Err(AppError::new(
+            "mod.version_unchanged",
+            "That mod version is already installed.",
+        ));
+    }
+
+    let installed_index = installed_mod_index(state, &instance).await?;
+    if !installed_index
+        .artifacts
+        .contains_key(&normalized_content_path(&current.file_path))
+    {
+        return Err(AppError::new(
+            "mod.not_installed",
+            "That mod file is no longer present in this instance.",
+        ));
+    }
+    let records_by_identity = installed_records
+        .iter()
+        .map(|record| (format!("{}:{}", record.provider, record.project_id), record))
+        .collect::<HashMap<_, _>>();
+    let (loader, loader_version) = instance_mod_target(&instance)?;
+    let mut plan = state
+        .modpacks
+        .mod_install_plan(
+            request.provider,
+            request.project_id.trim(),
+            &ModInstallPlanRequest {
+                minecraft_version: instance.minecraft_version.clone(),
+                loader,
+                loader_version: Some(loader_version),
+                version_id: Some(target_version_id.to_owned()),
+            },
+        )
+        .await
+        .map_err(modpack_api_error)?;
+    validate_instance_mod_plan(
+        &instance,
+        request.provider,
+        request.project_id.trim(),
+        &plan,
+    )?;
+    if plan.instance.version_id != target_version_id {
+        return Err(AppError::new(
+            "mod.resolution_mismatch",
+            "The selected mod version could not be confirmed. Nothing was changed.",
+        ));
+    }
+
+    let mut root_found = false;
+    let mut accepted_downloads = Vec::new();
+    let mut pending_by_identity = BTreeMap::<String, NewInstanceMod>::new();
+    let mut planned_destinations = BTreeMap::<String, PlannedModDestination>::new();
+    let mut replaced_paths = BTreeSet::<String>::new();
+    for mut download in plan.downloads {
+        let (provider, project_id, version_id) =
+            parse_mod_download_id(&download.id).ok_or_else(|| {
+                AppError::new(
+                    "mod.invalid_plan",
+                    "The mod service returned an invalid dependency identity.",
+                )
+            })?;
+        let identity = format!("{provider}:{project_id}");
+        if identity == root_identity {
+            root_found = true;
+            if version_id != target_version_id {
+                return Err(AppError::new(
+                    "mod.resolution_mismatch",
+                    "The selected mod version could not be confirmed. Nothing was changed.",
+                ));
+            }
+        }
+        let existing = records_by_identity.get(&identity).copied();
+        let existing_version = if identity == root_identity {
+            current.version_id.as_deref()
+        } else {
+            existing
+                .map(|record| record.version_id.as_str())
+                .or_else(|| installed_index.versions.get(&identity).map(String::as_str))
+        };
+        if existing_version == Some(version_id.as_str()) {
+            continue;
+        }
+        let pinned = if identity == root_identity {
+            current.pinned
+        } else {
+            existing.is_some_and(|record| record.pinned)
+        };
+        if pinned && identity != root_identity {
+            return Err(AppError::new(
+                "mod.dependency_pinned",
+                format!(
+                    "{} is pinned, but the selected version requires a different release.",
+                    existing.map_or("A dependency", |record| record.display_name.as_str())
+                ),
+            ));
+        }
+
+        let existing_path = if identity == root_identity {
+            Some(current.file_path.as_str())
+        } else {
+            existing
+                .map(|record| record.file_path.as_str())
+                .or_else(|| installed_index.paths.get(&identity).map(String::as_str))
+        };
+        let enabled = if identity == root_identity {
+            current.enabled
+        } else {
+            existing
+                .map(|record| record.enabled)
+                .unwrap_or_else(|| existing_path.is_none_or(|path| !path.ends_with(".disabled")))
+        };
+        if !enabled && !download.destination.ends_with(".disabled") {
+            download.destination.push_str(".disabled");
+        }
+        let destination = normalized_content_path(&download.destination);
+        let replaced_destination = existing_path
+            .map(normalized_content_path)
+            .is_some_and(|path| path == destination);
+        if let Some(installed_artifact) = installed_index.artifacts.get(&destination)
+            && !replaced_destination
+            && !installed_artifact_matches(installed_artifact, download.size, &download.hashes)
+        {
+            return Err(AppError::new(
+                "mod.file_conflict",
+                format!(
+                    "The selected version conflicts with an existing mod file named {}.",
+                    download.destination
+                ),
+            ));
+        }
+        if let Some(planned) = planned_destinations.get(&destination) {
+            if !same_mod_artifact(
+                planned.size,
+                &planned.hashes,
+                download.size,
+                &download.hashes,
+            ) {
+                return Err(AppError::new(
+                    "mod.file_conflict",
+                    format!(
+                        "The selected version resolves to conflicting files named {}.",
+                        download.destination
+                    ),
+                ));
+            }
+        } else {
+            planned_destinations.insert(
+                destination,
+                PlannedModDestination {
+                    size: download.size,
+                    hashes: download.hashes.clone(),
+                    requested_name: current.display_name.clone(),
+                },
+            );
+            accepted_downloads.push(download.clone());
+        }
+        if let Some(path) = existing_path {
+            replaced_paths.insert(path.to_owned());
+        }
+        let display_name = if identity == root_identity {
+            current.display_name.clone()
+        } else {
+            existing.map_or_else(
+                || {
+                    let file_name = download
+                        .destination
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(project_id.as_str());
+                    file_name
+                        .strip_suffix(".disabled")
+                        .unwrap_or(file_name)
+                        .strip_suffix(".jar")
+                        .unwrap_or(file_name)
+                        .to_owned()
+                },
+                |record| record.display_name.clone(),
+            )
+        };
+        pending_by_identity.insert(
+            identity,
+            NewInstanceMod {
+                provider,
+                project_id,
+                version_id,
+                display_name,
+                file_path: download.destination,
+                hashes: download.hashes,
+                enabled,
+                pinned,
+            },
+        );
+    }
+    if !root_found {
+        return Err(AppError::new(
+            "mod.invalid_plan",
+            "The selected version did not include the requested mod.",
+        ));
+    }
+    if accepted_downloads.is_empty() || pending_by_identity.is_empty() {
+        return Err(AppError::new(
+            "mod.version_unchanged",
+            "That mod version is already installed.",
+        ));
+    }
+    plan.downloads = accepted_downloads;
+    plan.delete.extend(replaced_paths.iter().cloned());
+    plan.delete.sort();
+    plan.delete.dedup();
+    plan.total_download_size = plan.downloads.iter().try_fold(0_u64, |total, download| {
+        total.checked_add(download.size).ok_or_else(|| {
+            AppError::new(
+                "mod.invalid_plan",
+                "The selected mod download size is invalid.",
+            )
+        })
+    })?;
+
+    queue_instance_install(
+        state,
+        instance,
+        request.expected_revision,
+        Some(plan),
+        PendingModChanges {
+            installed: pending_by_identity.into_values().collect(),
+            replaced_paths: replaced_paths.into_iter().collect(),
+        },
+        None,
+        RetryableInstallOperation::ModUpdate {
+            provider: request.provider,
+            project_id: request.project_id,
+            file_path: request.file_path,
+            display_name: request.display_name,
+            target_version_id: target_version_id.to_owned(),
+        },
     )
     .await
 }

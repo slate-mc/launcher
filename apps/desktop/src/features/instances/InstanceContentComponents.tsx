@@ -8,10 +8,12 @@ import {
   Pin,
   PinOff,
   Power,
+  RefreshCw,
   RotateCcw,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { ComboBox } from "../../components/ComboBox";
 import { ContentArtwork } from "../../components/ContentArtwork";
 import {
   EmptyState,
@@ -22,6 +24,7 @@ import {
   importLocalContentFile,
   installInstance,
   listInstanceContentFiles,
+  listInstanceModVersions,
   listInstanceWorlds,
   removeInstanceContentFile,
   setInstanceContentFileEnabled,
@@ -550,11 +553,13 @@ export function ModSearchResult({
 
 export function InstalledModRow({
   item,
+  instanceId,
   disabled,
   confirmingRemove,
   pendingAction,
   onToggle,
   onPin,
+  onUpdate,
   onRequestRemove,
   onCancelRemove,
   onConfirmRemove,
@@ -562,13 +567,58 @@ export function InstalledModRow({
   item: InstanceMod;
   disabled: boolean;
   confirmingRemove: boolean;
-  pendingAction?: "toggle" | "pin" | "remove";
+  pendingAction?: "toggle" | "pin" | "update" | "remove";
+  instanceId: string;
   onToggle: () => void;
   onPin: () => void;
+  onUpdate: (versionId: string) => void;
   onRequestRemove: () => void;
   onCancelRemove: () => void;
   onConfirmRemove: () => void;
 }) {
+  const [versionOpen, setVersionOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState(
+    item.versionId ?? "",
+  );
+  const versionQuery = useQuery({
+    queryKey: [
+      "instance-mod-versions",
+      instanceId,
+      item.provider,
+      item.projectId,
+    ],
+    queryFn: () => {
+      if (!item.provider || !item.projectId) {
+        throw new Error("This mod is not linked to a supported provider.");
+      }
+      return listInstanceModVersions({
+        instanceId,
+        provider: item.provider,
+        projectId: item.projectId,
+      });
+    },
+    enabled: versionOpen && Boolean(item.provider && item.projectId),
+    staleTime: 5 * 60_000,
+  });
+  const versionOptions = (versionQuery.data ?? []).map((version, index) => ({
+    value: version.id,
+    label: version.name,
+    description: version.id,
+    recommended: index === 0,
+  }));
+  if (
+    item.versionId &&
+    !versionOptions.some((option) => option.value === item.versionId)
+  ) {
+    versionOptions.push({
+      value: item.versionId,
+      label: item.versionId,
+      description: "Installed version",
+      recommended: false,
+    });
+  }
+  const activeVersionId = selectedVersionId || versionQuery.data?.[0]?.id || "";
+
   return (
     <>
       <tr className="border-b border-app-separator/40 transition-colors duration-150 hover:bg-app-raised/35">
@@ -636,6 +686,32 @@ export function InstalledModRow({
           <div className="flex items-center justify-end gap-1.5">
             <button
               type="button"
+              className={`inline-flex size-8 items-center justify-center rounded-control border bg-app-bg hover:border-app-accent/45 hover:text-app-accent disabled:opacity-45 ${versionOpen ? "border-app-accent/40 text-app-accent" : "border-app-separator text-app-secondary"}`}
+              disabled={disabled || !item.provider || !item.projectId}
+              onClick={() => {
+                setSelectedVersionId(item.versionId ?? "");
+                setVersionOpen((open) => !open);
+              }}
+              aria-label={`Change version of ${item.displayName}`}
+              aria-expanded={versionOpen}
+              title={
+                item.provider
+                  ? "Change installed version"
+                  : "Versions are not available for this file"
+              }
+            >
+              {pendingAction === "update" ? (
+                <LoaderCircle
+                  size={14}
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <RefreshCw size={14} aria-hidden="true" />
+              )}
+            </button>
+            <button
+              type="button"
               className={`inline-flex size-8 items-center justify-center rounded-control border bg-app-bg hover:border-app-accent/45 hover:text-app-accent disabled:opacity-45 ${item.pinned ? "border-app-accent/40 text-app-accent" : "border-app-separator text-app-secondary"}`}
               disabled={disabled || !item.provider || !item.projectId}
               onClick={onPin}
@@ -690,6 +766,72 @@ export function InstalledModRow({
           </div>
         </td>
       </tr>
+      {versionOpen ? (
+        <tr className="border-b border-app-accent/20 bg-app-accent/5">
+          <td colSpan={7} className="px-4 py-4">
+            <div className="grid grid-cols-[minmax(260px,420px)_minmax(0,1fr)_auto] items-end gap-4 max-[980px]:grid-cols-1">
+              <ComboBox
+                label={`Version for ${item.displayName}`}
+                value={activeVersionId}
+                options={versionOptions}
+                onValueChange={setSelectedVersionId}
+                placeholder={
+                  versionQuery.isPending
+                    ? "Loading versions…"
+                    : "Choose a version"
+                }
+                emptyText={
+                  versionQuery.isPending
+                    ? "Loading versions…"
+                    : "No versions match this instance"
+                }
+                disabled={
+                  disabled || versionQuery.isPending || versionQuery.isError
+                }
+              />
+              <div className="min-w-0 pb-1 text-[10px]/[15px] text-app-muted">
+                {versionQuery.isError
+                  ? contentErrorMessage(versionQuery.error)
+                  : item.versionId
+                    ? `Installed: ${item.versionId}`
+                    : "Choose a release built for this Minecraft version and loader."}
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="h-9 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
+                  disabled={disabled}
+                  onClick={() => setVersionOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-control border-0 bg-app-accent px-4 text-[11px] font-bold text-app-on-accent hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={
+                    disabled ||
+                    versionQuery.isPending ||
+                    !activeVersionId ||
+                    activeVersionId === item.versionId
+                  }
+                  onClick={() => onUpdate(activeVersionId)}
+                >
+                  {pendingAction === "update" ? (
+                    <LoaderCircle
+                      size={13}
+                      className="animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <RefreshCw size={13} aria-hidden="true" />
+                  )}
+                  Apply version
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      ) : null}
       {confirmingRemove ? (
         <tr className="border-b border-app-danger/25 bg-app-danger/5">
           <td colSpan={7} className="px-4 py-3">

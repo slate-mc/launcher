@@ -384,6 +384,7 @@ impl Database {
             },
             None,
             None,
+            None,
         )
         .await
     }
@@ -393,8 +394,23 @@ impl Database {
         completion: CompletedInstall,
         installed_mods: Vec<NewInstanceMod>,
     ) -> Result<(), StorageError> {
-        self.complete_instance_install_inner(completion, Some(installed_mods), None)
+        self.complete_instance_install_inner(completion, Some(installed_mods), None, None)
             .await
+    }
+
+    pub async fn complete_instance_mod_update(
+        &self,
+        completion: CompletedInstall,
+        installed_mods: Vec<NewInstanceMod>,
+        replaced_file_paths: Vec<String>,
+    ) -> Result<(), StorageError> {
+        self.complete_instance_install_inner(
+            completion,
+            Some(installed_mods),
+            Some(replaced_file_paths),
+            None,
+        )
+        .await
     }
 
     pub async fn complete_instance_modpack_update(
@@ -402,7 +418,7 @@ impl Database {
         completion: CompletedInstall,
         update: CompletedModpackUpdate,
     ) -> Result<(), StorageError> {
-        self.complete_instance_install_inner(completion, None, Some(update))
+        self.complete_instance_install_inner(completion, None, None, Some(update))
             .await
     }
 
@@ -410,6 +426,7 @@ impl Database {
         &self,
         completion: CompletedInstall,
         installed_mods: Option<Vec<NewInstanceMod>>,
+        replaced_mod_paths: Option<Vec<String>>,
         modpack_update: Option<CompletedModpackUpdate>,
     ) -> Result<(), StorageError> {
         let now = now_rfc3339()?;
@@ -464,17 +481,27 @@ impl Database {
                 .fetch_optional(&mut *transaction)
                 .await?
                 .ok_or(StorageError::RevisionNotFound)?;
+        if let Some(replaced_mod_paths) = replaced_mod_paths {
+            for file_path in replaced_mod_paths {
+                sqlx::query("DELETE FROM instance_mods WHERE instance_id = ? AND file_path = ?")
+                    .bind(&instance_id)
+                    .bind(file_path.trim())
+                    .execute(&mut *transaction)
+                    .await?;
+            }
+        }
         if let Some(installed_mods) = installed_mods {
             for installed_mod in installed_mods {
                 sqlx::query(
                     "INSERT INTO instance_mods \
                  (instance_id, provider, project_id, version_id, display_name, file_path, \
                   hashes_json, enabled, pinned, installed_at) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?) \
-                 ON CONFLICT(instance_id, provider, project_id) DO UPDATE SET \
-                  version_id = excluded.version_id, display_name = excluded.display_name, \
-                  file_path = excluded.file_path, hashes_json = excluded.hashes_json, \
-                  enabled = 1, installed_at = excluded.installed_at",
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+                  ON CONFLICT(instance_id, provider, project_id) DO UPDATE SET \
+                   version_id = excluded.version_id, display_name = excluded.display_name, \
+                   file_path = excluded.file_path, hashes_json = excluded.hashes_json, \
+                   enabled = excluded.enabled, pinned = excluded.pinned, \
+                   installed_at = excluded.installed_at",
                 )
                 .bind(&instance_id)
                 .bind(installed_mod.provider.as_str())
@@ -483,6 +510,8 @@ impl Database {
                 .bind(installed_mod.display_name.trim())
                 .bind(installed_mod.file_path.trim())
                 .bind(serde_json::to_string(&installed_mod.hashes)?)
+                .bind(i64::from(installed_mod.enabled))
+                .bind(i64::from(installed_mod.pinned))
                 .bind(&now)
                 .execute(&mut *transaction)
                 .await?;

@@ -134,6 +134,18 @@ pub struct InstanceModVersionsRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateInstanceModRequest {
+    pub instance_id: uuid::Uuid,
+    pub expected_revision: u64,
+    pub provider: Provider,
+    pub project_id: String,
+    pub file_path: String,
+    pub display_name: String,
+    pub target_version_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportLocalModRequest {
     pub instance_id: uuid::Uuid,
     pub expected_revision: u64,

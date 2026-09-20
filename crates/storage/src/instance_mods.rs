@@ -13,6 +13,8 @@ pub struct NewInstanceMod {
     pub display_name: String,
     pub file_path: String,
     pub hashes: Hashes,
+    pub enabled: bool,
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -360,6 +362,8 @@ mod tests {
                             sha256: Some("a".repeat(64)),
                             sha1: None,
                         },
+                        enabled: true,
+                        pinned: false,
                     },
                     NewInstanceMod {
                         provider: Provider::CurseForge,
@@ -372,6 +376,8 @@ mod tests {
                             sha256: Some("a".repeat(64)),
                             sha1: None,
                         },
+                        enabled: true,
+                        pinned: false,
                     },
                 ],
             )
@@ -407,21 +413,68 @@ mod tests {
 
         let revised = database.get_instance(instance.id).await?;
         assert_eq!(revised.revision, installed.revision + 1);
+        let pending_update = database
+            .begin_instance_install(instance.id, revised.revision, RequestId::new())
+            .await?;
+        database
+            .complete_instance_mod_update(
+                CompletedInstall {
+                    job_id: pending_update.job.id,
+                    revision_id: pending_update.revision_id,
+                    manifest_digest: "updated-manifest".to_owned(),
+                    client_version: "fabric-loader-0.16.10-1.21.1".to_owned(),
+                    runtime: InstalledRuntime {
+                        vendor: "Eclipse Adoptium".to_owned(),
+                        release_name: "21".to_owned(),
+                        java_version: "21".to_owned(),
+                        major: 21,
+                        os: "windows".to_owned(),
+                        arch: "x86_64".to_owned(),
+                        executable_ref: "C:/slate/java.exe".to_owned(),
+                        source_digest: "digest".to_owned(),
+                    },
+                    message: "Updated Sodium".to_owned(),
+                },
+                vec![NewInstanceMod {
+                    provider: Provider::Modrinth,
+                    project_id: "AANobbMI".to_owned(),
+                    version_id: "version-2".to_owned(),
+                    display_name: "Sodium".to_owned(),
+                    file_path: "mods/sodium-2.jar.disabled".to_owned(),
+                    hashes: Hashes {
+                        sha512: None,
+                        sha256: Some("b".repeat(64)),
+                        sha1: None,
+                    },
+                    enabled: false,
+                    pinned: true,
+                }],
+                vec!["mods/sodium.jar.disabled".to_owned()],
+            )
+            .await?;
+        let updated = database.list_instance_mods(instance.id).await?;
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0].version_id, "version-2");
+        assert_eq!(updated[0].file_path, "mods/sodium-2.jar.disabled");
+        assert!(!updated[0].enabled);
+        assert!(updated[0].pinned);
+
+        let updated_instance = database.get_instance(instance.id).await?;
         database
             .remove_instance_mod(
                 instance.id,
-                revised.revision,
+                updated_instance.revision,
                 InstanceModTarget {
                     provider: Some(Provider::Modrinth),
                     project_id: Some("AANobbMI"),
-                    file_path: "mods/sodium.jar.disabled",
+                    file_path: "mods/sodium-2.jar.disabled",
                 },
             )
             .await?;
         assert!(database.list_instance_mods(instance.id).await?.is_empty());
         assert_eq!(
             database.get_instance(instance.id).await?.revision,
-            revised.revision + 1
+            updated_instance.revision + 1
         );
         Ok(())
     }

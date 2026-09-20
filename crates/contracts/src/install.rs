@@ -19,6 +19,7 @@ pub enum InstallJobStateDto {
 pub enum InstallOperationDto {
     InstanceInstall,
     ModInstall,
+    ModUpdate,
     ModpackUpdate,
 }
 

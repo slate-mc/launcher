@@ -113,7 +113,8 @@ use slate_contracts::{
     SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview, ThemePreferenceDto,
     TrashInstanceRequest, TrashedInstanceSummary, UnsubscribeSessionLogRequest,
     UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
+    UpdateSavedServerRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, JobId, LoaderFamily, ManagementMode,
@@ -154,7 +155,7 @@ use slate_storage::{
     ReduceMotionPreference, SavedServerRecord, StorageError, ThemePreference,
     TrashedInstanceRecord, UpdateInstanceSettings,
 };
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -564,6 +565,7 @@ fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
     let operation = match record.operation.as_deref() {
         Some("instance_install") => Some(InstallOperationDto::InstanceInstall),
         Some("mod_install") => Some(InstallOperationDto::ModInstall),
+        Some("mod_update") => Some(InstallOperationDto::ModUpdate),
         Some("modpack_update") => Some(InstallOperationDto::ModpackUpdate),
         _ => None,
     };
@@ -571,7 +573,11 @@ fn install_job_summary(record: InstallJobRecord) -> InstallJobSummary {
         && operation.is_some()
         && (!matches!(
             operation,
-            Some(InstallOperationDto::ModInstall | InstallOperationDto::ModpackUpdate)
+            Some(
+                InstallOperationDto::ModInstall
+                    | InstallOperationDto::ModUpdate
+                    | InstallOperationDto::ModpackUpdate
+            )
         ) || record.retry_payload.is_some());
     InstallJobSummary {
         id: record.id.as_uuid(),
@@ -778,6 +784,7 @@ fn main() {
             instance_mod_set_pinned,
             instance_mod_remove,
             instance_mod_install,
+            instance_mod_update,
         ])
         .run(tauri::generate_context!());
 

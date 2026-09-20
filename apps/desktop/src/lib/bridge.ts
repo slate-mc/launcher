@@ -454,6 +454,21 @@ export async function listInstanceModVersions(input: {
   ).items;
 }
 
+export async function updateInstanceMod(input: {
+  instanceId: string;
+  expectedRevision: number;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+  filePath: string;
+  displayName: string;
+  targetVersionId: string;
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("instance_mod_update", { request: input }),
+  );
+}
+
 export async function importLocalMod(input: {
   instanceId: string;
   expectedRevision: number;

@@ -372,7 +372,7 @@ export const installJobSchema = z.object({
     "cancelled",
   ]),
   operation: z
-    .enum(["instanceInstall", "modInstall", "modpackUpdate"])
+    .enum(["instanceInstall", "modInstall", "modUpdate", "modpackUpdate"])
     .optional(),
   canRetry: z.boolean().default(false),
   queuePosition: z.number().int().positive().optional(),
