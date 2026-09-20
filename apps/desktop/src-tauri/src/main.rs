@@ -5,6 +5,7 @@ mod artwork_support;
 mod auth_support;
 mod catalog_commands;
 mod content_commands;
+mod diagnostics;
 mod game_options;
 mod install_commands;
 mod instance_commands;
@@ -34,6 +35,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use catalog_commands::*;
 use content_commands::*;
+use diagnostics::init_diagnostics;
 use game_options::{prepare_options_update, read_recognized_options};
 use install_commands::*;
 use instance_commands::*;
@@ -574,12 +576,35 @@ fn process_state_error(_: slate_process::ProcessError) -> AppError {
 }
 
 fn main() {
+    let boot_paths = match AppPaths::discover().and_then(|paths| {
+        paths.ensure_base_directories()?;
+        Ok(paths)
+    }) {
+        Ok(paths) => paths,
+        Err(_) => {
+            eprintln!("slate could not prepare its local data folders.");
+            std::process::exit(1);
+        }
+    };
+    let diagnostic_guard = match init_diagnostics(&boot_paths.logs()) {
+        Ok(guard) => Some(guard),
+        Err(_) => {
+            eprintln!("slate could not start local diagnostics; the launcher will continue.");
+            None
+        }
+    };
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        os = std::env::consts::OS,
+        arch = std::env::consts::ARCH,
+        "desktop starting"
+    );
+    let setup_paths = boot_paths.clone();
     let application = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            let paths = AppPaths::discover()?;
-            paths.ensure_base_directories()?;
+        .setup(move |app| {
+            let paths = setup_paths.clone();
             let database =
                 tauri::async_runtime::block_on(Database::connect(&paths.state_database()))?;
             tauri::async_runtime::block_on(database.recover_interrupted_installs())?;
@@ -606,6 +631,7 @@ fn main() {
             };
             app.manage(state.clone());
             tauri::async_runtime::spawn(purge_expired_instance_trash(state));
+            tracing::info!("desktop ready");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -685,6 +711,8 @@ fn main() {
         .run(tauri::generate_context!());
 
     if let Err(error) = application {
+        tracing::error!("desktop stopped because startup or runtime setup failed");
+        drop(diagnostic_guard);
         eprintln!("slate failed to start: {error}");
         std::process::exit(1);
     }

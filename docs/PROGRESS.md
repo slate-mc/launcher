@@ -35,6 +35,9 @@ Last updated: September 20, 2026
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
   formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
   authenticated quick join.
+- Structured desktop/API tracing with request correlation, install and session lifecycle events,
+  daily JSON launcher diagnostics, a bounded non-blocking event buffer, and automatic age/count/size
+  retention.
 - Separate Downloads and Activity destinations. Normal product copy no longer exposes internal IDs,
   paths, backend terminology, or raw Rust/HTTP errors; technical output remains in the Minecraft log
   view where it is useful.
@@ -47,7 +50,7 @@ Verified on Windows on September 20, 2026:
 - 11 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes. It still reports a large initial JavaScript chunk.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-targets` passes: 116 tests passed and one process test is ignored.
+- `cargo test --workspace --all-targets` passes: 117 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -69,9 +72,9 @@ Verified on Windows on September 20, 2026:
 7. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-8. **Operational readiness:** crash reporting, privacy-aware product analytics, remote feature
-   controls, backend telemetry, bounded offline diagnostics, and the in-app support-report pipeline
-   still need production implementations.
+8. **Operational readiness:** structured local tracing is active. Crash reporting, privacy-aware
+   product analytics, remote feature controls, hosted backend telemetry, offline delivery, and the
+   in-app support-report pipeline still need production implementations.
 
 ## Observability, rollout, and support plan
 
@@ -80,9 +83,9 @@ Verified on Windows on September 20, 2026:
 | Errors and crashes | Sentry | Integrate desktop and API releases, preserve useful stack traces, sanitize context, and group failures by affected version and user impact. |
 | Feature flags and remote configuration | PostHog | Add gradual rollouts, experiments, emergency switches, safe defaults, local caching, and failure-safe behavior when PostHog is unavailable. |
 | Product analytics | PostHog | Instrument onboarding, installation, content management, and launch funnels with explicit privacy controls and no secrets or raw diagnostic payloads. |
-| Rust instrumentation | `tracing` + `tracing-subscriber` | Standardize structured events and spans across the desktop and API, including request, install, download, and launch correlation. |
+| Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
 | Backend observability | OpenTelemetry to Grafana Cloud | Export API traces, latency, dependency failures, logs, and resource metrics with production sampling and retention policies. |
-| Local diagnostics | Rotating files plus a bounded disk queue | Retain useful sanitized evidence across offline periods and crashes without allowing logs or queued telemetry to grow without limit. |
+| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs and a bounded non-blocking writer are implemented. Add a durable offline delivery queue and the user review/export surface. |
 | Updates | Tauri updater plus the slate release API | Ship signed launcher updates, controlled channels and rollouts, rollback protection, and clear recovery behavior. |
 | Support reports | In-app report flow plus private object storage | Let users review and submit sanitized diagnostics, upload them securely, and receive a report ID without exposing storage details. |
 
@@ -113,7 +116,6 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Establish the structured `tracing` foundation and bounded local diagnostics. Those are prerequisites
-for useful Sentry, OpenTelemetry, analytics, and support-report integrations.
-Add native clean-install smoke coverage so release claims are evidence-based rather than inferred
-from unit tests.
+Build the first-run onboarding flow, then add the user-reviewed support-report export path over the
+new diagnostics foundation. Add native clean-install smoke coverage so release claims are
+evidence-based rather than inferred from unit tests.

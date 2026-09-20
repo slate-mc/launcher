@@ -185,6 +185,8 @@ pub(super) async fn instance_launch(
             .map(|monitor| (monitor.size().width, monitor.size().height)),
         InstanceWindowMode::Fullscreen => None,
     };
+    let quick_play_requested =
+        requested_server.is_some() || instance.settings.quick_play_server.is_some();
     let quick_play = requested_server
         .or_else(|| instance.settings.quick_play_server.clone())
         .map(QuickPlay::Multiplayer);
@@ -297,6 +299,14 @@ pub(super) async fn instance_launch(
             });
         }
     }
+    tracing::info!(
+        instance_id = %instance_id,
+        session_id = %session_id,
+        revision_id = %revision.id,
+        pid = started.pid,
+        quick_play = quick_play_requested,
+        "minecraft session started"
+    );
     Ok(GameSessionSummary {
         id: session_id.as_uuid(),
         instance_id: instance_id.as_uuid(),

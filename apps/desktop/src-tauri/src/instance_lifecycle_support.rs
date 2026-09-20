@@ -202,6 +202,13 @@ pub(super) async fn refresh_exited_sessions(state: &DesktopState) {
         return;
     };
     for process in exited {
+        tracing::info!(
+            instance_id = %process.instance_id,
+            session_id = %process.session_id,
+            exit_code = process.exit_code,
+            force_stopped = process.force_stopped,
+            "minecraft session ended"
+        );
         let _ = state
             .database
             .finish_session(process.session_id, process.exit_code, process.force_stopped)

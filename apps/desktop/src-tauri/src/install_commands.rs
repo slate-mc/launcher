@@ -98,6 +98,19 @@ pub(super) async fn queue_instance_install(
         .begin_instance_install(instance_id, expected_revision, RequestId::new())
         .await
         .map_err(|error| map_storage_error(error, "slate could not queue the installation."))?;
+    tracing::info!(
+        instance_id = %instance_id,
+        job_id = %pending.job.id,
+        revision_id = %pending.revision_id,
+        operation = if modpack_update.is_some() {
+            "modpack_update"
+        } else if pending_mods.is_empty() {
+            "instance_install"
+        } else {
+            "mod_install"
+        },
+        "installation queued"
+    );
     let response = install_job_summary(pending.job.clone());
     let install_paths = paths_for_instance(state, &instance);
     let target_loader_version = modpack_update.as_ref().map_or_else(
@@ -264,6 +277,15 @@ pub(super) async fn queue_instance_install(
                         job_id = %pending.job.id,
                         error = %error,
                         "could not commit a completed instance installation"
+                    );
+                } else {
+                    tracing::info!(
+                        job_id = %pending.job.id,
+                        instance_id = %instance_id,
+                        downloaded = outcome.downloaded_artifacts,
+                        reused = outcome.reused_artifacts,
+                        content_files = outcome.installed_content_files,
+                        "installation completed"
                     );
                 }
             }

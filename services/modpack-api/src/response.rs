@@ -11,6 +11,7 @@ use slate_modpack_api_contracts::{
 use std::time::Instant;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tracing::Instrument;
 use uuid::Uuid;
 
 const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
@@ -81,24 +82,29 @@ pub async fn request_context(mut request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let route = request.uri().path().to_owned();
     let context = RequestContext::from_request(&request);
+    let span = tracing::info_span!(
+        "http.request",
+        request_id = %context.request_id,
+        trace_id = %context.trace_id,
+        span_id = %context.span_id,
+        method = %method,
+        route = %route,
+    );
     request.extensions_mut().insert(context.clone());
-    let mut response = next.run(request).await;
+    let mut response = next.run(request).instrument(span.clone()).await;
     if let Ok(value) = HeaderValue::from_str(&context.request_id) {
         response.headers_mut().insert(REQUEST_ID_HEADER, value);
     }
     if let Ok(value) = HeaderValue::from_str(&context.traceparent()) {
         response.headers_mut().insert(TRACEPARENT_HEADER, value);
     }
-    tracing::info!(
-        request_id = %context.request_id,
-        trace_id = %context.trace_id,
-        span_id = %context.span_id,
-        method = %method,
-        route,
-        status = response.status().as_u16(),
-        duration_ms = context.started_at.elapsed().as_secs_f64() * 1_000.0,
-        "request completed"
-    );
+    span.in_scope(|| {
+        tracing::info!(
+            status = response.status().as_u16(),
+            duration_ms = context.started_at.elapsed().as_secs_f64() * 1_000.0,
+            "request completed"
+        );
+    });
     response
 }
 

@@ -18,11 +18,17 @@ pub(super) async fn session_force_stop(
     request: StopGameSessionRequest,
 ) -> Result<GameSessionSummary, AppError> {
     refresh_exited_sessions(state.inner()).await;
-    state
+    let session_id = SessionId::from_uuid(request.id);
+    let stopped = state
         .processes
-        .force_stop(SessionId::from_uuid(request.id))
-        .map(game_session_summary)
-        .map_err(process_stop_error)
+        .force_stop(session_id)
+        .map_err(process_stop_error)?;
+    tracing::warn!(
+        instance_id = %stopped.instance_id,
+        session_id = %session_id,
+        "minecraft session force stop requested"
+    );
+    Ok(game_session_summary(stopped))
 }
 
 #[tauri::command]
