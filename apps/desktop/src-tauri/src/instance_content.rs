@@ -1,43 +1,9 @@
-use slate_domain::{InstanceId, LoaderFamily};
+use slate_domain::InstanceId;
 use slate_platform::AppPaths;
-use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
-use tempfile::NamedTempFile;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-
-const MAXIMUM_LOCAL_MOD_SIZE: u64 = 1024 * 1024 * 1024;
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum LocalModImportError {
-    #[error("that mod file is already installed")]
-    AlreadyInstalled,
-    #[error("the selected file is not a valid mod JAR")]
-    InvalidArchive,
-    #[error("the selected mod does not support this instance loader")]
-    WrongLoader,
-    #[error("the selected mod is too large")]
-    TooLarge,
-    #[error(transparent)]
-    Io(#[from] io::Error),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ImportedModFile {
-    pub destination: PathBuf,
-    pub file_path: String,
-}
-
-impl ImportedModFile {
-    pub fn rollback(&self) -> Result<(), io::Error> {
-        match std::fs::remove_file(&self.destination) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error),
-        }
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct InstanceModFile {
@@ -83,122 +49,6 @@ impl FileMove {
         }
         std::fs::rename(&self.to, &self.from)
     }
-}
-
-pub(crate) fn validate_local_mod_source(
-    source: &Path,
-    loader: LoaderFamily,
-) -> Result<(), LocalModImportError> {
-    let metadata = std::fs::symlink_metadata(source)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(LocalModImportError::InvalidArchive);
-    }
-    if metadata.len() == 0 {
-        return Err(LocalModImportError::InvalidArchive);
-    }
-    if metadata.len() > MAXIMUM_LOCAL_MOD_SIZE {
-        return Err(LocalModImportError::TooLarge);
-    }
-    let file_name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| safe_component(name) && name.to_ascii_lowercase().ends_with(".jar"))
-        .ok_or(LocalModImportError::InvalidArchive)?;
-    if file_name.len() > 240 {
-        return Err(LocalModImportError::InvalidArchive);
-    }
-    validate_mod_archive(source, loader)
-}
-
-pub(crate) fn import_local_mod(
-    paths: &AppPaths,
-    instance_id: InstanceId,
-    loader: LoaderFamily,
-    source: &Path,
-) -> Result<ImportedModFile, LocalModImportError> {
-    validate_local_mod_source(source, loader)?;
-    ensure_local_mod_not_installed(paths, instance_id, source)?;
-    let file_name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or(LocalModImportError::InvalidArchive)?;
-    let instance_root = paths.instance(instance_id);
-    let game_directory = instance_root.join("game");
-    ensure_existing_plain_directory(&instance_root)?;
-    ensure_existing_plain_directory(&game_directory)?;
-    let mods_directory = game_directory.join("mods");
-    ensure_plain_directory(&mods_directory)?;
-    let destination = mods_directory.join(file_name);
-    if destination.exists() {
-        return Err(LocalModImportError::AlreadyInstalled);
-    }
-
-    let mut input = File::open(source)?;
-    let mut pending = NamedTempFile::new_in(&mods_directory)?;
-    let copied = io::copy(
-        &mut std::io::Read::take(&mut input, MAXIMUM_LOCAL_MOD_SIZE + 1),
-        &mut pending,
-    )?;
-    if copied == 0 {
-        return Err(LocalModImportError::InvalidArchive);
-    }
-    if copied > MAXIMUM_LOCAL_MOD_SIZE {
-        return Err(LocalModImportError::TooLarge);
-    }
-    pending.as_file_mut().sync_all()?;
-    validate_mod_archive(pending.path(), loader)?;
-    let persisted = pending.persist_noclobber(&destination).map_err(|error| {
-        if error.error.kind() == io::ErrorKind::AlreadyExists {
-            LocalModImportError::AlreadyInstalled
-        } else {
-            LocalModImportError::Io(error.error)
-        }
-    })?;
-    persisted.sync_all()?;
-    Ok(ImportedModFile {
-        destination,
-        file_path: format!("mods/{file_name}"),
-    })
-}
-
-pub(crate) fn ensure_local_mod_not_installed(
-    paths: &AppPaths,
-    instance_id: InstanceId,
-    source: &Path,
-) -> Result<(), LocalModImportError> {
-    let file_name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| safe_component(name))
-        .ok_or(LocalModImportError::InvalidArchive)?;
-    if paths
-        .instance(instance_id)
-        .join("game")
-        .join("mods")
-        .join(file_name)
-        .try_exists()?
-    {
-        return Err(LocalModImportError::AlreadyInstalled);
-    }
-    Ok(())
-}
-
-fn validate_mod_archive(path: &Path, loader: LoaderFamily) -> Result<(), LocalModImportError> {
-    let file = File::open(path)?;
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|_| LocalModImportError::InvalidArchive)?;
-    let has_loader_descriptor = match loader {
-        LoaderFamily::Fabric => archive.by_name("fabric.mod.json").is_ok(),
-        LoaderFamily::NeoForge => {
-            archive.by_name("META-INF/neoforge.mods.toml").is_ok()
-                || archive.by_name("META-INF/mods.toml").is_ok()
-        }
-        LoaderFamily::Vanilla => false,
-    };
-    if !has_loader_descriptor {
-        return Err(LocalModImportError::WrongLoader);
-    }
-    Ok(())
 }
 
 pub(crate) fn scan_instance_mods(
@@ -576,14 +426,6 @@ fn ensure_plain_directory(path: &Path) -> Result<(), io::Error> {
     }
 }
 
-fn ensure_existing_plain_directory(path: &Path) -> Result<(), io::Error> {
-    let metadata = std::fs::symlink_metadata(path)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(invalid_mod_path());
-    }
-    Ok(())
-}
-
 fn invalid_mod_path() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, "invalid instance mod path")
 }
@@ -602,75 +444,12 @@ fn display_name_from_file(file_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        InstanceContentKind, LocalModImportError, import_local_mod, scan_instance_content,
-        scan_instance_mods, set_instance_content_enabled, set_instance_mod_enabled,
-        trash_instance_content, trash_instance_mod,
+        InstanceContentKind, scan_instance_content, scan_instance_mods,
+        set_instance_content_enabled, set_instance_mod_enabled, trash_instance_content,
+        trash_instance_mod,
     };
-    use slate_domain::{InstanceId, LoaderFamily};
+    use slate_domain::InstanceId;
     use slate_platform::AppPaths;
-    use std::io::Write;
-    use zip::{ZipWriter, write::SimpleFileOptions};
-
-    fn write_mod_jar(
-        path: &std::path::Path,
-        descriptor: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let output = std::fs::File::create(path)?;
-        let mut archive = ZipWriter::new(output);
-        archive.start_file(descriptor, SimpleFileOptions::default())?;
-        archive.write_all(b"{}")?;
-        archive.finish()?;
-        Ok(())
-    }
-
-    #[test]
-    fn imports_a_compatible_local_mod_without_moving_the_source()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let temporary = tempfile::tempdir()?;
-        let paths = AppPaths::from_roots(
-            temporary.path().join("app-data"),
-            temporary.path().join("storage"),
-        );
-        paths.ensure_base_directories()?;
-        let instance_id = InstanceId::new();
-        std::fs::create_dir_all(paths.instance(instance_id).join("game"))?;
-        let source = temporary.path().join("sodium.jar");
-        write_mod_jar(&source, "fabric.mod.json")?;
-
-        let imported = import_local_mod(&paths, instance_id, LoaderFamily::Fabric, &source)?;
-
-        assert_eq!(imported.file_path, "mods/sodium.jar");
-        assert!(source.is_file());
-        assert!(imported.destination.is_file());
-        imported.rollback()?;
-        assert!(!imported.destination.exists());
-        Ok(())
-    }
-
-    #[test]
-    fn rejects_wrong_loader_and_duplicate_local_mods() -> Result<(), Box<dyn std::error::Error>> {
-        let temporary = tempfile::tempdir()?;
-        let paths = AppPaths::from_roots(
-            temporary.path().join("app-data"),
-            temporary.path().join("storage"),
-        );
-        paths.ensure_base_directories()?;
-        let instance_id = InstanceId::new();
-        std::fs::create_dir_all(paths.instance(instance_id).join("game"))?;
-        let source = temporary.path().join("example.jar");
-        write_mod_jar(&source, "fabric.mod.json")?;
-
-        assert!(matches!(
-            import_local_mod(&paths, instance_id, LoaderFamily::NeoForge, &source),
-            Err(LocalModImportError::WrongLoader)
-        ));
-        import_local_mod(&paths, instance_id, LoaderFamily::Fabric, &source)?;
-        assert!(matches!(
-            import_local_mod(&paths, instance_id, LoaderFamily::Fabric, &source),
-            Err(LocalModImportError::AlreadyInstalled)
-        ));
-        Ok(())
-    }
 
     #[test]
     fn inventories_enabled_and_disabled_mod_jars_only() -> Result<(), Box<dyn std::error::Error>> {

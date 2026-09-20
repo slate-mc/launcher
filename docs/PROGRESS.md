@@ -32,8 +32,9 @@ Last updated: September 20, 2026
   obsolete pack-file removal, preservation of user-added mods and atomic pack/loader version
   changes.
 - Instance content inventory for mods, resource packs, shader packs, and world data packs, including
-  pack-vs-user ownership, enable/disable behavior where supported, recoverable removal, and local
-  mod JAR import with loader validation, duplicate protection, snapshots, and rollback.
+  pack-vs-user ownership, enable/disable behavior where supported, recoverable removal, local mod
+  JAR import, and local resource/shader ZIP import with validation, duplicate protection, snapshots,
+  and rollback.
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
   formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
   authenticated quick join.
@@ -57,10 +58,10 @@ Last updated: September 20, 2026
 Verified on Windows on September 20, 2026:
 
 - Frontend lint passes with zero warnings.
-- 13 Vitest/Testing Library tests pass.
+- 14 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 124 tests passed and one process test is ignored.
+- `cargo test --workspace --all-features` passes: 125 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
@@ -73,8 +74,9 @@ Verified on Windows on September 20, 2026:
 3. **Download controls:** installation progress, restart recovery, safe user cancellation, and
    operation-aware retry from Downloads work, but queue ordering, pause/resume, and bandwidth
    controls are missing.
-4. **Resource content workflows:** resource packs, shaders, and data packs can be inventoried and
-   managed after they exist, but browsing, importing, updating, and ordering them are incomplete.
+4. **Resource content workflows:** resource packs and shaders support validated local ZIP import;
+   all three content types can be inventoried and managed after they exist. Provider browsing,
+   updates, ordering, and world-targeted data-pack import remain incomplete.
 5. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.

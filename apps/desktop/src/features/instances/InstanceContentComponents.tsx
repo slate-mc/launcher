@@ -3,6 +3,7 @@ import {
   ArrowUpDown,
   Check,
   ChevronLeft,
+  FileUp,
   LoaderCircle,
   Pin,
   PinOff,
@@ -12,8 +13,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ContentArtwork } from "../../components/ContentArtwork";
-import { EmptyState, InlineNotice, StatusPill } from "../../components/PageScaffold";
 import {
+  EmptyState,
+  InlineNotice,
+  StatusPill,
+} from "../../components/PageScaffold";
+import {
+  importLocalContentFile,
   installInstance,
   listInstanceContentFiles,
   removeInstanceContentFile,
@@ -111,7 +117,13 @@ export function InstanceFileContent({
     setNotice({ tone: "positive", title: "Content updated", message });
   };
   const toggleMutation = useMutation({
-    mutationFn: ({ file, enabled }: { file: InstanceContentFile; enabled: boolean }) =>
+    mutationFn: ({
+      file,
+      enabled,
+    }: {
+      file: InstanceContentFile;
+      enabled: boolean;
+    }) =>
       setInstanceContentFileEnabled({
         instanceId: instance.id,
         kind,
@@ -132,6 +144,28 @@ export function InstanceFileContent({
         message: contentErrorMessage(error),
       }),
   });
+  const importMutation = useMutation({
+    mutationFn: () =>
+      importLocalContentFile({
+        instanceId: instance.id,
+        kind,
+        expectedRevision: instance.revision,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated) => {
+      if (updated.revision === instance.revision) return;
+      return refresh(
+        updated,
+        `${contentKindSingular(kind)} imported and ready to use.`,
+      );
+    },
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Content was not imported",
+        message: contentErrorMessage(error),
+      }),
+  });
   const removeMutation = useMutation({
     mutationFn: (file: InstanceContentFile) =>
       removeInstanceContentFile({
@@ -143,7 +177,10 @@ export function InstanceFileContent({
     onMutate: () => setNotice(undefined),
     onSuccess: (updated, file) => {
       setRemoveTarget(undefined);
-      return refresh(updated, `${file.displayName} was moved to slate’s recoverable trash.`);
+      return refresh(
+        updated,
+        `${file.displayName} was moved to slate’s recoverable trash.`,
+      );
     },
     onError: (error) =>
       setNotice({
@@ -173,7 +210,10 @@ export function InstanceFileContent({
   });
   const files = query.data ?? [];
   const label = contentKindLabel(kind);
-  const busy = toggleMutation.isPending || removeMutation.isPending;
+  const busy =
+    importMutation.isPending ||
+    toggleMutation.isPending ||
+    removeMutation.isPending;
 
   return (
     <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6">
@@ -192,21 +232,41 @@ export function InstanceFileContent({
                 : "Archive packs can be hidden from Minecraft, restored, or moved to recoverable trash."}
             </p>
           </span>
-          {instance.modpackSource ? (
-            <button
-              type="button"
-              className={secondaryButtonClass}
-              disabled={restoreMutation.isPending}
-              onClick={() => restoreMutation.mutate()}
-            >
-              {restoreMutation.isPending ? (
-                <RotateCcw className="animate-spin" size={14} />
-              ) : (
-                <RotateCcw size={14} />
-              )}
-              Restore pack defaults
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {kind !== "dataPack" ? (
+              <button
+                type="button"
+                className={secondaryButtonClass}
+                disabled={busy || restoreMutation.isPending}
+                onClick={() => importMutation.mutate()}
+              >
+                {importMutation.isPending ? (
+                  <LoaderCircle
+                    className="animate-spin motion-reduce:animate-none"
+                    size={14}
+                  />
+                ) : (
+                  <FileUp size={14} />
+                )}
+                {importMutation.isPending ? "Importing" : "Import ZIP"}
+              </button>
+            ) : null}
+            {instance.modpackSource ? (
+              <button
+                type="button"
+                className={secondaryButtonClass}
+                disabled={busy || restoreMutation.isPending}
+                onClick={() => restoreMutation.mutate()}
+              >
+                {restoreMutation.isPending ? (
+                  <RotateCcw className="animate-spin" size={14} />
+                ) : (
+                  <RotateCcw size={14} />
+                )}
+                Restore pack defaults
+              </button>
+            ) : null}
+          </div>
         </header>
         {notice ? (
           <div className="px-5 pt-5">
@@ -218,7 +278,8 @@ export function InstanceFileContent({
         {query.isPending ? (
           <div className="grid min-h-64 place-items-center text-xs text-app-secondary">
             <span className="inline-flex items-center gap-2">
-              <LoaderCircle className="animate-spin" size={15} />Scanning instance files…
+              <LoaderCircle className="animate-spin" size={15} />
+              Scanning instance files…
             </span>
           </div>
         ) : query.isError ? (
@@ -243,16 +304,33 @@ export function InstanceFileContent({
                 {files.map((file) => (
                   <tr key={file.filePath} className="text-[11px]">
                     <td className="px-5 py-3">
-                      <strong className="block truncate text-xs text-app-text">{file.displayName}</strong>
-                      <span className="mt-0.5 block truncate font-mono text-[9px] text-app-muted" title={file.filePath}>{file.filePath}</span>
-                    </td>
-                    <td className="px-3 py-3 text-app-secondary">{file.worldName ?? "Instance"}</td>
-                    <td className="px-3 py-3">
-                      <span className={`rounded-full border px-2 py-1 font-mono text-[9px] ${file.origin === "modpack" ? "border-app-accent/35 text-app-accent" : "border-app-separator text-app-secondary"}`}>
-                        {file.origin === "modpack" ? "Included with pack" : "Added by you"}
+                      <strong className="block truncate text-xs text-app-text">
+                        {file.displayName}
+                      </strong>
+                      <span
+                        className="mt-0.5 block truncate font-mono text-[9px] text-app-muted"
+                        title={file.filePath}
+                      >
+                        {file.filePath}
                       </span>
                     </td>
-                    <td className="px-3 py-3 font-mono text-[10px] text-app-secondary">{file.fileSize ? formatContentFileSize(file.fileSize) : "Folder"}</td>
+                    <td className="px-3 py-3 text-app-secondary">
+                      {file.worldName ?? "Instance"}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={`rounded-full border px-2 py-1 font-mono text-[9px] ${file.origin === "modpack" ? "border-app-accent/35 text-app-accent" : "border-app-separator text-app-secondary"}`}
+                      >
+                        {file.origin === "modpack"
+                          ? "Included with pack"
+                          : "Added by you"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-[10px] text-app-secondary">
+                      {file.fileSize
+                        ? formatContentFileSize(file.fileSize)
+                        : "Folder"}
+                    </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-end gap-2">
                         {file.canToggle ? (
@@ -260,20 +338,51 @@ export function InstanceFileContent({
                             type="button"
                             className="h-7 rounded-control border border-app-separator px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
                             disabled={busy}
-                            onClick={() => toggleMutation.mutate({ file, enabled: !file.enabled })}
+                            onClick={() =>
+                              toggleMutation.mutate({
+                                file,
+                                enabled: !file.enabled,
+                              })
+                            }
                           >
                             {file.enabled ? "Hide" : "Restore"}
                           </button>
                         ) : (
-                          <span className="text-[9px] text-app-muted" title="Folder packs are enabled and ordered inside Minecraft.">In-game</span>
+                          <span
+                            className="text-[9px] text-app-muted"
+                            title="Folder packs are enabled and ordered inside Minecraft."
+                          >
+                            In-game
+                          </span>
                         )}
                         {removeTarget === file.filePath ? (
                           <span className="flex items-center gap-2">
-                            <button type="button" className="text-[10px] font-bold text-app-danger" disabled={busy} onClick={() => removeMutation.mutate(file)}>Confirm</button>
-                            <button type="button" className="text-[10px] text-app-secondary" onClick={() => setRemoveTarget(undefined)}>Cancel</button>
+                            <button
+                              type="button"
+                              className="text-[10px] font-bold text-app-danger"
+                              disabled={busy}
+                              onClick={() => removeMutation.mutate(file)}
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[10px] text-app-secondary"
+                              onClick={() => setRemoveTarget(undefined)}
+                            >
+                              Cancel
+                            </button>
                           </span>
                         ) : (
-                          <button type="button" className="p-1.5 text-app-muted hover:text-app-danger" title={`Remove ${file.displayName}`} disabled={busy} onClick={() => setRemoveTarget(file.filePath)}><Trash2 size={14} /></button>
+                          <button
+                            type="button"
+                            className="p-1.5 text-app-muted hover:text-app-danger"
+                            title={`Remove ${file.displayName}`}
+                            disabled={busy}
+                            onClick={() => setRemoveTarget(file.filePath)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         )}
                       </div>
                     </td>
@@ -285,7 +394,11 @@ export function InstanceFileContent({
         ) : (
           <EmptyState
             title={`No ${label.toLocaleLowerCase()} detected`}
-            description={kind === "dataPack" ? "Install or create a data pack inside a world’s datapacks folder." : `Place compatible archives in this instance’s ${label.toLocaleLowerCase()} folder.`}
+            description={
+              kind === "dataPack"
+                ? "Install or create a data pack inside a world’s datapacks folder."
+                : `Place compatible archives in this instance’s ${label.toLocaleLowerCase()} folder.`
+            }
           />
         )}
       </section>
@@ -301,6 +414,17 @@ function contentKindLabel(kind: InstanceContentKind) {
       return "Shader packs";
     case "dataPack":
       return "Data packs";
+  }
+}
+
+function contentKindSingular(kind: InstanceContentKind) {
+  switch (kind) {
+    case "resourcePack":
+      return "Resource pack";
+    case "shaderPack":
+      return "Shader pack";
+    case "dataPack":
+      return "Data pack";
   }
 }
 
@@ -457,7 +581,11 @@ export function InstalledModRow({
           <StatusPill tone={item.enabled ? "positive" : "neutral"}>
             {item.enabled ? "Enabled" : "Disabled"}
           </StatusPill>
-          {item.pinned ? <span className="mt-1 block text-[9px] font-bold text-app-accent">Version pinned</span> : null}
+          {item.pinned ? (
+            <span className="mt-1 block text-[9px] font-bold text-app-accent">
+              Version pinned
+            </span>
+          ) : null}
         </td>
         <td className="px-4 py-2.5 text-right font-mono text-[9px] text-app-secondary">
           {formatContentFileSize(item.fileSize)}
@@ -473,9 +601,24 @@ export function InstalledModRow({
               disabled={disabled || !item.provider || !item.projectId}
               onClick={onPin}
               aria-label={`${item.pinned ? "Unpin" : "Pin"} ${item.displayName}`}
-              title={item.provider ? (item.pinned ? "Allow compatible updates" : "Keep this version") : "Updates are not available for this file"}
+              title={
+                item.provider
+                  ? item.pinned
+                    ? "Allow compatible updates"
+                    : "Keep this version"
+                  : "Updates are not available for this file"
+              }
             >
-              {pendingAction === "pin" ? <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" /> : item.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+              {pendingAction === "pin" ? (
+                <LoaderCircle
+                  size={14}
+                  className="animate-spin motion-reduce:animate-none"
+                />
+              ) : item.pinned ? (
+                <PinOff size={14} />
+              ) : (
+                <Pin size={14} />
+              )}
             </button>
             <button
               type="button"

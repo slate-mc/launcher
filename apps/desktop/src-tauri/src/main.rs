@@ -16,6 +16,7 @@ mod instance_lifecycle_commands;
 mod instance_lifecycle_support;
 mod launch_commands;
 mod launch_support;
+mod local_content_import;
 mod mapping;
 mod mod_install_support;
 mod onboarding_commands;
@@ -45,10 +46,9 @@ use install_commands::*;
 use install_supervisor::InstallSupervisor;
 use instance_commands::*;
 use instance_content::{
-    FileMove, ImportedModFile, InstanceContentFile, InstanceContentKind, InstanceModFile,
-    LocalModImportError, ensure_local_mod_not_installed, import_local_mod, scan_instance_content,
+    FileMove, InstanceContentFile, InstanceContentKind, InstanceModFile, scan_instance_content,
     scan_instance_mods, set_instance_content_enabled, set_instance_mod_enabled,
-    trash_instance_content, trash_instance_mod, validate_local_mod_source,
+    trash_instance_content, trash_instance_mod,
 };
 use instance_files::{
     copy_duplicate_personal_data, create_snapshot, export_portable_archive,
@@ -59,6 +59,10 @@ use instance_lifecycle_commands::*;
 use instance_lifecycle_support::*;
 use launch_commands::*;
 use launch_support::*;
+use local_content_import::{
+    ImportedLocalFile, LocalContentImportError, LocalContentImportKind,
+    ensure_local_content_not_installed, import_local_content, validate_local_content_source,
+};
 use mapping::*;
 use mod_install_support::*;
 use onboarding_commands::*;
@@ -81,13 +85,13 @@ use slate_contracts::{
     CreateSavedServerRequest, CreateSupportReportRequest, DeleteInstanceSnapshotRequest,
     DeleteTrashedInstanceRequest, DuplicateInstanceRequest, EmptyInstanceTrashRequest,
     ExportInstanceRequest, GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
-    GetInstanceGameOptionsRequest, ImportInstanceRequest, ImportLocalModRequest,
-    InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, InstallModRequest,
-    InstallModSelection, InstallModpackRequest, InstallOperationDto, InstanceArtworkAsset,
-    InstanceArtworkKindDto, InstanceContentFileSummary, InstanceContentFilesRequest,
-    InstanceContentKindDto, InstanceDirectoryKindDto, InstanceGameOptionsSummary,
-    InstanceModOriginDto, InstanceModResolution, InstanceModSummary, InstanceModeDto,
-    InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
+    GetInstanceGameOptionsRequest, ImportInstanceRequest, ImportLocalContentFileRequest,
+    ImportLocalModRequest, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
+    InstallModRequest, InstallModSelection, InstallModpackRequest, InstallOperationDto,
+    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceContentFileSummary,
+    InstanceContentFilesRequest, InstanceContentKindDto, InstanceDirectoryKindDto,
+    InstanceGameOptionsSummary, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
+    InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
     InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, JavaRuntimeSummary,
     JavaSelectionModeDto, LaunchInstanceRequest, LauncherBehaviorDto, LoaderKindDto,
     LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto, MinecraftAccountStatusDto,
@@ -750,6 +754,7 @@ fn main() {
             instance_mods_resolve,
             instance_mod_import,
             instance_content_files_list,
+            instance_content_file_import,
             instance_content_file_set_enabled,
             instance_content_file_remove,
             instance_mod_set_enabled,

@@ -462,6 +462,17 @@ export async function listInstanceContentFiles(
   );
 }
 
+export async function importLocalContentFile(input: {
+  instanceId: string;
+  kind: InstanceContentKind;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_content_file_import", { request: input }),
+  );
+}
+
 export async function setInstanceContentFileEnabled(input: {
   instanceId: string;
   kind: InstanceContentKind;

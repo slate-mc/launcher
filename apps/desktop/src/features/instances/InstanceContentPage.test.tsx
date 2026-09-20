@@ -1,8 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeAll, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { App } from "../../app/App";
 
 describe("instance content", () => {
+  afterEach(cleanup);
+
   beforeAll(() => {
     window.history.replaceState(
       {},
@@ -28,5 +30,27 @@ describe("instance content", () => {
     expect(
       await screen.findByRole("heading", { name: "No compatible mods found" }),
     ).toBeInTheDocument();
+  });
+
+  it("offers local ZIP import for resource and shader packs", async () => {
+    render(<App />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Resource packs/ }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Resource packs" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Import ZIP" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Data packs/ }));
+    expect(
+      await screen.findByRole("heading", { name: "Data packs" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Import ZIP" }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -135,7 +135,7 @@ pub(super) async fn instance_mod_import(
             .blocking_pick_file()
     })
     .await
-    .map_err(|_| local_mod_import_error(LocalModImportError::InvalidArchive))?;
+    .map_err(|_| local_mod_import_error(LocalContentImportError::InvalidArchive))?;
     let Some(source) = picked.and_then(|path| path.into_path().ok()) else {
         return Ok(instance_summary(instance));
     };
@@ -145,30 +145,36 @@ pub(super) async fn instance_mod_import(
             .await?;
     ensure_local_mod_import_target(&instance)?;
     let loader = instance.loader_kind;
+    let import_kind = LocalContentImportKind::Mod(loader);
     let paths = paths_for_instance(state.inner(), &instance);
     let paths_for_validation = paths.clone();
     let source_for_validation = source.clone();
-    tauri::async_runtime::spawn_blocking(move || -> Result<(), LocalModImportError> {
-        validate_local_mod_source(&source_for_validation, loader)?;
-        ensure_local_mod_not_installed(&paths_for_validation, instance_id, &source_for_validation)
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), LocalContentImportError> {
+        validate_local_content_source(&source_for_validation, import_kind)?;
+        ensure_local_content_not_installed(
+            &paths_for_validation,
+            instance_id,
+            &source_for_validation,
+            import_kind,
+        )
     })
     .await
-    .map_err(|_| local_mod_import_error(LocalModImportError::InvalidArchive))?
+    .map_err(|_| local_mod_import_error(LocalContentImportError::InvalidArchive))?
     .map_err(local_mod_import_error)?;
     create_automatic_snapshot_if_enabled(state.inner(), &instance).await?;
 
     let imported = tauri::async_runtime::spawn_blocking(move || {
-        import_local_mod(&paths, instance_id, loader, &source)
+        import_local_content(&paths, instance_id, &source, import_kind)
     })
     .await
-    .map_err(|_| local_mod_import_error(LocalModImportError::InvalidArchive))?
+    .map_err(|_| local_mod_import_error(LocalContentImportError::InvalidArchive))?
     .map_err(local_mod_import_error)?;
     if let Err(error) = state
         .database
         .advance_instance_revision(instance_id, request.expected_revision)
         .await
     {
-        rollback_imported_mod(imported).await?;
+        rollback_imported_content(imported).await?;
         return Err(map_storage_error(
             error,
             "slate could not record the imported mod.",
@@ -198,32 +204,32 @@ fn ensure_local_mod_import_target(instance: &InstanceRecord) -> Result<(), AppEr
     Ok(())
 }
 
-fn local_mod_import_error(error: LocalModImportError) -> AppError {
+fn local_mod_import_error(error: LocalContentImportError) -> AppError {
     match error {
-        LocalModImportError::AlreadyInstalled => AppError::new(
+        LocalContentImportError::AlreadyInstalled => AppError::new(
             "mod.already_installed",
             "A mod JAR with that file name is already installed.",
         ),
-        LocalModImportError::WrongLoader => AppError::new(
+        LocalContentImportError::WrongLoader => AppError::new(
             "mod.wrong_loader",
             "That JAR does not contain mod metadata for this instance's loader.",
         ),
-        LocalModImportError::TooLarge => AppError::new(
+        LocalContentImportError::TooLarge => AppError::new(
             "mod.file_too_large",
             "That mod JAR is larger than the 1 GB import limit.",
         ),
-        LocalModImportError::InvalidArchive => AppError::new(
+        LocalContentImportError::InvalidArchive => AppError::new(
             "mod.invalid_jar",
             "Choose a valid mod JAR for this instance's loader.",
         ),
-        LocalModImportError::Io(_) => AppError::new(
+        LocalContentImportError::Io(_) => AppError::new(
             "local.mod_import_failed",
             "slate could not safely copy that mod JAR.",
         ),
     }
 }
 
-async fn rollback_imported_mod(imported: ImportedModFile) -> Result<(), AppError> {
+async fn rollback_imported_content(imported: ImportedLocalFile) -> Result<(), AppError> {
     let rollback = tauri::async_runtime::spawn_blocking(move || imported.rollback()).await;
     if matches!(rollback, Ok(Ok(()))) {
         Ok(())
@@ -232,6 +238,119 @@ async fn rollback_imported_mod(imported: ImportedModFile) -> Result<(), AppError
             "local.content_rollback_failed",
             "slate could not remove the copied mod after the change failed. The instance needs attention.",
         ))
+    }
+}
+
+#[tauri::command]
+pub(super) async fn instance_content_file_import(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    request: ImportLocalContentFileRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.instance_id);
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    ensure_local_pack_import_target(&instance, request.kind)?;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Add a content pack")
+            .add_filter("Minecraft content pack", &["zip"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| local_pack_import_error(LocalContentImportError::InvalidArchive))?;
+    let Some(source) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(instance_summary(instance));
+    };
+
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    ensure_local_pack_import_target(&instance, request.kind)?;
+    let import_kind = LocalContentImportKind::Pack(content_kind(request.kind));
+    let paths = paths_for_instance(state.inner(), &instance);
+    let paths_for_validation = paths.clone();
+    let source_for_validation = source.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), LocalContentImportError> {
+        validate_local_content_source(&source_for_validation, import_kind)?;
+        ensure_local_content_not_installed(
+            &paths_for_validation,
+            instance_id,
+            &source_for_validation,
+            import_kind,
+        )
+    })
+    .await
+    .map_err(|_| local_pack_import_error(LocalContentImportError::InvalidArchive))?
+    .map_err(local_pack_import_error)?;
+    create_automatic_snapshot_if_enabled(state.inner(), &instance).await?;
+
+    let imported = tauri::async_runtime::spawn_blocking(move || {
+        import_local_content(&paths, instance_id, &source, import_kind)
+    })
+    .await
+    .map_err(|_| local_pack_import_error(LocalContentImportError::InvalidArchive))?
+    .map_err(local_pack_import_error)?;
+    if let Err(error) = state
+        .database
+        .advance_instance_revision(instance_id, request.expected_revision)
+        .await
+    {
+        rollback_imported_content(imported).await?;
+        return Err(map_storage_error(
+            error,
+            "slate could not record the imported content pack.",
+        ));
+    }
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map(instance_summary)
+        .map_err(|error| map_storage_error(error, "slate could not refresh the instance."))
+}
+
+fn ensure_local_pack_import_target(
+    instance: &InstanceRecord,
+    kind: InstanceContentKindDto,
+) -> Result<(), AppError> {
+    if kind == InstanceContentKindDto::DataPack {
+        return Err(AppError::new(
+            "content.world_required",
+            "Choose a world before importing a data pack.",
+        ));
+    }
+    if instance.setup_state != slate_domain::InstanceSetupState::Ready {
+        return Err(AppError::new(
+            "local.instance_not_ready",
+            "Finish installing or repair this instance before adding content packs.",
+        ));
+    }
+    Ok(())
+}
+
+fn local_pack_import_error(error: LocalContentImportError) -> AppError {
+    match error {
+        LocalContentImportError::AlreadyInstalled => AppError::new(
+            "content.already_installed",
+            "A content pack with that file name is already installed.",
+        ),
+        LocalContentImportError::TooLarge => AppError::new(
+            "content.file_too_large",
+            "That content pack is larger than the 1 GB import limit.",
+        ),
+        LocalContentImportError::InvalidArchive | LocalContentImportError::WrongLoader => {
+            AppError::new(
+                "content.invalid_archive",
+                "Choose a valid content pack ZIP for this section.",
+            )
+        }
+        LocalContentImportError::Io(_) => AppError::new(
+            "local.content_import_failed",
+            "slate could not safely copy that content pack.",
+        ),
     }
 }
 

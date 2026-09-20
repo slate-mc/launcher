@@ -215,6 +215,14 @@ pub struct InstanceContentFilesRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportLocalContentFileRequest {
+    pub instance_id: Uuid,
+    pub kind: InstanceContentKindDto,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstanceContentFileSummary {
     pub display_name: String,
     pub file_path: String,
