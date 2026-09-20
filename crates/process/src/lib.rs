@@ -39,6 +39,16 @@ pub enum ProcessState {
     Stopping,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ChildProcessPriority {
+    Low,
+    BelowNormal,
+    #[default]
+    Normal,
+    AboveNormal,
+    High,
+}
+
 impl ProcessState {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -143,6 +153,7 @@ impl ProcessSupervisor {
         session_id: SessionId,
         plan: &LaunchPlan,
         log_path: PathBuf,
+        priority: ChildProcessPriority,
     ) -> Result<StartedProcess, ProcessError> {
         let mut children = self
             .children
@@ -159,6 +170,7 @@ impl ProcessSupervisor {
             .open(&log_path)?;
         let stderr = log.try_clone()?;
         let mut command = plan.command();
+        apply_process_priority(&mut command, priority);
         command.stdout(Stdio::from(log)).stderr(Stdio::from(stderr));
         let child = tokio::process::Command::from(command)
             .kill_on_drop(false)
@@ -298,6 +310,28 @@ impl ProcessSupervisor {
     }
 }
 
+#[cfg(windows)]
+fn apply_process_priority(command: &mut std::process::Command, priority: ChildProcessPriority) {
+    use std::os::windows::process::CommandExt;
+
+    const IDLE_PRIORITY_CLASS: u32 = 0x0000_0040;
+    const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+    const NORMAL_PRIORITY_CLASS: u32 = 0x0000_0020;
+    const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
+    const HIGH_PRIORITY_CLASS: u32 = 0x0000_0080;
+    let flags = match priority {
+        ChildProcessPriority::Low => IDLE_PRIORITY_CLASS,
+        ChildProcessPriority::BelowNormal => BELOW_NORMAL_PRIORITY_CLASS,
+        ChildProcessPriority::Normal => NORMAL_PRIORITY_CLASS,
+        ChildProcessPriority::AboveNormal => ABOVE_NORMAL_PRIORITY_CLASS,
+        ChildProcessPriority::High => HIGH_PRIORITY_CLASS,
+    };
+    command.creation_flags(flags);
+}
+
+#[cfg(not(windows))]
+fn apply_process_priority(_: &mut std::process::Command, _: ChildProcessPriority) {}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExitedProcess {
     pub instance_id: InstanceId,
@@ -326,8 +360,8 @@ pub enum ProcessError {
 #[cfg(test)]
 mod tests {
     use super::{
-        LOG_SNAPSHOT_BYTES, LogChunkKind, ProcessError, ProcessState, ProcessSupervisor,
-        SessionLogTail,
+        ChildProcessPriority, LOG_SNAPSHOT_BYTES, LogChunkKind, ProcessError, ProcessState,
+        ProcessSupervisor, SessionLogTail,
     };
     use slate_domain::{InstanceId, SessionId};
     use slate_minecraft::{LaunchArgument, LaunchPlan};
@@ -410,6 +444,7 @@ mod tests {
             session_id,
             &plan,
             directory.path().join("session.log"),
+            ChildProcessPriority::Normal,
         )?;
 
         assert_eq!(
@@ -429,7 +464,8 @@ mod tests {
                 instance_id,
                 SessionId::new(),
                 &plan,
-                directory.path().join("duplicate.log")
+                directory.path().join("duplicate.log"),
+                ChildProcessPriority::Normal,
             ),
             Err(ProcessError::InstanceAlreadyRunning)
         ));

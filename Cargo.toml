@@ -88,6 +88,7 @@ url = "=2.5.8"
 zip = { version = "=8.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tauri = "=2.11.4"
 tauri-build = "=2.6.3"
+tauri-plugin-dialog = "=2.7.3"
 moka = { version = "=0.12.16", features = ["sync"] }
 percent-encoding = "=2.3.2"
 tower = "=0.5.3"

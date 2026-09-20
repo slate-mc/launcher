@@ -123,6 +123,7 @@ pub enum QuickPlay {
 pub struct LaunchOptions {
     pub initial_memory_mib: u32,
     pub maximum_memory_mib: u32,
+    pub additional_jvm_arguments: Vec<String>,
     pub custom_resolution: Option<(u32, u32)>,
     pub demo_user: bool,
     pub quick_play: Option<QuickPlay>,
@@ -134,6 +135,7 @@ impl Default for LaunchOptions {
         Self {
             initial_memory_mib: 512,
             maximum_memory_mib: 2_048,
+            additional_jvm_arguments: Vec::new(),
             custom_resolution: None,
             demo_user: false,
             quick_play: None,
@@ -229,6 +231,9 @@ impl LaunchPlanner {
             "-Xmx{}M",
             request.options.maximum_memory_mib
         )));
+        for argument in &request.options.additional_jvm_arguments {
+            plan.push_argument(LaunchArgument::public(argument.clone()));
+        }
 
         let mut has_classpath = false;
         let mut has_native_path = false;
@@ -573,7 +578,42 @@ fn validate_options(options: &LaunchOptions) -> Result<(), LaunchBuildError> {
     }) {
         return Err(LaunchBuildError::InvalidResolution);
     }
+    if options.additional_jvm_arguments.len() > 64
+        || options
+            .additional_jvm_arguments
+            .iter()
+            .any(|argument| !is_safe_additional_jvm_argument(argument))
+    {
+        return Err(LaunchBuildError::InvalidAdditionalJvmArgument);
+    }
     Ok(())
+}
+
+fn is_safe_additional_jvm_argument(argument: &str) -> bool {
+    const BLOCKED_PREFIXES: &[&str] = &[
+        "-xms",
+        "-xmx",
+        "-cp",
+        "-classpath",
+        "--class-path",
+        "--module-path",
+        "-jar",
+        "-javaagent",
+        "-agentlib",
+        "-agentpath",
+        "-djava.library.path",
+    ];
+    if argument.is_empty()
+        || argument.len() > 512
+        || argument.starts_with('@')
+        || argument.chars().any(char::is_control)
+    {
+        return false;
+    }
+    let normalized = argument.to_ascii_lowercase();
+    !BLOCKED_PREFIXES
+        .iter()
+        .any(|prefix| normalized == *prefix || normalized.starts_with(&format!("{prefix}=")))
 }
 
 fn validate_identity_value(field: &'static str, value: &str) -> Result<(), LaunchBuildError> {
@@ -819,6 +859,8 @@ pub enum LaunchBuildError {
     InvalidMemoryRange,
     #[error("custom resolution is outside supported safety bounds")]
     InvalidResolution,
+    #[error("an additional JVM argument overrides a slate-managed launch setting")]
+    InvalidAdditionalJvmArgument,
     #[error("identity field is empty, oversized, or contains control characters: {0}")]
     InvalidIdentityField(&'static str),
     #[error("library {library} is missing native classifier {classifier}")]

@@ -1,14 +1,16 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
-    CreateInstanceRequest, EventEnvelope, GameSessionSummary, InstallInstanceRequest,
-    InstallJobSummary, InstallModRequest, InstallModpackRequest, InstanceModResolution,
-    InstanceModSummary, InstanceModsRequest, InstanceSummary, LaunchInstanceRequest,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
-    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
-    ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary, RedactedLaunchPlan,
-    RemoveInstanceModRequest, SessionLogEvent, SessionLogSubscription,
+    CreateInstanceRequest, EventEnvelope, GameSessionSummary, GetInstanceArtworkRequest,
+    InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceModResolution, InstanceModSummary, InstanceModsRequest, InstanceSummary,
+    LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
+    MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackVersionRequest, ModpackVersionsRequest, PreflightSummary,
+    RedactedLaunchPlan, RemoveInstanceModRequest, SelectInstanceArtworkRequest,
+    SelectInstanceJavaRequest, SessionLogEvent, SessionLogSubscription,
     SetInstanceModEnabledRequest, StopGameSessionRequest, SubscribeSessionLogRequest,
     UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceSettingsRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -27,6 +29,22 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         (
             "update-instance-configuration-request",
             schema_for!(UpdateInstanceConfigurationRequest),
+        ),
+        (
+            "update-instance-settings-request",
+            schema_for!(UpdateInstanceSettingsRequest),
+        ),
+        (
+            "select-instance-java-request",
+            schema_for!(SelectInstanceJavaRequest),
+        ),
+        (
+            "select-instance-artwork-request",
+            schema_for!(SelectInstanceArtworkRequest),
+        ),
+        (
+            "get-instance-artwork-request",
+            schema_for!(GetInstanceArtworkRequest),
         ),
         ("app-preferences", schema_for!(AppPreferencesDto)),
         ("preflight-summary", schema_for!(PreflightSummary)),
@@ -153,7 +171,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 42);
+        assert_eq!(schemas.len(), 46);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

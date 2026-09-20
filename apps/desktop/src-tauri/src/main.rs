@@ -2,6 +2,8 @@
 
 mod instance_content;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use instance_content::{
     FileMove, InstanceModFile, scan_instance_mods, set_instance_mod_enabled, trash_instance_mod,
 };
@@ -12,19 +14,23 @@ use slate_auth::{
 use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, AuthCancelRequest, AuthFlowStateDto,
     AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary, CreateInstanceRequest,
-    GameSessionStateDto, GameSessionSummary, InstallInstanceRequest, InstallJobStateDto,
-    InstallJobSummary, InstallModRequest, InstallModpackRequest, InstanceModOriginDto,
-    InstanceModResolution, InstanceModSummary, InstanceModeDto, InstanceModsRequest,
-    InstanceSummary, JavaRuntimeSummary, LaunchInstanceRequest, LoaderKindDto,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountStatusDto,
-    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
-    MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
-    ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackVersionRequest,
-    ModpackVersionsRequest, PreflightSummary, ReduceMotionPreferenceDto, RemoveInstanceModRequest,
-    RenameInstanceRequest, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
-    SetDefaultAccountRequest, SetFavoriteRequest, SetInstanceModEnabledRequest,
-    StopGameSessionRequest, SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
+    GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest, InstallInstanceRequest,
+    InstallJobStateDto, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceModOriginDto, InstanceModResolution,
+    InstanceModSummary, InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary,
+    InstanceSummary, InstanceWindowModeDto, JavaRuntimeSummary, JavaSelectionModeDto,
+    LaunchInstanceRequest, LauncherBehaviorDto, LoaderKindDto, LoaderVersionCatalog,
+    LoaderVersionsRequest, MemoryModeDto, MinecraftAccountStatusDto, MinecraftAccountSummary,
+    MinecraftReleaseKindDto, MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest,
+    ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto,
+    ModpackSourceSummary, ModpackVersionRequest, ModpackVersionsRequest, PerformancePresetDto,
+    PreflightSummary, ProcessPriorityDto, ReduceMotionPreferenceDto, RemoveInstanceModRequest,
+    RenameInstanceRequest, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest,
+    SetFavoriteRequest, SetInstanceModEnabledRequest, StopGameSessionRequest,
+    SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest,
     UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceSettingsRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, LoaderFamily, ManagementMode,
@@ -38,8 +44,8 @@ use slate_installer::{
 use slate_loaders::{FabricAdapter, NeoForgeAdapter};
 use slate_minecraft::{
     Architecture, EnvironmentValue, JavaRuntime, LaunchIdentity, LaunchLayout, LaunchOptions,
-    LaunchPlanner, LaunchRequest, MojangMetadataClient, OperatingSystem, ResolvedVersion,
-    RuleContext,
+    LaunchPlanner, LaunchRequest, MojangMetadataClient, OperatingSystem, QuickPlay,
+    ResolvedVersion, RuleContext,
 };
 use slate_modpack_api_contracts::{
     Architecture as ModpackArchitecture, Hashes, InstallPlan, InstallPlanRequest, LoaderKind,
@@ -49,22 +55,27 @@ use slate_modpack_api_contracts::{
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
 use slate_platform::{
-    AppPaths, detect_java_runtime, probe_java_executable, restricted_child_environment,
+    AppPaths, JavaArchitecture, JavaRuntimeProbe, detect_java_runtime, probe_java_executable,
+    restricted_child_environment,
 };
 use slate_process::{
-    ActiveProcess, LogChunk, LogChunkKind, ProcessState, ProcessSupervisor, SessionLogTail,
+    ActiveProcess, ChildProcessPriority, LogChunk, LogChunkKind, ProcessState, ProcessSupervisor,
+    SessionLogTail,
 };
 use slate_storage::{
     AccountRecord, AccountStatus, AppPreferences, AuthenticatedAccount, CompletedInstall, Database,
     InstallJobRecord, InstalledRuntime, InstanceModEnabledChange, InstanceModRecord,
-    InstanceModTarget, InstanceRecord, JobState, NewInstance, NewInstanceMod, NewModpackSource,
-    ReduceMotionPreference, StorageError, ThemePreference,
+    InstanceModTarget, InstanceRecord, InstanceWindowMode, JavaSelectionMode, JobState,
+    LauncherBehavior, MemoryMode, NewInstance, NewInstanceMod, NewModpackSource, PerformancePreset,
+    ProcessPriority, ReduceMotionPreference, StorageError, ThemePreference, UpdateInstanceSettings,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -1189,6 +1200,248 @@ async fn instance_update_configuration(
 }
 
 #[tauri::command]
+async fn instance_update_settings(
+    state: tauri::State<'_, DesktopState>,
+    request: UpdateInstanceSettingsRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.id);
+    let expected_revision = request.expected_revision;
+    let current = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    if current.revision != expected_revision {
+        return Err(AppError::new(
+            "local.instance_changed",
+            "That instance changed in another view. Reload it and try again.",
+        ));
+    }
+    if let Some(account_id) = request.preferred_account_id {
+        state
+            .database
+            .get_account(AccountId::from_uuid(account_id))
+            .await
+            .map_err(|error| map_storage_error(error, "Choose a connected Minecraft account."))?;
+    }
+    let settings = validated_instance_settings(&current, request)?;
+    state
+        .database
+        .update_instance_settings(instance_id, expected_revision, settings)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not save the instance settings."))?;
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map(instance_summary)
+        .map_err(|error| {
+            map_storage_error(error, "slate saved the settings but could not reload them.")
+        })
+}
+
+#[tauri::command]
+async fn instance_select_java(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    request: SelectInstanceJavaRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    if instance.revision != request.expected_revision {
+        return Err(AppError::new(
+            "local.instance_changed",
+            "That instance changed in another view. Reload it and try again.",
+        ));
+    }
+    let (mode, path, label) = match request.mode {
+        JavaSelectionModeDto::Managed => (JavaSelectionMode::Managed, None, None),
+        JavaSelectionModeDto::Detected => {
+            let probe = tauri::async_runtime::spawn_blocking(detect_java_runtime)
+                .await
+                .map_err(|_| java_selection_error())?;
+            validated_java_selection(&instance, probe, JavaSelectionMode::Detected)?
+        }
+        JavaSelectionModeDto::Custom => {
+            let picked = tauri::async_runtime::spawn_blocking(move || {
+                app.dialog()
+                    .file()
+                    .set_title("Choose a Java executable")
+                    .add_filter("Java executable", &["exe"])
+                    .blocking_pick_file()
+            })
+            .await
+            .map_err(|_| java_selection_error())?;
+            let Some(path) = picked.and_then(|path| path.into_path().ok()) else {
+                return Ok(instance_summary(instance));
+            };
+            let probe_path = path.clone();
+            let probe =
+                tauri::async_runtime::spawn_blocking(move || probe_java_executable(&probe_path))
+                    .await
+                    .map_err(|_| java_selection_error())?;
+            validated_java_selection(&instance, probe, JavaSelectionMode::Custom)?
+        }
+    };
+    state
+        .database
+        .set_instance_java_selection(
+            instance_id,
+            request.expected_revision,
+            mode,
+            path.as_deref(),
+            label.as_deref(),
+        )
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not save the Java selection."))?;
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map(instance_summary)
+        .map_err(|error| map_storage_error(error, "slate could not reload the Java selection."))
+}
+
+#[tauri::command]
+async fn instance_select_artwork(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    request: SelectInstanceArtworkRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.id);
+    let current = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    if current.revision != request.expected_revision {
+        return Err(AppError::new(
+            "local.instance_changed",
+            "That instance changed in another view. Reload it and try again.",
+        ));
+    }
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Choose instance artwork")
+            .add_filter("Image", &["png", "jpg", "jpeg", "webp"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| artwork_error())?;
+    let Some(source) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(instance_summary(current));
+    };
+    let kind = request.kind;
+    let destination = instance_artwork_path(&state.paths, instance_id, kind);
+    let maximum = match kind {
+        InstanceArtworkKindDto::Icon => 2 * 1024 * 1024,
+        InstanceArtworkKindDto::Banner => 8 * 1024 * 1024,
+    };
+    let source_for_read = source.clone();
+    let (bytes, mime) = tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(source_for_read)?;
+        if bytes.len() > maximum {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "image is too large",
+            ));
+        }
+        let mime = image_mime(&bytes).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "unsupported image")
+        })?;
+        Ok::<_, std::io::Error>((bytes, mime))
+    })
+    .await
+    .map_err(|_| artwork_error())?
+    .map_err(|_| artwork_error())?;
+    let replacement = replace_managed_file(destination, bytes).await?;
+    let column = match kind {
+        InstanceArtworkKindDto::Icon => "icon_mime",
+        InstanceArtworkKindDto::Banner => "banner_mime",
+    };
+    if let Err(error) = state
+        .database
+        .set_instance_artwork_mime(instance_id, request.expected_revision, column, Some(mime))
+        .await
+    {
+        replacement.rollback().await;
+        return Err(map_storage_error(
+            error,
+            "slate could not save the artwork.",
+        ));
+    }
+    replacement.commit().await;
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map(instance_summary)
+        .map_err(|error| map_storage_error(error, "slate could not reload the artwork."))
+}
+
+#[tauri::command]
+async fn instance_reset_artwork(
+    state: tauri::State<'_, DesktopState>,
+    request: SelectInstanceArtworkRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.id);
+    let destination = instance_artwork_path(&state.paths, instance_id, request.kind);
+    let replacement = remove_managed_file(destination).await?;
+    let column = match request.kind {
+        InstanceArtworkKindDto::Icon => "icon_mime",
+        InstanceArtworkKindDto::Banner => "banner_mime",
+    };
+    if let Err(error) = state
+        .database
+        .set_instance_artwork_mime(instance_id, request.expected_revision, column, None)
+        .await
+    {
+        replacement.rollback().await;
+        return Err(map_storage_error(
+            error,
+            "slate could not reset the artwork.",
+        ));
+    }
+    replacement.commit().await;
+    state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map(instance_summary)
+        .map_err(|error| map_storage_error(error, "slate could not reload the artwork."))
+}
+
+#[tauri::command]
+async fn instance_get_artwork(
+    state: tauri::State<'_, DesktopState>,
+    request: GetInstanceArtworkRequest,
+) -> Result<Option<InstanceArtworkAsset>, AppError> {
+    let instance = state
+        .database
+        .get_instance(InstanceId::from_uuid(request.id))
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let mime = match request.kind {
+        InstanceArtworkKindDto::Icon => instance.settings.icon_mime,
+        InstanceArtworkKindDto::Banner => instance.settings.banner_mime,
+    };
+    let Some(mime_type) = mime else {
+        return Ok(None);
+    };
+    let path = instance_artwork_path(&state.paths, instance.id, request.kind);
+    let bytes = tokio::fs::read(path).await.map_err(|_| artwork_error())?;
+    Ok(Some(InstanceArtworkAsset {
+        mime_type,
+        data_base64: BASE64_STANDARD.encode(bytes),
+    }))
+}
+
+#[tauri::command]
 async fn instance_set_favorite(
     state: tauri::State<'_, DesktopState>,
     request: SetFavoriteRequest,
@@ -2076,6 +2329,7 @@ async fn install_jobs_list(
 
 #[tauri::command]
 async fn instance_launch(
+    window: tauri::WebviewWindow,
     state: tauri::State<'_, DesktopState>,
     request: LaunchInstanceRequest,
 ) -> Result<GameSessionSummary, AppError> {
@@ -2155,16 +2409,17 @@ async fn instance_launch(
             "The runtime binding changed after installation. Reinstall the instance.",
         ));
     }
-    let probe_path = runtime.executable.clone();
-    let probe = tauri::async_runtime::spawn_blocking(move || probe_java_executable(&probe_path))
-        .await
-        .map_err(|_| {
-            AppError::new(
-                "local.runtime_probe_unavailable",
-                "slate could not validate the managed Java runtime.",
-            )
-        })?;
-    if !probe.available || probe.major_version != Some(runtime.major_version) {
+    let managed_probe_path = runtime.executable.clone();
+    let managed_probe =
+        tauri::async_runtime::spawn_blocking(move || probe_java_executable(&managed_probe_path))
+            .await
+            .map_err(|_| {
+                AppError::new(
+                    "local.runtime_probe_unavailable",
+                    "slate could not validate the managed Java runtime.",
+                )
+            })?;
+    if !managed_probe.available || managed_probe.major_version != Some(runtime.major_version) {
         return Err(AppError::new(
             "local.runtime_invalid",
             "The managed Java runtime is missing or no longer matches this instance.",
@@ -2178,17 +2433,64 @@ async fn instance_launch(
         )
     })?;
     let architecture = minecraft_architecture(&runtime.architecture)?;
+    let selected_executable = match instance.settings.java_mode {
+        JavaSelectionMode::Managed => runtime.executable.clone(),
+        JavaSelectionMode::Detected | JavaSelectionMode::Custom => instance
+            .settings
+            .custom_java_path
+            .as_deref()
+            .map(PathBuf::from)
+            .ok_or_else(java_selection_error)?,
+    };
+    let selected_probe_path = selected_executable.clone();
+    let selected_probe =
+        tauri::async_runtime::spawn_blocking(move || probe_java_executable(&selected_probe_path))
+            .await
+            .map_err(|_| java_selection_error())?;
+    if !selected_probe.available
+        || selected_probe.major_version != Some(resolved.java_version().major_version)
+        || selected_probe.architecture.and_then(platform_architecture) != Some(architecture)
+    {
+        return Err(AppError::new(
+            "local.runtime_invalid",
+            "The selected Java runtime no longer matches this instance's required version and architecture.",
+        ));
+    }
     let layout = launch_layout(&state.paths, instance_id, revision.id);
     let runtime_for_plan = JavaRuntime::new(
-        runtime.executable.clone(),
-        runtime.major_version,
+        selected_executable.clone(),
+        resolved.java_version().major_version,
         architecture,
     )
-    .map_err(|_| AppError::new("local.runtime_invalid", "The managed runtime is invalid."))?;
-    let environment = restricted_child_environment(Some(&runtime.executable))
-        .into_iter()
-        .map(|(name, value)| (name, EnvironmentValue::public(value)))
-        .collect();
+    .map_err(|_| AppError::new("local.runtime_invalid", "The selected runtime is invalid."))?;
+    let mut environment: BTreeMap<String, EnvironmentValue> =
+        restricted_child_environment(Some(&selected_executable))
+            .into_iter()
+            .map(|(name, value)| (name, EnvironmentValue::public(value)))
+            .collect();
+    environment.extend(
+        instance
+            .settings
+            .environment
+            .iter()
+            .map(|(name, value)| (name.clone(), EnvironmentValue::public(value.clone()))),
+    );
+    let custom_resolution = instance
+        .settings
+        .resolution_width
+        .zip(instance.settings.resolution_height);
+    let quick_play = instance
+        .settings
+        .quick_play_server
+        .as_ref()
+        .map(|server| QuickPlay::Multiplayer(server.clone()));
+    let additional_jvm_arguments = launch_jvm_arguments(&instance.settings);
+    apply_managed_game_options(
+        &layout.game_directory,
+        &instance.settings.game_language,
+        instance.settings.window_mode == InstanceWindowMode::Fullscreen,
+    )
+    .await?;
     let preparation = LaunchPlanner::prepare(
         &resolved,
         LaunchRequest {
@@ -2209,8 +2511,12 @@ async fn instance_launch(
             })?,
             rules: current_rule_context(architecture),
             options: LaunchOptions {
+                initial_memory_mib: instance.settings.initial_memory_mb,
                 maximum_memory_mib: instance.memory_mb,
+                additional_jvm_arguments,
+                custom_resolution,
                 demo_user: false,
+                quick_play,
                 ..LaunchOptions::default()
             },
             environment,
@@ -2246,10 +2552,13 @@ async fn instance_launch(
         .instance(instance_id)
         .join("logs")
         .join(format!("{session_id}.log"));
-    let started = match state
-        .processes
-        .start(instance_id, session_id, &preparation.plan, log_path)
-    {
+    let started = match state.processes.start(
+        instance_id,
+        session_id,
+        &preparation.plan,
+        log_path,
+        child_process_priority(instance.settings.process_priority),
+    ) {
         Ok(started) => started,
         Err(error) => {
             let _ = state.database.fail_session_start(session_id).await;
@@ -2269,6 +2578,19 @@ async fn instance_launch(
             error,
             "The game was stopped because slate could not track its session.",
         ));
+    }
+    match instance.settings.launcher_behavior {
+        LauncherBehavior::KeepOpen => {}
+        LauncherBehavior::Minimize => {
+            let _ = window.minimize();
+        }
+        LauncherBehavior::Hide => {
+            let _ = window.hide();
+            let state = state.inner().clone();
+            tauri::async_runtime::spawn(async move {
+                restore_window_after_session(state, window, session_id).await;
+            });
+        }
     }
     Ok(GameSessionSummary {
         id: session_id.as_uuid(),
@@ -2450,6 +2772,7 @@ async fn preflight_get(
 }
 
 fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
+    let settings = record.settings.clone();
     InstanceSummary {
         id: record.id.as_uuid(),
         name: record.name.to_string(),
@@ -2461,7 +2784,37 @@ fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
         loader_kind: record.loader_kind.into(),
         loader_version: record.loader_version,
         memory_mb: record.memory_mb,
+        mod_count: record.mod_count,
         setup_state: record.setup_state.into(),
+        settings: InstanceSettingsSummary {
+            description: settings.description,
+            notes: settings.notes,
+            group_name: settings.group_name,
+            tags: settings.tags,
+            has_custom_icon: settings.icon_mime.is_some(),
+            has_custom_banner: settings.banner_mime.is_some(),
+            banner_position_x: settings.banner_position_x,
+            banner_position_y: settings.banner_position_y,
+            preferred_account_id: settings.preferred_account_id.map(|id| id.as_uuid()),
+            window_mode: window_mode_dto(settings.window_mode),
+            resolution_width: settings.resolution_width,
+            resolution_height: settings.resolution_height,
+            launcher_behavior: launcher_behavior_dto(settings.launcher_behavior),
+            game_language: settings.game_language,
+            quick_play_server: settings.quick_play_server,
+            process_priority: process_priority_dto(settings.process_priority),
+            memory_mode: memory_mode_dto(settings.memory_mode),
+            initial_memory_mb: settings.initial_memory_mb,
+            effective_memory_mb: record.memory_mb,
+            java_mode: java_mode_dto(settings.java_mode),
+            custom_java_label: settings.custom_java_label,
+            performance_preset: performance_preset_dto(settings.performance_preset),
+            jvm_arguments: settings.jvm_arguments,
+            environment: settings.environment,
+            backup_before_changes: settings.backup_before_changes,
+            backup_retention: settings.backup_retention,
+            log_retention_days: settings.log_retention_days,
+        },
         modpack_source: record.modpack_source.map(|source| ModpackSourceSummary {
             provider: source.provider,
             project_id: source.project_id,
@@ -2473,6 +2826,56 @@ fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
         created_at: record.created_at,
         updated_at: record.updated_at,
         last_played: record.last_played,
+    }
+}
+
+const fn window_mode_dto(value: InstanceWindowMode) -> InstanceWindowModeDto {
+    match value {
+        InstanceWindowMode::Windowed => InstanceWindowModeDto::Windowed,
+        InstanceWindowMode::Maximized => InstanceWindowModeDto::Maximized,
+        InstanceWindowMode::Fullscreen => InstanceWindowModeDto::Fullscreen,
+    }
+}
+
+const fn launcher_behavior_dto(value: LauncherBehavior) -> LauncherBehaviorDto {
+    match value {
+        LauncherBehavior::KeepOpen => LauncherBehaviorDto::KeepOpen,
+        LauncherBehavior::Minimize => LauncherBehaviorDto::Minimize,
+        LauncherBehavior::Hide => LauncherBehaviorDto::Hide,
+    }
+}
+
+const fn process_priority_dto(value: ProcessPriority) -> ProcessPriorityDto {
+    match value {
+        ProcessPriority::Low => ProcessPriorityDto::Low,
+        ProcessPriority::BelowNormal => ProcessPriorityDto::BelowNormal,
+        ProcessPriority::Normal => ProcessPriorityDto::Normal,
+        ProcessPriority::AboveNormal => ProcessPriorityDto::AboveNormal,
+        ProcessPriority::High => ProcessPriorityDto::High,
+    }
+}
+
+const fn memory_mode_dto(value: MemoryMode) -> MemoryModeDto {
+    match value {
+        MemoryMode::Auto => MemoryModeDto::Auto,
+        MemoryMode::Custom => MemoryModeDto::Custom,
+    }
+}
+
+const fn java_mode_dto(value: JavaSelectionMode) -> JavaSelectionModeDto {
+    match value {
+        JavaSelectionMode::Managed => JavaSelectionModeDto::Managed,
+        JavaSelectionMode::Detected => JavaSelectionModeDto::Detected,
+        JavaSelectionMode::Custom => JavaSelectionModeDto::Custom,
+    }
+}
+
+const fn performance_preset_dto(value: PerformancePreset) -> PerformancePresetDto {
+    match value {
+        PerformancePreset::Balanced => PerformancePresetDto::Balanced,
+        PerformancePreset::Throughput => PerformancePresetDto::Throughput,
+        PerformancePreset::LowLatency => PerformancePresetDto::LowLatency,
+        PerformancePreset::Custom => PerformancePresetDto::Custom,
     }
 }
 
@@ -2793,6 +3196,503 @@ fn validate_instance_configuration(
         return Err(ConfigurationValidationError::Memory);
     }
     Ok(())
+}
+
+fn validated_instance_settings(
+    instance: &InstanceRecord,
+    request: UpdateInstanceSettingsRequest,
+) -> Result<UpdateInstanceSettings, AppError> {
+    let description = validated_free_text("description", request.description, 500)?;
+    let notes = validated_free_text("notes", request.notes, 4_000)?;
+    let group_name = validated_optional_text("groupName", request.group_name, 80)?;
+    let mut tags = Vec::with_capacity(request.tags.len());
+    let mut seen_tags = HashSet::new();
+    if request.tags.len() > 20 {
+        return Err(settings_validation_error(
+            "tags",
+            "Use no more than 20 tags.",
+        ));
+    }
+    for raw_tag in request.tags {
+        let tag = raw_tag.trim();
+        if tag.is_empty()
+            || tag.chars().count() > 32
+            || tag.chars().any(|character| character.is_control())
+        {
+            return Err(settings_validation_error(
+                "tags",
+                "Each tag must contain 1 through 32 visible characters.",
+            ));
+        }
+        let identity = tag.to_lowercase();
+        if seen_tags.insert(identity) {
+            tags.push(tag.to_owned());
+        }
+    }
+
+    let (resolution_width, resolution_height) = match (
+        request.resolution_width,
+        request.resolution_height,
+    ) {
+        (None, None) => (None, None),
+        (Some(width), Some(height))
+            if (320..=16_384).contains(&width) && (240..=16_384).contains(&height) =>
+        {
+            (Some(width), Some(height))
+        }
+        _ => {
+            return Err(settings_validation_error(
+                "resolutionWidth",
+                "Set both dimensions using a width from 320 through 16384 and a height from 240 through 16384.",
+            ));
+        }
+    };
+    let game_language = request.game_language.trim().to_ascii_lowercase();
+    if game_language.len() < 2
+        || game_language.len() > 32
+        || game_language.chars().any(|character| {
+            !(character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_')
+        })
+    {
+        return Err(settings_validation_error(
+            "gameLanguage",
+            "Use a Minecraft language code such as en_us.",
+        ));
+    }
+    let quick_play_server = validated_optional_server(request.quick_play_server)?;
+
+    if !(256..=32_768).contains(&request.initial_memory_mb) {
+        return Err(settings_validation_error(
+            "initialMemoryMb",
+            "Choose 256 through 32768 MB.",
+        ));
+    }
+    let maximum_memory_mb = match request.memory_mode {
+        MemoryModeDto::Auto => recommended_memory_mb(instance),
+        MemoryModeDto::Custom if (1_024..=32_768).contains(&request.maximum_memory_mb) => {
+            request.maximum_memory_mb
+        }
+        MemoryModeDto::Custom => {
+            return Err(settings_validation_error(
+                "maximumMemoryMb",
+                "Choose 1024 through 32768 MB.",
+            ));
+        }
+    };
+    if request.initial_memory_mb > maximum_memory_mb {
+        return Err(settings_validation_error(
+            "initialMemoryMb",
+            "Initial memory cannot exceed maximum memory.",
+        ));
+    }
+
+    if request.java_mode != JavaSelectionModeDto::Managed
+        && instance.settings.custom_java_path.is_none()
+    {
+        return Err(settings_validation_error(
+            "javaMode",
+            "Choose and validate a Java executable first.",
+        ));
+    }
+    let jvm_arguments = validated_jvm_arguments(request.jvm_arguments)?;
+    let environment = validated_environment(request.environment)?;
+    if !(1..=50).contains(&request.backup_retention) {
+        return Err(settings_validation_error(
+            "backupRetention",
+            "Keep between 1 and 50 snapshots.",
+        ));
+    }
+    if !(1..=365).contains(&request.log_retention_days) {
+        return Err(settings_validation_error(
+            "logRetentionDays",
+            "Keep logs for between 1 and 365 days.",
+        ));
+    }
+
+    Ok(UpdateInstanceSettings {
+        description,
+        notes,
+        group_name,
+        tags,
+        preferred_account_id: request.preferred_account_id.map(AccountId::from_uuid),
+        banner_position_x: request.banner_position_x,
+        banner_position_y: request.banner_position_y,
+        window_mode: match request.window_mode {
+            InstanceWindowModeDto::Windowed => InstanceWindowMode::Windowed,
+            InstanceWindowModeDto::Maximized => InstanceWindowMode::Maximized,
+            InstanceWindowModeDto::Fullscreen => InstanceWindowMode::Fullscreen,
+        },
+        resolution_width,
+        resolution_height,
+        launcher_behavior: match request.launcher_behavior {
+            LauncherBehaviorDto::KeepOpen => LauncherBehavior::KeepOpen,
+            LauncherBehaviorDto::Minimize => LauncherBehavior::Minimize,
+            LauncherBehaviorDto::Hide => LauncherBehavior::Hide,
+        },
+        game_language,
+        quick_play_server,
+        process_priority: match request.process_priority {
+            ProcessPriorityDto::Low => ProcessPriority::Low,
+            ProcessPriorityDto::BelowNormal => ProcessPriority::BelowNormal,
+            ProcessPriorityDto::Normal => ProcessPriority::Normal,
+            ProcessPriorityDto::AboveNormal => ProcessPriority::AboveNormal,
+            ProcessPriorityDto::High => ProcessPriority::High,
+        },
+        memory_mode: match request.memory_mode {
+            MemoryModeDto::Auto => MemoryMode::Auto,
+            MemoryModeDto::Custom => MemoryMode::Custom,
+        },
+        initial_memory_mb: request.initial_memory_mb,
+        maximum_memory_mb,
+        java_mode: match request.java_mode {
+            JavaSelectionModeDto::Managed => JavaSelectionMode::Managed,
+            JavaSelectionModeDto::Detected => JavaSelectionMode::Detected,
+            JavaSelectionModeDto::Custom => JavaSelectionMode::Custom,
+        },
+        performance_preset: match request.performance_preset {
+            PerformancePresetDto::Balanced => PerformancePreset::Balanced,
+            PerformancePresetDto::Throughput => PerformancePreset::Throughput,
+            PerformancePresetDto::LowLatency => PerformancePreset::LowLatency,
+            PerformancePresetDto::Custom => PerformancePreset::Custom,
+        },
+        jvm_arguments,
+        environment,
+        backup_before_changes: request.backup_before_changes,
+        backup_retention: request.backup_retention,
+        log_retention_days: request.log_retention_days,
+    })
+}
+
+fn validated_free_text(
+    field: &'static str,
+    value: String,
+    maximum: usize,
+) -> Result<String, AppError> {
+    let value = value.trim().to_owned();
+    if value.chars().count() > maximum
+        || value
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+    {
+        return Err(settings_validation_error(
+            field,
+            format!("Use no more than {maximum} characters."),
+        ));
+    }
+    Ok(value)
+}
+
+fn validated_optional_text(
+    field: &'static str,
+    value: Option<String>,
+    maximum: usize,
+) -> Result<Option<String>, AppError> {
+    value
+        .map(|value| validated_free_text(field, value, maximum))
+        .transpose()
+        .map(|value| value.filter(|value| !value.is_empty()))
+}
+
+fn validated_optional_server(value: Option<String>) -> Result<Option<String>, AppError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > 255
+        || value
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+    {
+        return Err(settings_validation_error(
+            "quickPlayServer",
+            "Enter a host or host:port without spaces.",
+        ));
+    }
+    Ok(Some(value.to_owned()))
+}
+
+fn recommended_memory_mb(instance: &InstanceRecord) -> u32 {
+    match instance.mode {
+        slate_domain::InstanceMode::Vanilla | slate_domain::InstanceMode::Pvp => 4_096,
+        slate_domain::InstanceMode::Modded => match instance.mod_count {
+            0..=50 => 4_096,
+            51..=150 => 6_144,
+            151..=300 => 8_192,
+            _ => 12_288,
+        },
+    }
+}
+
+fn validated_jvm_arguments(arguments: Vec<String>) -> Result<Vec<String>, AppError> {
+    if arguments.len() > 64 {
+        return Err(settings_validation_error(
+            "jvmArguments",
+            "Use no more than 64 JVM arguments.",
+        ));
+    }
+    const BLOCKED_PREFIXES: &[&str] = &[
+        "-xms",
+        "-xmx",
+        "-cp",
+        "-classpath",
+        "--class-path",
+        "--module-path",
+        "-jar",
+        "-javaagent",
+        "-agentlib",
+        "-agentpath",
+        "-djava.library.path",
+    ];
+    let mut validated = Vec::with_capacity(arguments.len());
+    for argument in arguments {
+        let argument = argument.trim();
+        let normalized = argument.to_ascii_lowercase();
+        if argument.is_empty()
+            || argument.len() > 512
+            || argument.chars().any(|character| character.is_control())
+            || argument.starts_with('@')
+            || BLOCKED_PREFIXES.iter().any(|prefix| {
+                normalized == *prefix || normalized.starts_with(&format!("{prefix}="))
+            })
+        {
+            return Err(settings_validation_error(
+                "jvmArguments",
+                "One or more JVM arguments would override slate-managed launch settings.",
+            ));
+        }
+        validated.push(argument.to_owned());
+    }
+    Ok(validated)
+}
+
+fn validated_environment(
+    environment: BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, AppError> {
+    if environment.len() > 16 {
+        return Err(settings_validation_error(
+            "environment",
+            "Use no more than 16 environment overrides.",
+        ));
+    }
+    const BLOCKED: &[&str] = &[
+        "PATH",
+        "JAVA_HOME",
+        "JAVA_TOOL_OPTIONS",
+        "_JAVA_OPTIONS",
+        "JDK_JAVA_OPTIONS",
+        "CLASSPATH",
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "TEMP",
+        "TMP",
+    ];
+    let mut validated = BTreeMap::new();
+    for (raw_key, value) in environment {
+        let key = raw_key.trim().to_ascii_uppercase();
+        if key.is_empty()
+            || key.len() > 64
+            || !key.chars().all(|character| {
+                character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_'
+            })
+            || key.as_bytes()[0].is_ascii_digit()
+            || BLOCKED.contains(&key.as_str())
+            || key.starts_with("SLATE_")
+            || value.len() > 1_024
+            || value.contains('\0')
+        {
+            return Err(settings_validation_error(
+                "environment",
+                "Use safe variable names and values that do not override Java, paths, or slate internals.",
+            ));
+        }
+        validated.insert(key, value);
+    }
+    Ok(validated)
+}
+
+fn settings_validation_error(field: &'static str, message: impl Into<String>) -> AppError {
+    let message = message.into();
+    AppError::new("validation.instance_settings", message.clone()).with_field_error(field, message)
+}
+
+fn validated_java_selection(
+    instance: &InstanceRecord,
+    probe: JavaRuntimeProbe,
+    mode: JavaSelectionMode,
+) -> Result<(JavaSelectionMode, Option<String>, Option<String>), AppError> {
+    if !probe.available {
+        return Err(java_selection_error());
+    }
+    let expected_major = required_java_major(&instance.minecraft_version);
+    if probe.major_version != Some(expected_major) {
+        return Err(AppError::new(
+            "validation.java_version",
+            format!(
+                "Minecraft {} requires Java {expected_major}. Choose a matching runtime.",
+                instance.minecraft_version
+            ),
+        ));
+    }
+    let executable = probe
+        .executable
+        .filter(|path| path.is_absolute() && path.is_file())
+        .ok_or_else(java_selection_error)?;
+    let label = probe
+        .version
+        .map(|value| value.chars().take(160).collect::<String>())
+        .or_else(|| Some(format!("Java {expected_major}")));
+    Ok((mode, Some(executable.to_string_lossy().into_owned()), label))
+}
+
+fn required_java_major(minecraft_version: &str) -> u32 {
+    let mut components = minecraft_version
+        .split(['.', '-'])
+        .take(3)
+        .map(|component| component.parse::<u32>().unwrap_or_default());
+    let major = components.next().unwrap_or_default();
+    let minor = components.next().unwrap_or_default();
+    let patch = components.next().unwrap_or_default();
+    match (major, minor, patch) {
+        (1, 0..=16, _) => 8,
+        (1, 17, _) => 16,
+        (1, 18..=19, _) | (1, 20, 0..=4) => 17,
+        _ => 21,
+    }
+}
+
+fn java_selection_error() -> AppError {
+    AppError::new(
+        "runtime.java_unavailable",
+        "slate could not validate that Java executable. Choose another runtime.",
+    )
+}
+
+fn artwork_error() -> AppError {
+    AppError::new(
+        "local.artwork_unavailable",
+        "Choose a PNG, JPEG, or WebP image within the size limit.",
+    )
+}
+
+fn instance_artwork_path(
+    paths: &AppPaths,
+    instance_id: InstanceId,
+    kind: InstanceArtworkKindDto,
+) -> PathBuf {
+    let filename = match kind {
+        InstanceArtworkKindDto::Icon => "profile-icon.bin",
+        InstanceArtworkKindDto::Banner => "profile-banner.bin",
+    };
+    paths.instance(instance_id).join("metadata").join(filename)
+}
+
+fn image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+struct ManagedFileReplacement {
+    destination: PathBuf,
+    backup: Option<PathBuf>,
+}
+
+impl ManagedFileReplacement {
+    async fn rollback(self) {
+        let _ = tokio::fs::remove_file(&self.destination).await;
+        if let Some(backup) = self.backup {
+            let _ = tokio::fs::rename(backup, self.destination).await;
+        }
+    }
+
+    async fn commit(self) {
+        if let Some(backup) = self.backup {
+            let _ = tokio::fs::remove_file(backup).await;
+        }
+    }
+}
+
+async fn replace_managed_file(
+    destination: PathBuf,
+    bytes: Vec<u8>,
+) -> Result<ManagedFileReplacement, AppError> {
+    replace_file(destination, bytes, artwork_error).await
+}
+
+async fn replace_file(
+    destination: PathBuf,
+    bytes: Vec<u8>,
+    error: fn() -> AppError,
+) -> Result<ManagedFileReplacement, AppError> {
+    let parent = destination.parent().ok_or_else(error)?;
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(|_| error())?;
+    let temporary = destination.with_extension(format!("tmp-{}", Uuid::new_v4()));
+    let backup = destination.with_extension(format!("bak-{}", Uuid::new_v4()));
+    tokio::fs::write(&temporary, bytes)
+        .await
+        .map_err(|_| error())?;
+    let previous = if tokio::fs::try_exists(&destination)
+        .await
+        .map_err(|_| error())?
+    {
+        if let Err(io_error) = tokio::fs::rename(&destination, &backup).await {
+            let _ = tokio::fs::remove_file(&temporary).await;
+            return Err(if io_error.kind() == std::io::ErrorKind::PermissionDenied {
+                AppError::new(
+                    "local.artwork_in_use",
+                    "Close applications using that managed file and try again.",
+                )
+            } else {
+                error()
+            });
+        }
+        Some(backup)
+    } else {
+        None
+    };
+    if tokio::fs::rename(&temporary, &destination).await.is_err() {
+        if let Some(backup) = previous.as_ref() {
+            let _ = tokio::fs::rename(backup, &destination).await;
+        }
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(error());
+    }
+    Ok(ManagedFileReplacement {
+        destination,
+        backup: previous,
+    })
+}
+
+async fn remove_managed_file(destination: PathBuf) -> Result<ManagedFileReplacement, AppError> {
+    let backup = destination.with_extension(format!("bak-{}", Uuid::new_v4()));
+    let previous = if tokio::fs::try_exists(&destination)
+        .await
+        .map_err(|_| artwork_error())?
+    {
+        tokio::fs::rename(&destination, &backup)
+            .await
+            .map_err(|_| artwork_error())?;
+        Some(backup)
+    } else {
+        None
+    };
+    Ok(ManagedFileReplacement {
+        destination,
+        backup: previous,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3134,6 +4034,100 @@ fn minecraft_architecture(value: &str) -> Result<Architecture, AppError> {
     }
 }
 
+const fn platform_architecture(value: JavaArchitecture) -> Option<Architecture> {
+    match value {
+        JavaArchitecture::X86 => Some(Architecture::X86),
+        JavaArchitecture::X86_64 => Some(Architecture::X86_64),
+        JavaArchitecture::Arm64 => Some(Architecture::Arm64),
+    }
+}
+
+const fn child_process_priority(value: ProcessPriority) -> ChildProcessPriority {
+    match value {
+        ProcessPriority::Low => ChildProcessPriority::Low,
+        ProcessPriority::BelowNormal => ChildProcessPriority::BelowNormal,
+        ProcessPriority::Normal => ChildProcessPriority::Normal,
+        ProcessPriority::AboveNormal => ChildProcessPriority::AboveNormal,
+        ProcessPriority::High => ChildProcessPriority::High,
+    }
+}
+
+fn launch_jvm_arguments(settings: &slate_storage::InstanceSettingsRecord) -> Vec<String> {
+    let mut arguments = match settings.performance_preset {
+        PerformancePreset::Balanced | PerformancePreset::Custom => Vec::new(),
+        PerformancePreset::Throughput => vec![
+            "-XX:+UseG1GC".to_owned(),
+            "-XX:MaxGCPauseMillis=100".to_owned(),
+            "-XX:+ParallelRefProcEnabled".to_owned(),
+        ],
+        PerformancePreset::LowLatency => vec![
+            "-XX:+UseG1GC".to_owned(),
+            "-XX:MaxGCPauseMillis=50".to_owned(),
+            "-XX:+ParallelRefProcEnabled".to_owned(),
+        ],
+    };
+    for argument in &settings.jvm_arguments {
+        if !arguments.contains(argument) {
+            arguments.push(argument.clone());
+        }
+    }
+    arguments
+}
+
+async fn apply_managed_game_options(
+    game_directory: &std::path::Path,
+    language: &str,
+    fullscreen: bool,
+) -> Result<(), AppError> {
+    tokio::fs::create_dir_all(game_directory)
+        .await
+        .map_err(|_| game_options_error())?;
+    let path = game_directory.join("options.txt");
+    let existing = match tokio::fs::read_to_string(&path).await {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(_) => return Err(game_options_error()),
+    };
+    let mut language_written = false;
+    let mut fullscreen_written = false;
+    let mut lines = existing
+        .lines()
+        .map(|line| {
+            let Some((key, _)) = line.split_once(':') else {
+                return line.to_owned();
+            };
+            match key {
+                "lang" => {
+                    language_written = true;
+                    format!("lang:{language}")
+                }
+                "fullscreen" => {
+                    fullscreen_written = true;
+                    format!("fullscreen:{fullscreen}")
+                }
+                _ => line.to_owned(),
+            }
+        })
+        .collect::<Vec<_>>();
+    if !language_written {
+        lines.push(format!("lang:{language}"));
+    }
+    if !fullscreen_written {
+        lines.push(format!("fullscreen:{fullscreen}"));
+    }
+    let bytes = format!("{}\n", lines.join("\n")).into_bytes();
+    let replacement = replace_file(path, bytes, game_options_error).await?;
+    replacement.commit().await;
+    Ok(())
+}
+
+fn game_options_error() -> AppError {
+    AppError::new(
+        "local.game_options_unavailable",
+        "slate could not apply this instance's game language and window mode.",
+    )
+}
+
 fn current_rule_context(architecture: Architecture) -> RuleContext {
     RuleContext::new(
         if cfg!(target_os = "windows") {
@@ -3160,8 +4154,31 @@ async fn refresh_exited_sessions(state: &DesktopState) {
     }
 }
 
+async fn restore_window_after_session(
+    state: DesktopState,
+    window: tauri::WebviewWindow,
+    session_id: SessionId,
+) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        refresh_exited_sessions(&state).await;
+        let running = state
+            .processes
+            .active_for_session(session_id)
+            .ok()
+            .flatten()
+            .is_some();
+        if !running {
+            let _ = window.show();
+            let _ = window.set_focus();
+            break;
+        }
+    }
+}
+
 fn main() {
     let application = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let paths = AppPaths::discover()?;
@@ -3208,6 +4225,11 @@ fn main() {
             instance_create,
             instance_rename,
             instance_update_configuration,
+            instance_update_settings,
+            instance_select_java,
+            instance_select_artwork,
+            instance_reset_artwork,
+            instance_get_artwork,
             instance_set_favorite,
             instance_trash,
             instance_install,

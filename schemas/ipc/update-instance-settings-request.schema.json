@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UpdateInstanceSettingsRequest",
+  "type": "object",
+  "properties": {
+    "backupBeforeChanges": {
+      "type": "boolean"
+    },
+    "backupRetention": {
+      "type": "integer",
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0
+    },
+    "bannerPositionX": {
+      "type": "integer",
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0
+    },
+    "bannerPositionY": {
+      "type": "integer",
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0
+    },
+    "description": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {}
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "gameLanguage": {
+      "type": "string"
+    },
+    "groupName": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "initialMemoryMb": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "javaMode": {
+      "$ref": "#/$defs/JavaSelectionModeDto"
+    },
+    "jvmArguments": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "launcherBehavior": {
+      "$ref": "#/$defs/LauncherBehaviorDto"
+    },
+    "logRetentionDays": {
+      "type": "integer",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0
+    },
+    "maximumMemoryMb": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "memoryMode": {
+      "$ref": "#/$defs/MemoryModeDto"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "performancePreset": {
+      "$ref": "#/$defs/PerformancePresetDto"
+    },
+    "preferredAccountId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid",
+      "default": null
+    },
+    "processPriority": {
+      "$ref": "#/$defs/ProcessPriorityDto"
+    },
+    "quickPlayServer": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "resolutionHeight": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "default": null,
+      "minimum": 0
+    },
+    "resolutionWidth": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "default": null,
+      "minimum": 0
+    },
+    "tags": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "windowMode": {
+      "$ref": "#/$defs/InstanceWindowModeDto"
+    }
+  },
+  "required": [
+    "id",
+    "description",
+    "notes",
+    "bannerPositionX",
+    "bannerPositionY",
+    "windowMode",
+    "launcherBehavior",
+    "gameLanguage",
+    "processPriority",
+    "memoryMode",
+    "initialMemoryMb",
+    "maximumMemoryMb",
+    "javaMode",
+    "performancePreset",
+    "backupBeforeChanges",
+    "backupRetention",
+    "logRetentionDays",
+    "expectedRevision"
+  ],
+  "$defs": {
+    "InstanceWindowModeDto": {
+      "type": "string",
+      "enum": [
+        "windowed",
+        "maximized",
+        "fullscreen"
+      ]
+    },
+    "JavaSelectionModeDto": {
+      "type": "string",
+      "enum": [
+        "managed",
+        "detected",
+        "custom"
+      ]
+    },
+    "LauncherBehaviorDto": {
+      "type": "string",
+      "enum": [
+        "keepOpen",
+        "minimize",
+        "hide"
+      ]
+    },
+    "MemoryModeDto": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "custom"
+      ]
+    },
+    "PerformancePresetDto": {
+      "type": "string",
+      "enum": [
+        "balanced",
+        "throughput",
+        "lowLatency",
+        "custom"
+      ]
+    },
+    "ProcessPriorityDto": {
+      "type": "string",
+      "enum": [
+        "low",
+        "belowNormal",
+        "normal",
+        "aboveNormal",
+        "high"
+      ]
+    }
+  }
+}

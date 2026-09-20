@@ -8,6 +8,7 @@ import {
   gameSessionSchema,
   installJobListSchema,
   installJobSchema,
+  instanceArtworkAssetSchema,
   instanceModListSchema,
   instanceModResolutionListSchema,
   instanceSummaryListSchema,
@@ -26,6 +27,7 @@ import {
   preflightSchema,
   sessionLogEventSchema,
   sessionLogSubscriptionSchema,
+  defaultInstanceSettings,
   type AppPreferences,
   type AuthFlowStatus,
   type AuthStart,
@@ -49,6 +51,8 @@ import {
   type InstallJob,
   type InstanceMod,
   type InstanceModResolution,
+  type InstanceSettings,
+  type InstanceArtworkKind,
   type Preflight,
   type ServerPreview,
 } from "../types/launcher";
@@ -87,6 +91,11 @@ const initialPreviewInstances: LauncherInstance[] = [
     loaderKind: "fabric",
     loaderVersion: "0.16.10",
     memoryMb: 6144,
+    settings: {
+      ...defaultInstanceSettings,
+      description: "My main survival world",
+      effectiveMemoryMb: 6144,
+    },
     setupState: "configured",
     createdAt: previewNow,
     updatedAt: previewNow,
@@ -106,6 +115,11 @@ const initialPreviewInstances: LauncherInstance[] = [
     loaderKind: "neoForge",
     loaderVersion: "47.1.106",
     memoryMb: 8192,
+    settings: {
+      ...defaultInstanceSettings,
+      description: "Automation and building",
+      effectiveMemoryMb: 8192,
+    },
     setupState: "configured",
     createdAt: previewNow,
     updatedAt: previewNow,
@@ -124,9 +138,14 @@ const initialPreviewInstances: LauncherInstance[] = [
     minecraftVersion: "1.21.1",
     loaderKind: "vanilla",
     memoryMb: 4096,
+    settings: {
+      ...defaultInstanceSettings,
+      description: "A clean vanilla experience",
+    },
     setupState: "configured",
     createdAt: previewNow,
     updatedAt: previewNow,
+    modCount: 0,
     lastPlayed: "5 days ago",
     description: "A clean vanilla experience",
     artworkTone: "vanilla",
@@ -142,6 +161,10 @@ const initialPreviewInstances: LauncherInstance[] = [
     loaderKind: "fabric",
     loaderVersion: "0.15.11",
     memoryMb: 4096,
+    settings: {
+      ...defaultInstanceSettings,
+      description: "Practice and minigames",
+    },
     setupState: "blocked",
     createdAt: previewNow,
     updatedAt: previewNow,
@@ -630,10 +653,98 @@ export async function updateInstanceConfiguration(input: {
       loaderKind: input.loaderKind,
       loaderVersion,
       memoryMb: input.memoryMb,
+      settings: {
+        ...instance.settings,
+        effectiveMemoryMb: input.memoryMb,
+      },
       setupState: runtimeChanged ? "configured" : instance.setupState,
       artworkTone: toneForLoader(input.loaderKind),
     };
   });
+}
+
+export type EditableInstanceSettings = Omit<
+  InstanceSettings,
+  | "hasCustomIcon"
+  | "hasCustomBanner"
+  | "effectiveMemoryMb"
+  | "customJavaLabel"
+>;
+
+export async function updateInstanceSettings(
+  input: EditableInstanceSettings & {
+    id: string;
+    maximumMemoryMb: number;
+    expectedRevision: number;
+  },
+): Promise<LauncherInstance> {
+  if (bridgeMode === "native") {
+    return instanceSummarySchema.parse(
+      await invoke("instance_update_settings", { request: input }),
+    );
+  }
+  const { id, maximumMemoryMb, expectedRevision, ...settings } = input;
+  return updatePreviewInstance(id, expectedRevision, (instance) => ({
+    ...instance,
+    memoryMb: maximumMemoryMb,
+    settings: {
+      ...instance.settings,
+      ...settings,
+      effectiveMemoryMb: maximumMemoryMb,
+    },
+  }));
+}
+
+export async function selectInstanceJava(input: {
+  id: string;
+  mode: "managed" | "detected" | "custom";
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  if (bridgeMode !== "native") {
+    throw new Error("Java selection is available only in the slate desktop app.");
+  }
+  return instanceSummarySchema.parse(
+    await invoke("instance_select_java", { request: input }),
+  );
+}
+
+export async function selectInstanceArtwork(input: {
+  id: string;
+  kind: InstanceArtworkKind;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  if (bridgeMode !== "native") {
+    throw new Error("Artwork selection is available only in the slate desktop app.");
+  }
+  return instanceSummarySchema.parse(
+    await invoke("instance_select_artwork", { request: input }),
+  );
+}
+
+export async function resetInstanceArtwork(input: {
+  id: string;
+  kind: InstanceArtworkKind;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  if (bridgeMode !== "native") {
+    throw new Error("Artwork selection is available only in the slate desktop app.");
+  }
+  return instanceSummarySchema.parse(
+    await invoke("instance_reset_artwork", { request: input }),
+  );
+}
+
+export async function getInstanceArtwork(
+  id: string,
+  kind: InstanceArtworkKind,
+): Promise<string | undefined> {
+  if (bridgeMode !== "native") return undefined;
+  const value = await invoke("instance_get_artwork", {
+    request: { id, kind },
+  });
+  if (value === null || value === undefined) return undefined;
+  const asset = instanceArtworkAssetSchema.parse(value);
+  return `data:${asset.mimeType};base64,${asset.dataBase64}`;
 }
 
 export async function setInstanceFavorite(input: {

@@ -2,6 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use slate_domain::{InstanceMode, InstanceSetupState, LoaderFamily, ManagementMode};
 use slate_modpack_api_contracts::Provider;
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -85,6 +86,101 @@ pub enum InstanceSetupStateDto {
     Blocked,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstanceWindowModeDto {
+    Windowed,
+    Maximized,
+    Fullscreen,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LauncherBehaviorDto {
+    KeepOpen,
+    Minimize,
+    Hide,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProcessPriorityDto {
+    Low,
+    BelowNormal,
+    Normal,
+    AboveNormal,
+    High,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MemoryModeDto {
+    Auto,
+    Custom,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum JavaSelectionModeDto {
+    Managed,
+    Detected,
+    Custom,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PerformancePresetDto {
+    Balanced,
+    Throughput,
+    LowLatency,
+    Custom,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstanceArtworkKindDto {
+    Icon,
+    Banner,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceSettingsSummary {
+    pub description: String,
+    pub notes: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_name: Option<String>,
+    pub tags: Vec<String>,
+    pub has_custom_icon: bool,
+    pub has_custom_banner: bool,
+    pub banner_position_x: u8,
+    pub banner_position_y: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_account_id: Option<Uuid>,
+    pub window_mode: InstanceWindowModeDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution_width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution_height: Option<u32>,
+    pub launcher_behavior: LauncherBehaviorDto,
+    pub game_language: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quick_play_server: Option<String>,
+    pub process_priority: ProcessPriorityDto,
+    pub memory_mode: MemoryModeDto,
+    pub initial_memory_mb: u32,
+    pub effective_memory_mb: u32,
+    pub java_mode: JavaSelectionModeDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_java_label: Option<String>,
+    pub performance_preset: PerformancePresetDto,
+    pub jvm_arguments: Vec<String>,
+    pub environment: BTreeMap<String, String>,
+    pub backup_before_changes: bool,
+    pub backup_retention: u8,
+    pub log_retention_days: u16,
+}
+
 impl From<InstanceSetupState> for InstanceSetupStateDto {
     fn from(value: InstanceSetupState) -> Self {
         match value {
@@ -110,7 +206,9 @@ pub struct InstanceSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub loader_version: Option<String>,
     pub memory_mb: u32,
+    pub mod_count: u32,
     pub setup_state: InstanceSetupStateDto,
+    pub settings: InstanceSettingsSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modpack_source: Option<ModpackSourceSummary>,
     pub created_at: String,
@@ -160,6 +258,75 @@ pub struct UpdateInstanceConfigurationRequest {
     pub loader_version: Option<String>,
     pub memory_mb: u32,
     pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInstanceSettingsRequest {
+    pub id: Uuid,
+    pub description: String,
+    pub notes: String,
+    #[serde(default)]
+    pub group_name: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub preferred_account_id: Option<Uuid>,
+    pub banner_position_x: u8,
+    pub banner_position_y: u8,
+    pub window_mode: InstanceWindowModeDto,
+    #[serde(default)]
+    pub resolution_width: Option<u32>,
+    #[serde(default)]
+    pub resolution_height: Option<u32>,
+    pub launcher_behavior: LauncherBehaviorDto,
+    pub game_language: String,
+    #[serde(default)]
+    pub quick_play_server: Option<String>,
+    pub process_priority: ProcessPriorityDto,
+    pub memory_mode: MemoryModeDto,
+    pub initial_memory_mb: u32,
+    pub maximum_memory_mb: u32,
+    pub java_mode: JavaSelectionModeDto,
+    pub performance_preset: PerformancePresetDto,
+    #[serde(default)]
+    pub jvm_arguments: Vec<String>,
+    #[serde(default)]
+    pub environment: BTreeMap<String, String>,
+    pub backup_before_changes: bool,
+    pub backup_retention: u8,
+    pub log_retention_days: u16,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectInstanceJavaRequest {
+    pub id: Uuid,
+    pub mode: JavaSelectionModeDto,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectInstanceArtworkRequest {
+    pub id: Uuid,
+    pub kind: InstanceArtworkKindDto,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetInstanceArtworkRequest {
+    pub id: Uuid,
+    pub kind: InstanceArtworkKindDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceArtworkAsset {
+    pub mime_type: String,
+    pub data_base64: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

@@ -27,9 +27,13 @@ pub use install::{
     InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, ModpackInstallStarted,
 };
 pub use instance::{
-    CreateInstanceRequest, InstanceModeDto, InstanceSetupStateDto, InstanceSummary, LoaderKindDto,
-    ManagementModeDto, ModpackSourceSummary, RenameInstanceRequest, SetFavoriteRequest,
-    TrashInstanceRequest, UpdateInstanceConfigurationRequest,
+    CreateInstanceRequest, GetInstanceArtworkRequest, InstanceArtworkAsset, InstanceArtworkKindDto,
+    InstanceModeDto, InstanceSettingsSummary, InstanceSetupStateDto, InstanceSummary,
+    InstanceWindowModeDto, JavaSelectionModeDto, LauncherBehaviorDto, LoaderKindDto,
+    ManagementModeDto, MemoryModeDto, ModpackSourceSummary, PerformancePresetDto,
+    ProcessPriorityDto, RenameInstanceRequest, SelectInstanceArtworkRequest,
+    SelectInstanceJavaRequest, SetFavoriteRequest, TrashInstanceRequest,
+    UpdateInstanceConfigurationRequest, UpdateInstanceSettingsRequest,
 };
 pub use launch::{
     GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,
@@ -49,7 +53,7 @@ pub use settings::{
 pub use system::{JavaRuntimeSummary, PreflightSummary};
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 5;
+pub const DATABASE_SCHEMA_VERSION: u32 = 6;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

@@ -22,6 +22,95 @@ export const setupStateSchema = z.enum([
   "blocked",
 ]);
 
+export const instanceWindowModeSchema = z.enum([
+  "windowed",
+  "maximized",
+  "fullscreen",
+]);
+export const launcherBehaviorSchema = z.enum([
+  "keepOpen",
+  "minimize",
+  "hide",
+]);
+export const processPrioritySchema = z.enum([
+  "low",
+  "belowNormal",
+  "normal",
+  "aboveNormal",
+  "high",
+]);
+export const memoryModeSchema = z.enum(["auto", "custom"]);
+export const javaSelectionModeSchema = z.enum([
+  "managed",
+  "detected",
+  "custom",
+]);
+export const performancePresetSchema = z.enum([
+  "balanced",
+  "throughput",
+  "lowLatency",
+  "custom",
+]);
+
+export const defaultInstanceSettings = {
+  description: "",
+  notes: "",
+  tags: [] as string[],
+  hasCustomIcon: false,
+  hasCustomBanner: false,
+  bannerPositionX: 50,
+  bannerPositionY: 50,
+  windowMode: "windowed" as const,
+  launcherBehavior: "keepOpen" as const,
+  gameLanguage: "en_us",
+  processPriority: "normal" as const,
+  memoryMode: "auto" as const,
+  initialMemoryMb: 512,
+  effectiveMemoryMb: 4096,
+  javaMode: "managed" as const,
+  performancePreset: "balanced" as const,
+  jvmArguments: [] as string[],
+  environment: {} as Record<string, string>,
+  backupBeforeChanges: true,
+  backupRetention: 5,
+  logRetentionDays: 30,
+};
+
+export const instanceSettingsSchema = z.object({
+  description: z.string(),
+  notes: z.string(),
+  groupName: z.string().optional(),
+  tags: z.array(z.string()),
+  hasCustomIcon: z.boolean(),
+  hasCustomBanner: z.boolean(),
+  bannerPositionX: z.number().int().min(0).max(100),
+  bannerPositionY: z.number().int().min(0).max(100),
+  preferredAccountId: z.string().uuid().optional(),
+  windowMode: instanceWindowModeSchema,
+  resolutionWidth: z.number().int().min(320).max(16384).optional(),
+  resolutionHeight: z.number().int().min(240).max(16384).optional(),
+  launcherBehavior: launcherBehaviorSchema,
+  gameLanguage: z.string().min(2).max(32),
+  quickPlayServer: z.string().optional(),
+  processPriority: processPrioritySchema,
+  memoryMode: memoryModeSchema,
+  initialMemoryMb: z.number().int().min(256).max(32768),
+  effectiveMemoryMb: z.number().int().min(1024).max(32768),
+  javaMode: javaSelectionModeSchema,
+  customJavaLabel: z.string().optional(),
+  performancePreset: performancePresetSchema,
+  jvmArguments: z.array(z.string()),
+  environment: z.record(z.string(), z.string()),
+  backupBeforeChanges: z.boolean(),
+  backupRetention: z.number().int().min(1).max(50),
+  logRetentionDays: z.number().int().min(1).max(365),
+});
+
+export const instanceArtworkAssetSchema = z.object({
+  mimeType: z.enum(["image/png", "image/jpeg", "image/webp"]),
+  dataBase64: z.string(),
+});
+
 export const providerSchema = z.enum(["curseforge", "modrinth", "ftb"]);
 export const contentLoaderSchema = z.enum([
   "vanilla",
@@ -57,13 +146,14 @@ export const instanceSummarySchema = z.object({
   loaderKind: loaderKindSchema,
   loaderVersion: z.string().min(1).optional(),
   memoryMb: z.number().int().min(1024).max(32768),
+  modCount: z.number().int().nonnegative().default(0),
   setupState: setupStateSchema,
+  settings: instanceSettingsSchema.default(defaultInstanceSettings),
   modpackSource: modpackSourceSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   description: z.string().optional(),
   lastPlayed: z.string().optional(),
-  modCount: z.number().int().nonnegative().optional(),
   artworkTone: z.enum(["meadow", "workshop", "vanilla", "nether"]).optional(),
 });
 
@@ -390,6 +480,8 @@ export const instanceModResolutionListSchema = z.array(
 
 export type Bootstrap = z.infer<typeof bootstrapSchema>;
 export type LauncherInstance = z.infer<typeof instanceSummarySchema>;
+export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
+export type InstanceArtworkKind = "icon" | "banner";
 export type CreateInstanceInput = z.infer<typeof createInstanceSchema>;
 export type LoaderKind = z.infer<typeof loaderKindSchema>;
 export type AppPreferences = z.infer<typeof preferencesSchema>;

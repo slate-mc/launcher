@@ -1,4 +1,5 @@
 use crate::database::now_rfc3339;
+use crate::instance_settings::settings_from_row;
 use crate::{Database, StorageError};
 use slate_domain::{
     InstanceId, InstanceMode, InstanceName, InstanceSetupState, LoaderFamily, ManagementMode,
@@ -59,7 +60,9 @@ pub struct InstanceRecord {
     pub loader_kind: LoaderFamily,
     pub loader_version: Option<String>,
     pub memory_mb: u32,
+    pub mod_count: u32,
     pub setup_state: InstanceSetupState,
+    pub settings: crate::InstanceSettingsRecord,
     pub modpack_source: Option<ModpackSourceRecord>,
     pub created_at: String,
     pub updated_at: String,
@@ -147,6 +150,15 @@ impl Database {
         .await?;
 
         sqlx::query(
+            "INSERT INTO instance_settings (instance_id, created_at, updated_at) VALUES (?, ?, ?)",
+        )
+        .bind(id.to_string())
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query(
             "INSERT INTO instance_configuration \
              (instance_id, minecraft_version, loader_kind, loader_version, memory_mb, setup_state) \
              VALUES (?, ?, ?, ?, ?, 'configured')",
@@ -187,8 +199,33 @@ impl Database {
     pub async fn get_instance(&self, id: InstanceId) -> Result<InstanceRecord, StorageError> {
         let row = sqlx::query(
             "SELECT i.id, i.name, i.mode, i.management_mode, i.root_id, i.relative_path, \
-             i.favorite, i.revision, i.created_at, i.updated_at, c.minecraft_version, \
+             i.favorite, i.revision, i.created_at, i.updated_at, i.preferred_account_id, \
+             c.minecraft_version, \
              c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
+             g.name AS group_name, s.description AS settings_description, \
+             s.notes AS settings_notes, s.tags_json AS settings_tags_json, \
+             s.icon_mime AS settings_icon_mime, s.banner_mime AS settings_banner_mime, \
+             s.banner_position_x AS settings_banner_position_x, \
+             s.banner_position_y AS settings_banner_position_y, \
+             s.window_mode AS settings_window_mode, \
+             s.resolution_width AS settings_resolution_width, \
+             s.resolution_height AS settings_resolution_height, \
+             s.launcher_behavior AS settings_launcher_behavior, \
+             s.game_language AS settings_game_language, \
+             s.quick_play_server AS settings_quick_play_server, \
+             s.process_priority AS settings_process_priority, \
+             s.memory_mode AS settings_memory_mode, \
+             s.initial_memory_mb AS settings_initial_memory_mb, \
+             s.java_mode AS settings_java_mode, s.custom_java_path AS settings_custom_java_path, \
+             s.custom_java_label AS settings_custom_java_label, \
+             s.performance_preset AS settings_performance_preset, \
+             s.jvm_arguments_json AS settings_jvm_arguments_json, \
+             s.environment_json AS settings_environment_json, \
+             s.backup_before_changes AS settings_backup_before_changes, \
+             s.backup_retention AS settings_backup_retention, \
+             s.log_retention_days AS settings_log_retention_days, \
+             (SELECT COUNT(DISTINCT im.file_path) FROM instance_mods im \
+              WHERE im.instance_id = i.id AND im.enabled = 1) AS mod_count, \
              m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
              m.version_id AS modpack_version_id, m.selected_optional_json, \
              m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url, \
@@ -196,6 +233,8 @@ impl Database {
              (SELECT MAX(s.started_at) FROM sessions s WHERE s.instance_id = i.id \
               AND s.state IN ('running', 'exited', 'crashed', 'cancelled')) AS last_played \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             INNER JOIN instance_settings s ON s.instance_id = i.id \
+             LEFT JOIN instance_groups g ON g.id = i.group_id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.id = ? AND i.trashed_at IS NULL",
         )
@@ -214,8 +253,33 @@ impl Database {
 
         let rows = sqlx::query(
             "SELECT i.id, i.name, i.mode, i.management_mode, i.root_id, i.relative_path, \
-             i.favorite, i.revision, i.created_at, i.updated_at, c.minecraft_version, \
+             i.favorite, i.revision, i.created_at, i.updated_at, i.preferred_account_id, \
+             c.minecraft_version, \
              c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
+             g.name AS group_name, s.description AS settings_description, \
+             s.notes AS settings_notes, s.tags_json AS settings_tags_json, \
+             s.icon_mime AS settings_icon_mime, s.banner_mime AS settings_banner_mime, \
+             s.banner_position_x AS settings_banner_position_x, \
+             s.banner_position_y AS settings_banner_position_y, \
+             s.window_mode AS settings_window_mode, \
+             s.resolution_width AS settings_resolution_width, \
+             s.resolution_height AS settings_resolution_height, \
+             s.launcher_behavior AS settings_launcher_behavior, \
+             s.game_language AS settings_game_language, \
+             s.quick_play_server AS settings_quick_play_server, \
+             s.process_priority AS settings_process_priority, \
+             s.memory_mode AS settings_memory_mode, \
+             s.initial_memory_mb AS settings_initial_memory_mb, \
+             s.java_mode AS settings_java_mode, s.custom_java_path AS settings_custom_java_path, \
+             s.custom_java_label AS settings_custom_java_label, \
+             s.performance_preset AS settings_performance_preset, \
+             s.jvm_arguments_json AS settings_jvm_arguments_json, \
+             s.environment_json AS settings_environment_json, \
+             s.backup_before_changes AS settings_backup_before_changes, \
+             s.backup_retention AS settings_backup_retention, \
+             s.log_retention_days AS settings_log_retention_days, \
+             (SELECT COUNT(DISTINCT im.file_path) FROM instance_mods im \
+              WHERE im.instance_id = i.id AND im.enabled = 1) AS mod_count, \
              m.provider AS modpack_provider, m.project_id AS modpack_project_id, \
              m.version_id AS modpack_version_id, m.selected_optional_json, \
              m.display_name AS modpack_display_name, m.icon_url AS modpack_icon_url, \
@@ -223,6 +287,8 @@ impl Database {
              (SELECT MAX(s.started_at) FROM sessions s WHERE s.instance_id = i.id \
               AND s.state IN ('running', 'exited', 'crashed', 'cancelled')) AS last_played \
              FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             INNER JOIN instance_settings s ON s.instance_id = i.id \
+             LEFT JOIN instance_groups g ON g.id = i.group_id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
              WHERE i.trashed_at IS NULL \
              ORDER BY i.favorite DESC, i.name COLLATE NOCASE, i.id LIMIT ?",
@@ -413,7 +479,7 @@ impl Database {
         Ok(())
     }
 
-    async fn revision_error<T>(
+    pub(crate) async fn revision_error<T>(
         &self,
         id: InstanceId,
         expected_revision: i64,
@@ -447,6 +513,7 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
     let setup_state_value: String = row.try_get("setup_state")?;
     let revision: i64 = row.try_get("revision")?;
     let memory_mb: i64 = row.try_get("memory_mb")?;
+    let mod_count: i64 = row.try_get("mod_count")?;
     let favorite: i64 = row.try_get("favorite")?;
     let modpack_provider: Option<String> = row.try_get("modpack_provider")?;
     let modpack_source = modpack_provider
@@ -485,8 +552,11 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
         memory_mb: u32::try_from(memory_mb).map_err(|_| {
             invalid_value("instance_configuration.memory_mb", memory_mb.to_string())
         })?,
+        mod_count: u32::try_from(mod_count)
+            .map_err(|_| invalid_value("instance_mods.mod_count", mod_count.to_string()))?,
         setup_state: InstanceSetupState::try_from(setup_state_value.as_str())
             .map_err(|_| invalid_value("instance_configuration.setup_state", setup_state_value))?,
+        settings: settings_from_row(row)?,
         modpack_source,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
