@@ -2,7 +2,10 @@
 
 mod download;
 mod modpack;
+mod natives;
 mod runtime;
+
+use natives::extract_natives;
 
 pub use download::{DownloadError, DownloadProgress, DownloadSummary, Downloader};
 pub use modpack::ContentInstallError;
@@ -14,24 +17,20 @@ use slate_domain::{InstanceId, LoaderFamily, RevisionId};
 use slate_loaders::{FabricAdapter, NeoForgeAdapter, NeoForgeInstallerBundle};
 use slate_minecraft::{
     Architecture, ArtifactRequirement, ExpectedHash, HashAlgorithm, LaunchLayout, LaunchPlanner,
-    MojangMetadataClient, NativeExtraction, OperatingSystem, ResolvedVersion, RuleContext,
-    VersionMetadata,
+    MojangMetadataClient, OperatingSystem, ResolvedVersion, RuleContext, VersionMetadata,
 };
 use slate_modpack_api_contracts::InstallPlan;
 use slate_platform::{
     AppPaths, JavaArchitecture, ManagedRelativePath, restricted_child_environment,
 };
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use uuid::Uuid;
-use zip::ZipArchive;
 
 const MAX_ASSET_INDEX_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ASSET_OBJECTS: usize = 1_000_000;
-const MAX_NATIVE_ENTRIES: usize = 100_000;
-const MAX_NATIVE_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_INSTALLED_MANIFEST_BYTES: usize = 32 * 1024 * 1024;
 const MAX_LAUNCH_ARTIFACTS: usize = 16_384;
 
@@ -870,86 +869,6 @@ fn relative_artifact_path(root: &Path, target: &Path) -> Result<String, InstallE
     Ok(managed.as_str().to_owned())
 }
 
-async fn extract_natives(extractions: Vec<NativeExtraction>) -> Result<(), InstallError> {
-    if extractions.is_empty() {
-        return Ok(());
-    }
-    let destination = extractions[0].destination.clone();
-    let staging = destination.with_file_name(format!(".natives-{}.staging", Uuid::new_v4()));
-    tokio::fs::create_dir_all(&staging).await?;
-    let staging_for_worker = staging.clone();
-    let extraction = tokio::task::spawn_blocking(move || {
-        extract_native_archives(&extractions, &staging_for_worker)
-    })
-    .await?;
-    if let Err(error) = extraction {
-        let _ = tokio::fs::remove_dir_all(&staging).await;
-        return Err(error);
-    }
-    if destination.exists() {
-        tokio::fs::remove_dir_all(&destination).await?;
-    }
-    tokio::fs::rename(staging, destination).await?;
-    Ok(())
-}
-
-fn extract_native_archives(
-    extractions: &[NativeExtraction],
-    staging: &Path,
-) -> Result<(), InstallError> {
-    let mut total = 0_u64;
-    for extraction in extractions {
-        let file = std::fs::File::open(&extraction.archive_path)?;
-        let mut archive = ZipArchive::new(file)?;
-        if archive.len() > MAX_NATIVE_ENTRIES {
-            return Err(InstallError::TooManyNativeEntries(archive.len()));
-        }
-        for index in 0..archive.len() {
-            let mut entry = archive.by_index(index)?;
-            let enclosed = entry
-                .enclosed_name()
-                .ok_or(InstallError::UnsafeArchivePath)?;
-            let path = enclosed.to_path_buf();
-            if entry.is_dir()
-                || extraction
-                    .excludes
-                    .iter()
-                    .any(|prefix| path.starts_with(prefix))
-                || path.starts_with("META-INF")
-            {
-                continue;
-            }
-            if entry
-                .unix_mode()
-                .is_some_and(|mode| mode & 0o170000 == 0o120000)
-                || path
-                    .components()
-                    .any(|component| !matches!(component, Component::Normal(_)))
-            {
-                return Err(InstallError::UnsafeArchivePath);
-            }
-            total = total
-                .checked_add(entry.size())
-                .ok_or(InstallError::NativeSetTooLarge)?;
-            if total > MAX_NATIVE_BYTES {
-                return Err(InstallError::NativeSetTooLarge);
-            }
-            let target = staging.join(path);
-            let parent = target.parent().ok_or(InstallError::UnsafeArchivePath)?;
-            std::fs::create_dir_all(parent)?;
-            let mut output = std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(target)?;
-            let size = entry.size();
-            std::io::copy(&mut entry.by_ref().take(size), &mut output)?;
-            output.flush()?;
-        }
-    }
-    Ok(())
-}
-
 async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), InstallError> {
     let parent = path
         .parent()
@@ -1071,90 +990,4 @@ pub enum InstallError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        InstallError, InstallRequest, InstalledArtifactDigest, clone_directory_tree,
-        load_installed_revision, relative_artifact_path, validate_installed_artifact_declarations,
-        validate_request,
-    };
-    use slate_domain::{InstanceId, LoaderFamily, RevisionId};
-    use slate_platform::AppPaths;
-    use std::path::PathBuf;
-
-    #[test]
-    fn validates_loader_version_shape() {
-        let request = InstallRequest {
-            instance_id: InstanceId::new(),
-            revision_id: RevisionId::new(),
-            minecraft_version: "1.21.1".to_owned(),
-            loader_kind: LoaderFamily::Fabric,
-            loader_version: None,
-            modpack_plan: None,
-            download_concurrency: 4,
-            paths: AppPaths::from_roots(
-                PathBuf::from("C:/slate"),
-                PathBuf::from("C:/slate/storage"),
-            ),
-        };
-        assert!(matches!(
-            validate_request(&request),
-            Err(InstallError::LoaderVersionRequired)
-        ));
-    }
-
-    #[test]
-    fn installed_artifact_declarations_are_unique_and_managed() {
-        let valid = InstalledArtifactDigest {
-            relative_path: "artifacts/minecraft/libraries/example.jar".to_owned(),
-            sha256: "a".repeat(64),
-        };
-        assert!(validate_installed_artifact_declarations(std::slice::from_ref(&valid)).is_ok());
-        assert!(matches!(
-            validate_installed_artifact_declarations(&[valid.clone(), valid]),
-            Err(InstallError::InvalidInstalledManifest)
-        ));
-        assert!(
-            relative_artifact_path(
-                std::path::Path::new("C:/slate/storage"),
-                std::path::Path::new("C:/slate/outside.jar")
-            )
-            .is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn installed_manifest_is_bound_to_its_database_digest()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let directory = tempfile::tempdir()?;
-        let path = directory.path().join("installed-revision.json");
-        tokio::fs::write(&path, b"{}").await?;
-        let result =
-            load_installed_revision(&path, InstanceId::new(), RevisionId::new(), &"0".repeat(64))
-                .await;
-        assert!(matches!(
-            result,
-            Err(InstallError::InstalledManifestDigestMismatch)
-        ));
-        Ok(())
-    }
-
-    #[test]
-    fn content_updates_clone_revision_native_files() -> Result<(), Box<dyn std::error::Error>> {
-        let directory = tempfile::tempdir()?;
-        let source = directory.path().join("parent-natives");
-        let nested = source.join("nested");
-        let destination = directory.path().join("next-natives");
-        std::fs::create_dir_all(&nested)?;
-        std::fs::write(source.join("lwjgl.dll"), b"native-one")?;
-        std::fs::write(nested.join("helper.dll"), b"native-two")?;
-
-        clone_directory_tree(&source, &destination)?;
-
-        assert_eq!(std::fs::read(destination.join("lwjgl.dll"))?, b"native-one");
-        assert_eq!(
-            std::fs::read(destination.join("nested/helper.dll"))?,
-            b"native-two"
-        );
-        Ok(())
-    }
-}
+mod tests;
