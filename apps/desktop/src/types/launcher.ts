@@ -152,6 +152,7 @@ export const modpackSourceSchema = z.object({
 export const instanceSummarySchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
+  storagePath: z.string().min(1),
   mode: instanceModeSchema,
   managementMode: z.enum(["local", "community"]),
   favorite: z.boolean(),

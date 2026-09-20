@@ -88,6 +88,7 @@ const initialPreviewInstances: LauncherInstance[] = [
   {
     id: "98d7fe64-acb5-454c-a7e5-7127a3af0c12",
     name: "Survival",
+    storagePath: "C:\\slate-preview\\instances\\survival",
     mode: "modded",
     managementMode: "local",
     favorite: true,
@@ -112,6 +113,7 @@ const initialPreviewInstances: LauncherInstance[] = [
   {
     id: "6f720f47-422f-4ebc-8983-13c8ab0bc488",
     name: "Create workshop",
+    storagePath: "C:\\slate-preview\\instances\\create-workshop",
     mode: "modded",
     managementMode: "local",
     favorite: true,
@@ -136,6 +138,7 @@ const initialPreviewInstances: LauncherInstance[] = [
   {
     id: "00b6b709-aa78-43af-9e4a-4898be859ffc",
     name: "Vanilla",
+    storagePath: "C:\\slate-preview\\instances\\vanilla",
     mode: "vanilla",
     managementMode: "local",
     favorite: false,
@@ -158,6 +161,7 @@ const initialPreviewInstances: LauncherInstance[] = [
   {
     id: "13fcbabf-cc0b-448c-bc47-a44da89c6a61",
     name: "PvP",
+    storagePath: "C:\\slate-preview\\instances\\pvp",
     mode: "pvp",
     managementMode: "local",
     favorite: false,
@@ -593,13 +597,15 @@ export async function createInstance(
   }
   requirePreview();
   const timestamp = new Date().toISOString();
+  const id = crypto.randomUUID();
   const instance = instanceSummarySchema.parse({
     ...request,
     loaderVersion: cleanLoaderVersion(
       request.loaderKind,
       request.loaderVersion,
     ),
-    id: crypto.randomUUID(),
+    id,
+    storagePath: `C:\\slate-preview\\instances\\${id}`,
     managementMode: "local",
     favorite: false,
     revision: 0,
@@ -810,6 +816,36 @@ export async function duplicateInstance(input: {
   return instanceSummarySchema.parse(
     await invoke("instance_duplicate", { request: input }),
   );
+}
+
+export async function moveInstanceStorage(input: {
+  id: string;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  if (bridgeMode !== "native") {
+    throw new Error("Storage moves are available only in the slate desktop app.");
+  }
+  return instanceSummarySchema.parse(
+    await invoke("instance_move_storage", { request: input }),
+  );
+}
+
+export async function exportInstance(input: {
+  id: string;
+  expectedRevision: number;
+}): Promise<void> {
+  if (bridgeMode !== "native") {
+    throw new Error("Export is available only in the slate desktop app.");
+  }
+  await invoke("instance_export", { request: input });
+}
+
+export async function importInstance(): Promise<LauncherInstance | undefined> {
+  if (bridgeMode !== "native") {
+    throw new Error("Import is available only in the slate desktop app.");
+  }
+  const response = await invoke<unknown>("instance_import", { request: {} });
+  return response === null ? undefined : instanceSummarySchema.parse(response);
 }
 
 export async function listInstanceSnapshots(

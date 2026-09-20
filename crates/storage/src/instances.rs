@@ -8,6 +8,7 @@ use slate_domain::{
 use slate_modpack_api_contracts::Provider;
 use slate_platform::ManagedRelativePath;
 use sqlx::Row;
+use std::path::PathBuf;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -54,6 +55,7 @@ pub struct InstanceRecord {
     pub management_mode: ManagementMode,
     pub root_id: StorageRootId,
     pub relative_path: ManagedRelativePath,
+    pub storage_path: PathBuf,
     pub favorite: bool,
     pub revision: u64,
     pub minecraft_version: String,
@@ -199,6 +201,7 @@ impl Database {
     pub async fn get_instance(&self, id: InstanceId) -> Result<InstanceRecord, StorageError> {
         let row = sqlx::query(
             "SELECT i.id, i.name, i.mode, i.management_mode, i.root_id, i.relative_path, \
+             r.canonical_path AS root_path, \
              i.favorite, i.revision, i.created_at, i.updated_at, i.preferred_account_id, \
              c.minecraft_version, \
              c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
@@ -232,7 +235,8 @@ impl Database {
              m.banner_url AS modpack_banner_url, \
              (SELECT MAX(s.started_at) FROM sessions s WHERE s.instance_id = i.id \
               AND s.state IN ('running', 'exited', 'crashed', 'cancelled')) AS last_played \
-             FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             FROM instances i INNER JOIN storage_roots r ON r.id = i.root_id \
+             INNER JOIN instance_configuration c ON c.instance_id = i.id \
              INNER JOIN instance_settings s ON s.instance_id = i.id \
              LEFT JOIN instance_groups g ON g.id = i.group_id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
@@ -253,6 +257,7 @@ impl Database {
 
         let rows = sqlx::query(
             "SELECT i.id, i.name, i.mode, i.management_mode, i.root_id, i.relative_path, \
+             r.canonical_path AS root_path, \
              i.favorite, i.revision, i.created_at, i.updated_at, i.preferred_account_id, \
              c.minecraft_version, \
              c.loader_kind, c.loader_version, c.memory_mb, c.setup_state, \
@@ -286,7 +291,8 @@ impl Database {
              m.banner_url AS modpack_banner_url, \
              (SELECT MAX(s.started_at) FROM sessions s WHERE s.instance_id = i.id \
               AND s.state IN ('running', 'exited', 'crashed', 'cancelled')) AS last_played \
-             FROM instances i INNER JOIN instance_configuration c ON c.instance_id = i.id \
+             FROM instances i INNER JOIN storage_roots r ON r.id = i.root_id \
+             INNER JOIN instance_configuration c ON c.instance_id = i.id \
              INNER JOIN instance_settings s ON s.instance_id = i.id \
              LEFT JOIN instance_groups g ON g.id = i.group_id \
              LEFT JOIN instance_modpacks m ON m.instance_id = i.id \
@@ -422,6 +428,31 @@ impl Database {
         self.get_instance(id).await
     }
 
+    pub async fn relocate_instance(
+        &self,
+        id: InstanceId,
+        root_id: StorageRootId,
+        relative_path: &ManagedRelativePath,
+        expected_revision: u64,
+    ) -> Result<InstanceRecord, StorageError> {
+        let expected_revision = revision_to_i64(expected_revision)?;
+        let result = sqlx::query(
+            "UPDATE instances SET root_id = ?, relative_path = ?, revision = revision + 1, \
+             updated_at = ? WHERE id = ? AND revision = ? AND trashed_at IS NULL",
+        )
+        .bind(root_id.to_string())
+        .bind(relative_path.as_str())
+        .bind(now_rfc3339()?)
+        .bind(id.to_string())
+        .bind(expected_revision)
+        .execute(&self.pool)
+        .await?;
+
+        self.ensure_updated(id, expected_revision, result.rows_affected())
+            .await?;
+        self.get_instance(id).await
+    }
+
     pub async fn trash_instance(
         &self,
         id: InstanceId,
@@ -509,6 +540,7 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
     let management_value: String = row.try_get("management_mode")?;
     let name_value: String = row.try_get("name")?;
     let relative_path: String = row.try_get("relative_path")?;
+    let root_path: String = row.try_get("root_path")?;
     let loader_value: String = row.try_get("loader_kind")?;
     let setup_state_value: String = row.try_get("setup_state")?;
     let revision: i64 = row.try_get("revision")?;
@@ -533,6 +565,8 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
         })
         .transpose()?;
 
+    let relative_path = ManagedRelativePath::parse(&relative_path)?;
+    let storage_path = relative_path.resolve_under(std::path::Path::new(&root_path));
     Ok(InstanceRecord {
         id: InstanceId::from_uuid(id),
         name: InstanceName::parse(name_value)
@@ -542,7 +576,8 @@ fn row_to_instance(row: &sqlx::sqlite::SqliteRow) -> Result<InstanceRecord, Stor
         management_mode: ManagementMode::try_from(management_value.as_str())
             .map_err(|_| invalid_value("instances.management_mode", management_value))?,
         root_id: StorageRootId::from_uuid(root_id),
-        relative_path: ManagedRelativePath::parse(&relative_path)?,
+        relative_path,
+        storage_path,
         favorite: favorite != 0,
         revision: u64::try_from(revision).map_err(|_| StorageError::NegativeRevision)?,
         minecraft_version: row.try_get("minecraft_version")?,

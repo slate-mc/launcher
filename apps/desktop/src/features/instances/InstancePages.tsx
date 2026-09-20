@@ -48,18 +48,21 @@ import {
   createInstanceSnapshot,
   deleteInstanceSnapshot,
   duplicateInstance,
+  exportInstance,
   getInstanceGameOptions,
   getInstance,
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
   installInstance,
   installMods,
+  importInstance,
   launchInstance,
   listAccounts,
   listGameSessions,
   listInstallJobs,
   listInstanceMods,
   listInstanceSnapshots,
+  moveInstanceStorage,
   openInstanceDirectory,
   removeInstanceMod,
   renameInstance,
@@ -2429,7 +2432,7 @@ function InstanceSettings({ instance }: { instance: LauncherInstance }) {
                   <select className={inputClass} value={draft.launcherBehavior} onChange={(event) => setDraft({ ...draft, launcherBehavior: event.target.value as typeof draft.launcherBehavior })}>
                     <option value="keepOpen">Keep slate open</option>
                     <option value="minimize">Minimize slate</option>
-                    <option value="hide">Hide slate</option>
+                    <option value="hide">Close the slate window while playing</option>
                   </select>
                 </Field>
                 <Field label="Game language">
@@ -2680,6 +2683,34 @@ function LifecycleActions({ instance }: { instance: LauncherInstance }) {
       setMessage(`${duplicate.name} was created and is ready to install.`);
     },
   });
+  const moveMutation = useMutation({
+    mutationFn: () =>
+      moveInstanceStorage({
+        id: instance.id,
+        expectedRevision: instance.revision,
+      }),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(["instance", instance.id], updated);
+      await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      setMessage(`Instance moved to ${updated.storagePath}`);
+    },
+  });
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      exportInstance({
+        id: instance.id,
+        expectedRevision: instance.revision,
+      }),
+    onSuccess: () => setMessage("Portable instance archive exported."),
+  });
+  const importMutation = useMutation({
+    mutationFn: importInstance,
+    onSuccess: async (imported) => {
+      if (!imported) return;
+      await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      setMessage(`${imported.name} was imported as a new instance. Repair it once before playing.`);
+    },
+  });
   const createMutation = useMutation({
     mutationFn: () =>
       createInstanceSnapshot({
@@ -2732,6 +2763,9 @@ function LifecycleActions({ instance }: { instance: LauncherInstance }) {
   });
   const error =
     duplicateMutation.error ??
+    moveMutation.error ??
+    exportMutation.error ??
+    importMutation.error ??
     createMutation.error ??
     restoreMutation.error ??
     deleteMutation.error ??
@@ -2752,6 +2786,15 @@ function LifecycleActions({ instance }: { instance: LauncherInstance }) {
             </button>
           ))}
         </div>
+        <div className="mt-4 flex items-center justify-between gap-5 rounded-control border border-app-separator/60 bg-app-bg/35 px-4 py-3">
+          <span className="min-w-0">
+            <strong className="block text-[11px]">Storage location</strong>
+            <span className="mt-1 block truncate font-mono text-[10px] text-app-muted" title={instance.storagePath}>{instance.storagePath}</span>
+          </span>
+          <button type="button" className={secondaryButtonClass} disabled={moveMutation.isPending} onClick={() => moveMutation.mutate()}>
+            {moveMutation.isPending ? <RotateCcw className="animate-spin" size={14} /> : <ArrowRight size={14} />}Move…
+          </button>
+        </div>
       </section>
 
       <section className="border-t border-app-separator/55 pt-5">
@@ -2767,6 +2810,23 @@ function LifecycleActions({ instance }: { instance: LauncherInstance }) {
           <label className="flex items-center gap-2"><input type="checkbox" checked={copyWorlds} onChange={(event) => setCopyWorlds(event.target.checked)} />Worlds</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={copyScreenshots} onChange={(event) => setCopyScreenshots(event.target.checked)} />Screenshots</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={copySettings} onChange={(event) => setCopySettings(event.target.checked)} />Settings and artwork</label>
+        </div>
+      </section>
+
+      <section className="border-t border-app-separator/55 pt-5">
+        <div className="flex items-start justify-between gap-6">
+          <span>
+            <h3 className="m-0 text-xs font-bold">Portable archive</h3>
+            <p className="mt-1 mb-0 text-[11px] text-app-secondary">Move a profile, worlds, content, configuration, and artwork between computers. Java paths and cached revisions stay local.</p>
+          </span>
+          <span className="flex shrink-0 gap-2">
+            <button type="button" className={secondaryButtonClass} disabled={importMutation.isPending} onClick={() => importMutation.mutate()}>
+              {importMutation.isPending ? <RotateCcw className="animate-spin" size={14} /> : <FolderOpen size={14} />}Import…
+            </button>
+            <button type="button" className={secondaryButtonClass} disabled={exportMutation.isPending} onClick={() => exportMutation.mutate()}>
+              {exportMutation.isPending ? <RotateCcw className="animate-spin" size={14} /> : <Download size={14} />}Export…
+            </button>
+          </span>
         </div>
       </section>
 

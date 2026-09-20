@@ -328,6 +328,9 @@
         "setupState": {
           "$ref": "#/$defs/InstanceSetupStateDto"
         },
+        "storagePath": {
+          "type": "string"
+        },
         "updatedAt": {
           "type": "string"
         }
@@ -335,6 +338,7 @@
       "required": [
         "id",
         "name",
+        "storagePath",
         "mode",
         "managementMode",
         "favorite",

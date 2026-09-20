@@ -28,16 +28,17 @@ pub use install::{
 };
 pub use instance::{
     CreateInstanceRequest, CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest,
-    DuplicateInstanceRequest, GetInstanceArtworkRequest, GetInstanceGameOptionsRequest,
-    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceDirectoryKindDto,
-    InstanceGameOptionsSummary, InstanceModeDto, InstanceSettingsSummary, InstanceSetupStateDto,
-    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto,
-    JavaSelectionModeDto, LauncherBehaviorDto, LoaderKindDto, ManagementModeDto, MemoryModeDto,
-    ModpackSourceSummary, OpenInstanceDirectoryRequest, PerformancePresetDto, ProcessPriorityDto,
-    RenameInstanceRequest, RestoreInstanceSnapshotRequest, SelectInstanceArtworkRequest,
-    SelectInstanceJavaRequest, SetFavoriteRequest, SetInstanceSnapshotPinnedRequest,
-    TrashInstanceRequest, UpdateInstanceConfigurationRequest, UpdateInstanceGameOptionsRequest,
-    UpdateInstanceSettingsRequest,
+    DuplicateInstanceRequest, ExportInstanceRequest, GetInstanceArtworkRequest,
+    GetInstanceGameOptionsRequest, ImportInstanceRequest, InstanceArtworkAsset,
+    InstanceArtworkKindDto, InstanceDirectoryKindDto, InstanceGameOptionsSummary, InstanceModeDto,
+    InstanceSettingsSummary, InstanceSetupStateDto, InstanceSnapshotSummary,
+    InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, JavaSelectionModeDto,
+    LauncherBehaviorDto, LoaderKindDto, ManagementModeDto, MemoryModeDto, ModpackSourceSummary,
+    MoveInstanceStorageRequest, OpenInstanceDirectoryRequest, PerformancePresetDto,
+    ProcessPriorityDto, RenameInstanceRequest, RestoreInstanceSnapshotRequest,
+    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, SetFavoriteRequest,
+    SetInstanceSnapshotPinnedRequest, TrashInstanceRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest,
 };
 pub use launch::{
     GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,

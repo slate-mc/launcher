@@ -10,7 +10,12 @@ use game_options::{prepare_options_update, read_recognized_options};
 use instance_content::{
     FileMove, InstanceModFile, scan_instance_mods, set_instance_mod_enabled, trash_instance_mod,
 };
-use instance_files::{copy_duplicate_personal_data, create_snapshot, prepare_snapshot_restore};
+use instance_files::{
+    copy_duplicate_personal_data, create_snapshot, export_portable_archive,
+    extract_portable_archive, prepare_instance_relocation, prepare_snapshot_restore,
+    read_portable_manifest,
+};
+use serde::{Deserialize, Serialize};
 use slate_auth::{
     AuthError, CredentialVault, MICROSOFT_CONSUMER_TENANT, MinecraftAuthClient,
     MinecraftAuthConfig, MinecraftSession, SLATE_MICROSOFT_CLIENT_ID,
@@ -19,18 +24,19 @@ use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, AuthCancelRequest, AuthFlowStateDto,
     AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary, CreateInstanceRequest,
     CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest, DuplicateInstanceRequest,
-    GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
-    GetInstanceGameOptionsRequest, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
-    InstallModRequest, InstallModpackRequest, InstanceArtworkAsset, InstanceArtworkKindDto,
-    InstanceDirectoryKindDto, InstanceGameOptionsSummary, InstanceModOriginDto,
-    InstanceModResolution, InstanceModSummary, InstanceModeDto, InstanceModsRequest,
-    InstanceSettingsSummary, InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary,
-    InstanceWindowModeDto, JavaRuntimeSummary, JavaSelectionModeDto, LaunchInstanceRequest,
-    LauncherBehaviorDto, LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto,
-    MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
-    MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
-    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
-    ModpackVersionRequest, ModpackVersionsRequest, OpenInstanceDirectoryRequest,
+    ExportInstanceRequest, GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
+    GetInstanceGameOptionsRequest, ImportInstanceRequest, InstallInstanceRequest,
+    InstallJobStateDto, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceDirectoryKindDto,
+    InstanceGameOptionsSummary, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
+    InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
+    InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, JavaRuntimeSummary,
+    JavaSelectionModeDto, LaunchInstanceRequest, LauncherBehaviorDto, LoaderKindDto,
+    LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto, MinecraftAccountStatusDto,
+    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
+    MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackVersionRequest,
+    ModpackVersionsRequest, MoveInstanceStorageRequest, OpenInstanceDirectoryRequest,
     PerformancePresetDto, PreflightSummary, ProcessPriorityDto, ReduceMotionPreferenceDto,
     RemoveInstanceModRequest, RenameInstanceRequest, RestoreInstanceSnapshotRequest,
     SelectInstanceArtworkRequest, SelectInstanceJavaRequest, SessionLogEvent,
@@ -63,8 +69,8 @@ use slate_modpack_api_contracts::{
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
 use slate_platform::{
-    AppPaths, JavaArchitecture, JavaRuntimeProbe, detect_java_runtime, probe_java_executable,
-    restricted_child_environment,
+    AppPaths, JavaArchitecture, JavaRuntimeProbe, ManagedRelativePath, detect_java_runtime,
+    probe_java_executable, restricted_child_environment,
 };
 use slate_process::{
     ActiveProcess, ChildProcessPriority, LogChunk, LogChunkKind, ProcessState, ProcessSupervisor,
@@ -101,6 +107,61 @@ struct DesktopState {
     auth_flows: AuthCoordinator,
     log_streams: SessionLogCoordinator,
     modpacks: ModpackApiClient,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PortableInstanceManifest {
+    schema: u32,
+    exported_at: String,
+    name: String,
+    mode: InstanceModeDto,
+    minecraft_version: String,
+    loader_kind: LoaderKindDto,
+    loader_version: Option<String>,
+    memory_mb: u32,
+    settings: PortableInstanceSettings,
+    modpack_source: Option<PortableModpackSource>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PortableInstanceSettings {
+    description: String,
+    notes: String,
+    group_name: Option<String>,
+    tags: Vec<String>,
+    icon_mime: Option<String>,
+    banner_mime: Option<String>,
+    banner_position_x: u8,
+    banner_position_y: u8,
+    window_mode: InstanceWindowModeDto,
+    resolution_width: Option<u32>,
+    resolution_height: Option<u32>,
+    launcher_behavior: LauncherBehaviorDto,
+    game_language: String,
+    quick_play_server: Option<String>,
+    process_priority: ProcessPriorityDto,
+    memory_mode: MemoryModeDto,
+    initial_memory_mb: u32,
+    performance_preset: PerformancePresetDto,
+    jvm_arguments: Vec<String>,
+    environment: BTreeMap<String, String>,
+    backup_before_changes: bool,
+    backup_retention: u8,
+    log_retention_days: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PortableModpackSource {
+    provider: slate_modpack_api_contracts::Provider,
+    project_id: String,
+    version_id: String,
+    selected_optional: Vec<String>,
+    display_name: String,
+    icon_url: Option<String>,
+    banner_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -392,7 +453,7 @@ async fn instance_mods_list(
         .list_instance_mods(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load installed mods."))?;
-    let paths = state.paths.clone();
+    let paths = paths_for_instance(state.inner(), &instance);
     let files = tokio::task::spawn_blocking(move || scan_instance_mods(&paths, instance_id))
         .await
         .map_err(|_| {
@@ -546,8 +607,10 @@ async fn instance_mod_set_enabled(
     let reference =
         validate_instance_mod_reference(request.provider, request.project_id.as_deref())?;
     let instance_id = InstanceId::from_uuid(request.instance_id);
-    prepare_instance_content_change(state.inner(), instance_id, request.expected_revision).await?;
-    let paths = state.paths.clone();
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    let paths = paths_for_instance(state.inner(), &instance);
     let file_path = request.file_path.clone();
     let enabled = request.enabled;
     let file_move = tokio::task::spawn_blocking(move || {
@@ -594,8 +657,10 @@ async fn instance_mod_remove(
     let reference =
         validate_instance_mod_reference(request.provider, request.project_id.as_deref())?;
     let instance_id = InstanceId::from_uuid(request.instance_id);
-    prepare_instance_content_change(state.inner(), instance_id, request.expected_revision).await?;
-    let paths = state.paths.clone();
+    let instance =
+        prepare_instance_content_change(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    let paths = paths_for_instance(state.inner(), &instance);
     let file_path = request.file_path.clone();
     let file_move =
         tokio::task::spawn_blocking(move || trash_instance_mod(&paths, instance_id, &file_path))
@@ -651,7 +716,7 @@ async fn prepare_instance_content_change(
     state: &DesktopState,
     instance_id: InstanceId,
     expected_revision: u64,
-) -> Result<(), AppError> {
+) -> Result<InstanceRecord, AppError> {
     refresh_exited_sessions(state).await;
     if state
         .processes
@@ -675,7 +740,7 @@ async fn prepare_instance_content_change(
             "That instance changed in another view. Reload it and try again.",
         ));
     }
-    Ok(())
+    Ok(instance)
 }
 
 #[tauri::command]
@@ -1157,7 +1222,7 @@ async fn instance_create(
         .await
         .map_err(|error| map_storage_error(error, "slate could not create the instance."))?;
 
-    if std::fs::create_dir_all(state.paths.instance(record.id)).is_err() {
+    if std::fs::create_dir_all(&record.storage_path).is_err() {
         let _ = state
             .database
             .trash_instance(record.id, record.revision)
@@ -1388,7 +1453,8 @@ async fn instance_select_artwork(
         return Ok(instance_summary(current));
     };
     let kind = request.kind;
-    let destination = instance_artwork_path(&state.paths, instance_id, kind);
+    let instance_paths = paths_for_instance(state.inner(), &current);
+    let destination = instance_artwork_path(&instance_paths, instance_id, kind);
     let maximum = match kind {
         InstanceArtworkKindDto::Icon => 2 * 1024 * 1024,
         InstanceArtworkKindDto::Banner => 8 * 1024 * 1024,
@@ -1441,7 +1507,13 @@ async fn instance_reset_artwork(
     request: SelectInstanceArtworkRequest,
 ) -> Result<InstanceSummary, AppError> {
     let instance_id = InstanceId::from_uuid(request.id);
-    let destination = instance_artwork_path(&state.paths, instance_id, request.kind);
+    let current = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let instance_paths = paths_for_instance(state.inner(), &current);
+    let destination = instance_artwork_path(&instance_paths, instance_id, request.kind);
     let replacement = remove_managed_file(destination).await?;
     let column = match request.kind {
         InstanceArtworkKindDto::Icon => "icon_mime",
@@ -1478,13 +1550,14 @@ async fn instance_get_artwork(
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
     let mime = match request.kind {
-        InstanceArtworkKindDto::Icon => instance.settings.icon_mime,
-        InstanceArtworkKindDto::Banner => instance.settings.banner_mime,
+        InstanceArtworkKindDto::Icon => instance.settings.icon_mime.clone(),
+        InstanceArtworkKindDto::Banner => instance.settings.banner_mime.clone(),
     };
     let Some(mime_type) = mime else {
         return Ok(None);
     };
-    let path = instance_artwork_path(&state.paths, instance.id, request.kind);
+    let instance_paths = paths_for_instance(state.inner(), &instance);
+    let path = instance_artwork_path(&instance_paths, instance.id, request.kind);
     let bytes = tokio::fs::read(path).await.map_err(|_| artwork_error())?;
     Ok(Some(InstanceArtworkAsset {
         mime_type,
@@ -1498,13 +1571,14 @@ async fn instance_game_options_get(
     request: GetInstanceGameOptionsRequest,
 ) -> Result<InstanceGameOptionsSummary, AppError> {
     let instance_id = InstanceId::from_uuid(request.id);
-    state
+    let instance = state
         .database
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let instance_paths = paths_for_instance(state.inner(), &instance);
     let (file_exists, values) =
-        read_recognized_options(&instance_options_path(&state.paths, instance_id))
+        read_recognized_options(&instance_options_path(&instance_paths, instance_id))
             .await
             .map_err(|_| game_options_error())?;
     Ok(InstanceGameOptionsSummary {
@@ -1541,8 +1615,9 @@ async fn instance_game_options_update(
             "That instance changed in another view. Reload it and try again.",
         ));
     }
+    let instance_paths = paths_for_instance(state.inner(), &current);
     let pending = prepare_options_update(
-        instance_options_path(&state.paths, instance_id),
+        instance_options_path(&instance_paths, instance_id),
         &request.values,
     )
     .await
@@ -1574,12 +1649,12 @@ async fn instance_open_directory(
     request: OpenInstanceDirectoryRequest,
 ) -> Result<(), AppError> {
     let instance_id = InstanceId::from_uuid(request.id);
-    state
+    let instance = state
         .database
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
-    let game = state.paths.instance(instance_id).join("game");
+    let game = instance.storage_path.join("game");
     let path = match request.kind {
         InstanceDirectoryKindDto::Game => game,
         InstanceDirectoryKindDto::Mods => game.join("mods"),
@@ -1649,7 +1724,7 @@ async fn instance_duplicate(
         })
         .await
         .map_err(|error| map_storage_error(error, "slate could not create the duplicate."))?;
-    let destination_root = state.paths.instance(duplicate.id);
+    let destination_root = duplicate.storage_path.clone();
     if tokio::fs::create_dir_all(&destination_root).await.is_err() {
         let _ = state
             .database
@@ -1670,7 +1745,7 @@ async fn instance_duplicate(
             .await;
         return Err(instance_files_error());
     }
-    let source_root = state.paths.instance(source_id);
+    let source_root = source.storage_path.clone();
     let destination_for_copy = destination_root.clone();
     let copy = tauri::async_runtime::spawn_blocking(move || {
         copy_duplicate_personal_data(
@@ -1698,6 +1773,244 @@ async fn instance_duplicate(
 }
 
 #[tauri::command]
+async fn instance_move_storage(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    request: MoveInstanceStorageRequest,
+) -> Result<InstanceSummary, AppError> {
+    let instance_id = InstanceId::from_uuid(request.id);
+    let instance =
+        ensure_instance_stopped_and_current(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    if instance.setup_state == slate_domain::InstanceSetupState::Preparing {
+        return Err(AppError::new(
+            "local.install_running",
+            "Wait for the active installation to finish before moving this instance.",
+        ));
+    }
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Choose a slate storage folder")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| instance_files_error())?;
+    let Some(selected) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(instance_summary(instance));
+    };
+    let selected = tauri::async_runtime::spawn_blocking(move || std::fs::canonicalize(selected))
+        .await
+        .map_err(|_| instance_files_error())?
+        .map_err(|_| instance_files_error())?;
+    let canonical_root = selected.to_string_lossy().into_owned();
+    let destination = selected.join("instances").join(instance_id.to_string());
+    let source = instance.storage_path.clone();
+    let pending = tauri::async_runtime::spawn_blocking(move || {
+        prepare_instance_relocation(&source, &destination)
+    })
+    .await
+    .map_err(|_| instance_files_error())?
+    .map_err(|_| {
+        AppError::new(
+            "local.instance_move_failed",
+            "slate could not copy the instance to that storage folder. Choose an empty, writable location outside the current instance.",
+        )
+    })?;
+    let root_id = match state
+        .database
+        .get_or_create_storage_root(&canonical_root)
+        .await
+    {
+        Ok(root_id) => root_id,
+        Err(error) => {
+            let _ = tauri::async_runtime::spawn_blocking(move || pending.rollback()).await;
+            return Err(map_storage_error(
+                error,
+                "slate could not register that storage folder.",
+            ));
+        }
+    };
+    let relative_path = ManagedRelativePath::parse(&format!("instances/{instance_id}"))
+        .map_err(|_| instance_files_error())?;
+    let updated = match state
+        .database
+        .relocate_instance(
+            instance_id,
+            root_id,
+            &relative_path,
+            request.expected_revision,
+        )
+        .await
+    {
+        Ok(updated) => updated,
+        Err(error) => {
+            let _ = tauri::async_runtime::spawn_blocking(move || pending.rollback()).await;
+            return Err(map_storage_error(
+                error,
+                "slate could not commit the instance move.",
+            ));
+        }
+    };
+    if !matches!(
+        tauri::async_runtime::spawn_blocking(move || pending.commit()).await,
+        Ok(Ok(()))
+    ) {
+        tracing::warn!(instance_id = %instance_id, "instance moved but the old copy could not be removed");
+    }
+    Ok(instance_summary(updated))
+}
+
+#[tauri::command]
+async fn instance_export(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    request: ExportInstanceRequest,
+) -> Result<(), AppError> {
+    let instance_id = InstanceId::from_uuid(request.id);
+    let instance =
+        ensure_instance_stopped_and_current(state.inner(), instance_id, request.expected_revision)
+            .await?;
+    if instance.setup_state == slate_domain::InstanceSetupState::Preparing {
+        return Err(AppError::new(
+            "local.install_running",
+            "Wait for the active installation to finish before exporting this instance.",
+        ));
+    }
+    let manifest = serde_json::to_vec_pretty(&portable_manifest(&instance))
+        .map_err(|_| portable_instance_error())?;
+    let filename = format!(
+        "{}.slate-instance.zip",
+        portable_filename(instance.name.as_str())
+    );
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Export portable slate instance")
+            .set_file_name(filename)
+            .add_filter("slate instance", &["zip"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| portable_instance_error())?;
+    let Some(destination) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(());
+    };
+    let source = instance.storage_path;
+    tauri::async_runtime::spawn_blocking(move || {
+        export_portable_archive(&source, &destination, &manifest)
+    })
+    .await
+    .map_err(|_| portable_instance_error())?
+    .map_err(|_| portable_instance_error())
+}
+
+#[tauri::command]
+async fn instance_import(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    _request: ImportInstanceRequest,
+) -> Result<Option<InstanceSummary>, AppError> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Import a portable slate instance")
+            .add_filter("slate instance", &["zip"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| portable_instance_error())?;
+    let Some(source) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(None);
+    };
+    let source_for_manifest = source.clone();
+    let manifest_bytes =
+        tauri::async_runtime::spawn_blocking(move || read_portable_manifest(&source_for_manifest))
+            .await
+            .map_err(|_| portable_instance_error())?
+            .map_err(|_| portable_instance_error())?;
+    let manifest: PortableInstanceManifest =
+        serde_json::from_slice(&manifest_bytes).map_err(|_| portable_instance_error())?;
+    if manifest.schema != 1 {
+        return Err(AppError::new(
+            "local.instance_archive_version",
+            "This portable instance uses an unsupported archive version.",
+        ));
+    }
+    validate_instance_configuration(
+        manifest.mode,
+        &manifest.minecraft_version,
+        manifest.loader_kind,
+        manifest.loader_version.as_deref(),
+        manifest.memory_mb,
+    )
+    .map_err(configuration_app_error)?;
+    let name = parse_instance_name(&manifest.name).map_err(instance_name_app_error)?;
+    let modpack_source = validated_portable_modpack_source(manifest.modpack_source)?;
+    let mut record = state
+        .database
+        .create_instance(NewInstance {
+            name,
+            mode: manifest.mode.into(),
+            management_mode: ManagementMode::Local,
+            root_id: state.storage_root_id,
+            minecraft_version: manifest.minecraft_version.trim().to_owned(),
+            loader_kind: manifest.loader_kind.into(),
+            loader_version: manifest.loader_version.clone(),
+            memory_mb: manifest.memory_mb,
+            modpack_source,
+        })
+        .await
+        .map_err(|error| {
+            map_storage_error(error, "slate could not create the imported instance.")
+        })?;
+    let destination = record.storage_path.clone();
+    let extraction = tauri::async_runtime::spawn_blocking(move || {
+        extract_portable_archive(&source, &destination)
+    })
+    .await;
+    if !matches!(extraction, Ok(Ok(()))) {
+        cleanup_failed_import(state.inner(), &record).await;
+        return Err(portable_instance_error());
+    }
+    let settings_request = portable_settings_request(&record, manifest.settings.clone());
+    let settings = match validated_instance_settings(&record, settings_request) {
+        Ok(settings) => settings,
+        Err(error) => {
+            cleanup_failed_import(state.inner(), &record).await;
+            return Err(error);
+        }
+    };
+    if let Err(error) = state
+        .database
+        .update_instance_settings(record.id, record.revision, settings)
+        .await
+    {
+        cleanup_failed_import(state.inner(), &record).await;
+        return Err(map_storage_error(
+            error,
+            "slate could not apply the imported profile.",
+        ));
+    }
+    record = state
+        .database
+        .get_instance(record.id)
+        .await
+        .map_err(|error| {
+            map_storage_error(error, "slate could not reload the imported profile.")
+        })?;
+    record = match restore_imported_artwork(state.inner(), record.clone(), &manifest.settings).await
+    {
+        Ok(record) => record,
+        Err(error) => {
+            cleanup_failed_import(state.inner(), &record).await;
+            return Err(error);
+        }
+    };
+    Ok(Some(instance_summary(record)))
+}
+
+#[tauri::command]
 async fn instance_snapshots_list(
     state: tauri::State<'_, DesktopState>,
     request: InstanceSnapshotsRequest,
@@ -1716,15 +2029,16 @@ async fn instance_snapshot_create(
     request: CreateInstanceSnapshotRequest,
 ) -> Result<InstanceSnapshotSummary, AppError> {
     let instance_id = InstanceId::from_uuid(request.id);
-    ensure_instance_stopped_and_current(state.inner(), instance_id, request.expected_revision)
-        .await?;
+    let instance =
+        ensure_instance_stopped_and_current(state.inner(), instance_id, request.expected_revision)
+            .await?;
     let snapshot_id = Uuid::new_v4();
     let mods = state
         .database
         .list_instance_mods(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not snapshot installed mods."))?;
-    let instance_root = state.paths.instance(instance_id);
+    let instance_root = instance.storage_path.clone();
     let snapshot =
         tauri::async_runtime::spawn_blocking(move || create_snapshot(&instance_root, snapshot_id))
             .await
@@ -1738,9 +2052,8 @@ async fn instance_snapshot_create(
     {
         Ok(record) => record,
         Err(error) => {
-            let directory = state
-                .paths
-                .instance(instance_id)
+            let directory = instance
+                .storage_path
                 .join("snapshots")
                 .join(snapshot_id.to_string());
             let _ = tokio::fs::remove_dir_all(directory).await;
@@ -1760,8 +2073,9 @@ async fn instance_snapshot_restore(
     request: RestoreInstanceSnapshotRequest,
 ) -> Result<InstanceSummary, AppError> {
     let instance_id = InstanceId::from_uuid(request.id);
-    ensure_instance_stopped_and_current(state.inner(), instance_id, request.expected_revision)
-        .await?;
+    let instance =
+        ensure_instance_stopped_and_current(state.inner(), instance_id, request.expected_revision)
+            .await?;
     let snapshot = state
         .database
         .get_instance_snapshot(instance_id, request.snapshot_id)
@@ -1771,7 +2085,7 @@ async fn instance_snapshot_restore(
     if snapshot.manifest_ref.replace('\\', "/") != expected_ref {
         return Err(instance_files_error());
     }
-    let instance_root = state.paths.instance(instance_id);
+    let instance_root = instance.storage_path;
     let snapshot_id = request.snapshot_id;
     let pending = tauri::async_runtime::spawn_blocking(move || {
         prepare_snapshot_restore(&instance_root, snapshot_id)
@@ -1809,6 +2123,11 @@ async fn instance_snapshot_delete(
     request: DeleteInstanceSnapshotRequest,
 ) -> Result<(), AppError> {
     let instance_id = InstanceId::from_uuid(request.id);
+    let instance = state
+        .database
+        .get_instance(instance_id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
     let snapshot = state
         .database
         .delete_instance_snapshot(instance_id, request.snapshot_id)
@@ -1817,9 +2136,8 @@ async fn instance_snapshot_delete(
     let expected_ref = format!("snapshots/{}", request.snapshot_id);
     if snapshot.manifest_ref.replace('\\', "/") == expected_ref {
         let _ = tokio::fs::remove_dir_all(
-            state
-                .paths
-                .instance(instance_id)
+            instance
+                .storage_path
                 .join("snapshots")
                 .join(request.snapshot_id.to_string()),
         )
@@ -1978,6 +2296,7 @@ async fn queue_instance_install(
         .await
         .map_err(|error| map_storage_error(error, "slate could not queue the installation."))?;
     let response = install_job_summary(pending.job.clone());
+    let install_paths = paths_for_instance(state, &instance);
     let task_state = state.clone();
     tauri::async_runtime::spawn(async move {
         let (progress_tx, mut progress_rx) =
@@ -2030,7 +2349,7 @@ async fn queue_instance_install(
                     loader_version: instance.loader_version,
                     plan,
                     download_concurrency: preferences.download_concurrency,
-                    paths: task_state.paths.clone(),
+                    paths: install_paths.clone(),
                 },
                 progress_callback,
             )
@@ -2045,7 +2364,7 @@ async fn queue_instance_install(
                     loader_version: instance.loader_version,
                     modpack_plan,
                     download_concurrency: preferences.download_concurrency,
-                    paths: task_state.paths.clone(),
+                    paths: install_paths,
                 },
                 progress_callback,
             )
@@ -2231,7 +2550,7 @@ async fn modpack_install(
         .map_err(|error| {
             map_storage_error(error, "slate could not create the modpack instance.")
         })?;
-    if std::fs::create_dir_all(state.paths.instance(record.id)).is_err() {
+    if std::fs::create_dir_all(&record.storage_path).is_err() {
         let _ = state
             .database
             .trash_instance(record.id, record.revision)
@@ -2542,7 +2861,7 @@ async fn installed_mod_index(
     state: &DesktopState,
     instance: &InstanceRecord,
 ) -> Result<InstalledModIndex, AppError> {
-    let paths = state.paths.clone();
+    let paths = paths_for_instance(state, instance);
     let instance_id = instance.id;
     let files = tokio::task::spawn_blocking(move || scan_instance_mods(&paths, instance_id))
         .await
@@ -2768,7 +3087,8 @@ async fn instance_launch(
             "Install and verify this instance before launching it.",
         ));
     }
-    let log_root = state.paths.instance(instance_id);
+    let instance_paths = paths_for_instance(state.inner(), &instance);
+    let log_root = instance.storage_path.clone();
     let retention_days = instance.settings.log_retention_days;
     let _ = tauri::async_runtime::spawn_blocking(move || {
         prune_instance_logs(&log_root, retention_days)
@@ -2801,7 +3121,7 @@ async fn instance_launch(
         .map_err(|error| {
             map_storage_error(error, "slate could not load the installed revision.")
         })?;
-    let manifest_path = installed_manifest_path(&state.paths, instance_id, revision.id);
+    let manifest_path = installed_manifest_path(&instance_paths, instance_id, revision.id);
     let installed = load_installed_revision(
         &manifest_path,
         instance_id,
@@ -2873,7 +3193,7 @@ async fn instance_launch(
             "The selected Java runtime no longer matches this instance's required version and architecture.",
         ));
     }
-    let layout = launch_layout(&state.paths, instance_id, revision.id);
+    let layout = launch_layout(&instance_paths, instance_id, revision.id);
     let runtime_for_plan = JavaRuntime::new(
         selected_executable.clone(),
         resolved.java_version().major_version,
@@ -2892,10 +3212,18 @@ async fn instance_launch(
             .iter()
             .map(|(name, value)| (name.clone(), EnvironmentValue::public(value.clone()))),
     );
-    let custom_resolution = instance
-        .settings
-        .resolution_width
-        .zip(instance.settings.resolution_height);
+    let custom_resolution = match instance.settings.window_mode {
+        InstanceWindowMode::Windowed => instance
+            .settings
+            .resolution_width
+            .zip(instance.settings.resolution_height),
+        InstanceWindowMode::Maximized => window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .map(|monitor| (monitor.size().width, monitor.size().height)),
+        InstanceWindowMode::Fullscreen => None,
+    };
     let quick_play = instance
         .settings
         .quick_play_server
@@ -3188,11 +3516,217 @@ async fn preflight_get(
     })
 }
 
+fn paths_for_instance(state: &DesktopState, instance: &InstanceRecord) -> AppPaths {
+    state
+        .paths
+        .with_instance_root(instance.id, instance.storage_path.clone())
+}
+
+fn portable_manifest(instance: &InstanceRecord) -> PortableInstanceManifest {
+    let settings = &instance.settings;
+    PortableInstanceManifest {
+        schema: 1,
+        exported_at: OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| "unknown".to_owned()),
+        name: instance.name.to_string(),
+        mode: instance.mode.into(),
+        minecraft_version: instance.minecraft_version.clone(),
+        loader_kind: instance.loader_kind.into(),
+        loader_version: instance.loader_version.clone(),
+        memory_mb: instance.memory_mb,
+        settings: PortableInstanceSettings {
+            description: settings.description.clone(),
+            notes: settings.notes.clone(),
+            group_name: settings.group_name.clone(),
+            tags: settings.tags.clone(),
+            icon_mime: settings.icon_mime.clone(),
+            banner_mime: settings.banner_mime.clone(),
+            banner_position_x: settings.banner_position_x,
+            banner_position_y: settings.banner_position_y,
+            window_mode: window_mode_dto(settings.window_mode),
+            resolution_width: settings.resolution_width,
+            resolution_height: settings.resolution_height,
+            launcher_behavior: launcher_behavior_dto(settings.launcher_behavior),
+            game_language: settings.game_language.clone(),
+            quick_play_server: settings.quick_play_server.clone(),
+            process_priority: process_priority_dto(settings.process_priority),
+            memory_mode: memory_mode_dto(settings.memory_mode),
+            initial_memory_mb: settings.initial_memory_mb,
+            performance_preset: performance_preset_dto(settings.performance_preset),
+            jvm_arguments: settings.jvm_arguments.clone(),
+            environment: settings.environment.clone(),
+            backup_before_changes: settings.backup_before_changes,
+            backup_retention: settings.backup_retention,
+            log_retention_days: settings.log_retention_days,
+        },
+        modpack_source: instance
+            .modpack_source
+            .as_ref()
+            .map(|source| PortableModpackSource {
+                provider: source.provider,
+                project_id: source.project_id.clone(),
+                version_id: source.version_id.clone(),
+                selected_optional: source.selected_optional.clone(),
+                display_name: source.display_name.clone(),
+                icon_url: source.icon_url.clone(),
+                banner_url: source.banner_url.clone(),
+            }),
+    }
+}
+
+fn portable_settings_request(
+    instance: &InstanceRecord,
+    settings: PortableInstanceSettings,
+) -> UpdateInstanceSettingsRequest {
+    UpdateInstanceSettingsRequest {
+        id: instance.id.as_uuid(),
+        description: settings.description,
+        notes: settings.notes,
+        group_name: settings.group_name,
+        tags: settings.tags,
+        preferred_account_id: None,
+        banner_position_x: settings.banner_position_x,
+        banner_position_y: settings.banner_position_y,
+        window_mode: settings.window_mode,
+        resolution_width: settings.resolution_width,
+        resolution_height: settings.resolution_height,
+        launcher_behavior: settings.launcher_behavior,
+        game_language: settings.game_language,
+        quick_play_server: settings.quick_play_server,
+        process_priority: settings.process_priority,
+        memory_mode: settings.memory_mode,
+        initial_memory_mb: settings.initial_memory_mb,
+        maximum_memory_mb: instance.memory_mb,
+        java_mode: JavaSelectionModeDto::Managed,
+        performance_preset: settings.performance_preset,
+        jvm_arguments: settings.jvm_arguments,
+        environment: settings.environment,
+        backup_before_changes: settings.backup_before_changes,
+        backup_retention: settings.backup_retention,
+        log_retention_days: settings.log_retention_days,
+        expected_revision: instance.revision,
+    }
+}
+
+fn validated_portable_modpack_source(
+    source: Option<PortableModpackSource>,
+) -> Result<Option<NewModpackSource>, AppError> {
+    let Some(source) = source else {
+        return Ok(None);
+    };
+    if source.project_id.trim().is_empty()
+        || source.project_id.len() > 256
+        || source.version_id.trim().is_empty()
+        || source.version_id.len() > 256
+        || source.display_name.trim().is_empty()
+        || source.display_name.len() > 256
+        || source.selected_optional.len() > 1_000
+        || source
+            .icon_url
+            .as_ref()
+            .is_some_and(|value| value.len() > 2_048)
+        || source
+            .banner_url
+            .as_ref()
+            .is_some_and(|value| value.len() > 2_048)
+    {
+        return Err(portable_instance_error());
+    }
+    Ok(Some(NewModpackSource {
+        provider: source.provider,
+        project_id: source.project_id.trim().to_owned(),
+        version_id: source.version_id.trim().to_owned(),
+        selected_optional: source.selected_optional,
+        display_name: source.display_name.trim().to_owned(),
+        icon_url: source.icon_url,
+        banner_url: source.banner_url,
+    }))
+}
+
+async fn restore_imported_artwork(
+    state: &DesktopState,
+    mut instance: InstanceRecord,
+    settings: &PortableInstanceSettings,
+) -> Result<InstanceRecord, AppError> {
+    for (filename, column, declared_mime, maximum) in [
+        (
+            "profile-icon.bin",
+            "icon_mime",
+            settings.icon_mime.as_deref(),
+            2 * 1024 * 1024,
+        ),
+        (
+            "profile-banner.bin",
+            "banner_mime",
+            settings.banner_mime.as_deref(),
+            8 * 1024 * 1024,
+        ),
+    ] {
+        let Some(declared_mime) = declared_mime else {
+            continue;
+        };
+        let path = instance.storage_path.join("metadata").join(filename);
+        let Ok(bytes) = tokio::fs::read(&path).await else {
+            continue;
+        };
+        if bytes.len() > maximum || image_mime(&bytes) != Some(declared_mime) {
+            let _ = tokio::fs::remove_file(path).await;
+            continue;
+        }
+        state
+            .database
+            .set_instance_artwork_mime(instance.id, instance.revision, column, Some(declared_mime))
+            .await
+            .map_err(|error| {
+                map_storage_error(error, "slate could not restore imported artwork.")
+            })?;
+        instance = state
+            .database
+            .get_instance(instance.id)
+            .await
+            .map_err(|error| {
+                map_storage_error(error, "slate could not reload imported artwork.")
+            })?;
+    }
+    Ok(instance)
+}
+
+async fn cleanup_failed_import(state: &DesktopState, instance: &InstanceRecord) {
+    if let Ok(current) = state.database.get_instance(instance.id).await {
+        let _ = state
+            .database
+            .trash_instance(current.id, current.revision)
+            .await;
+    }
+    let _ = tokio::fs::remove_dir_all(&instance.storage_path).await;
+}
+
+fn portable_filename(name: &str) -> String {
+    let value = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ' ') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let value = value.trim().trim_end_matches(['.', ' ']);
+    if value.is_empty() {
+        "instance".to_owned()
+    } else {
+        value.to_owned()
+    }
+}
+
 fn instance_summary(record: slate_storage::InstanceRecord) -> InstanceSummary {
     let settings = record.settings.clone();
     InstanceSummary {
         id: record.id.as_uuid(),
         name: record.name.to_string(),
+        storage_path: record.storage_path.to_string_lossy().into_owned(),
         mode: record.mode.into(),
         management_mode: record.management_mode.into(),
         favorite: record.favorite,
@@ -4534,6 +5068,13 @@ fn instance_files_error() -> AppError {
     )
 }
 
+fn portable_instance_error() -> AppError {
+    AppError::new(
+        "local.instance_archive_invalid",
+        "slate could not read or write that portable instance archive. The archive may be damaged, unsafe, or too large.",
+    )
+}
+
 async fn ensure_instance_stopped_and_current(
     state: &DesktopState,
     instance_id: InstanceId,
@@ -4597,9 +5138,8 @@ async fn prune_instance_snapshots(state: &DesktopState, instance_id: InstanceId)
             .is_ok()
         {
             let _ = tokio::fs::remove_dir_all(
-                state
-                    .paths
-                    .instance(instance_id)
+                instance
+                    .storage_path
                     .join("snapshots")
                     .join(snapshot.id.to_string()),
             )
@@ -4615,7 +5155,7 @@ async fn create_automatic_snapshot_if_enabled(
     if !instance.settings.backup_before_changes {
         return Ok(());
     }
-    let game_directory = state.paths.instance(instance.id).join("game");
+    let game_directory = instance.storage_path.join("game");
     let has_files = tauri::async_runtime::spawn_blocking(move || {
         game_directory
             .read_dir()
@@ -4634,7 +5174,7 @@ async fn create_automatic_snapshot_if_enabled(
         .list_instance_mods(instance.id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not snapshot installed mods."))?;
-    let instance_root = state.paths.instance(instance.id);
+    let instance_root = instance.storage_path.clone();
     let (manifest, size_bytes) =
         tauri::async_runtime::spawn_blocking(move || create_snapshot(&instance_root, snapshot_id))
             .await
@@ -4647,9 +5187,8 @@ async fn create_automatic_snapshot_if_enabled(
         .await
     {
         let _ = tokio::fs::remove_dir_all(
-            state
-                .paths
-                .instance(instance.id)
+            instance
+                .storage_path
                 .join("snapshots")
                 .join(snapshot_id.to_string()),
         )
@@ -4811,6 +5350,9 @@ fn main() {
             instance_game_options_update,
             instance_open_directory,
             instance_duplicate,
+            instance_move_storage,
+            instance_export,
+            instance_import,
             instance_snapshots_list,
             instance_snapshot_create,
             instance_snapshot_restore,

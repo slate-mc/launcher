@@ -21,6 +21,7 @@ slate-modpack-client = { path = "../../../crates/modpack-client" }
 slate-platform = { path = "../../../crates/platform" }
 slate-process = { path = "../../../crates/process" }
 slate-storage = { path = "../../../crates/storage" }
+serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
 tauri-plugin-opener = "=2.5.2"
@@ -31,6 +32,7 @@ thiserror.workspace = true
 sysinfo.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

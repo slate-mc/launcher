@@ -1,11 +1,14 @@
 use directories::BaseDirs;
 use slate_domain::{InstanceId, PRODUCT_NAME};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppPaths {
     app_data: PathBuf,
     storage_root: PathBuf,
+    instance_roots: Arc<HashMap<InstanceId, PathBuf>>,
 }
 
 impl AppPaths {
@@ -20,6 +23,20 @@ impl AppPaths {
         Self {
             app_data,
             storage_root,
+            instance_roots: Arc::new(HashMap::new()),
+        }
+    }
+
+    /// Return a request-scoped path view for an instance stored outside the default root.
+    /// Shared artifacts and runtimes remain in the primary slate storage root.
+    #[must_use]
+    pub fn with_instance_root(&self, instance_id: InstanceId, root: PathBuf) -> Self {
+        let mut instance_roots = self.instance_roots.as_ref().clone();
+        instance_roots.insert(instance_id, root);
+        Self {
+            app_data: self.app_data.clone(),
+            storage_root: self.storage_root.clone(),
+            instance_roots: Arc::new(instance_roots),
         }
     }
 
@@ -77,7 +94,10 @@ impl AppPaths {
 
     #[must_use]
     pub fn instance(&self, instance_id: InstanceId) -> PathBuf {
-        self.instances().join(instance_id.to_string())
+        self.instance_roots
+            .get(&instance_id)
+            .cloned()
+            .unwrap_or_else(|| self.instances().join(instance_id.to_string()))
     }
 
     #[must_use]
@@ -148,5 +168,22 @@ mod tests {
         assert!(paths.instances().is_dir());
         assert!(!paths.instance(InstanceId::new()).exists());
         Ok(())
+    }
+
+    #[test]
+    fn an_instance_override_does_not_move_shared_artifacts() {
+        let id = InstanceId::new();
+        let paths = AppPaths::from_roots("app-data".into(), "storage".into());
+        let moved = paths.with_instance_root(id, "other/instances/custom".into());
+
+        assert_eq!(
+            moved.instance(id),
+            std::path::Path::new("other/instances/custom")
+        );
+        assert_eq!(moved.artifacts(), std::path::Path::new("storage/artifacts"));
+        assert_eq!(
+            paths.instance(id),
+            std::path::Path::new("storage/instances").join(id.to_string())
+        );
     }
 }

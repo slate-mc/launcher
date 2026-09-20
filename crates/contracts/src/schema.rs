@@ -1,13 +1,14 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
     CreateInstanceRequest, CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest,
-    DuplicateInstanceRequest, EventEnvelope, GameSessionSummary, GetInstanceArtworkRequest,
-    GetInstanceGameOptionsRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
-    InstallModpackRequest, InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary,
-    InstanceModsRequest, InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary,
-    LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
-    MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
-    ModpackSearchRequest, ModpackVersionRequest, ModpackVersionsRequest,
+    DuplicateInstanceRequest, EventEnvelope, ExportInstanceRequest, GameSessionSummary,
+    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
+    InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary, InstanceModsRequest,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
+    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
+    ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
     OpenInstanceDirectoryRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceModRequest,
     RestoreInstanceSnapshotRequest, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
     SessionLogEvent, SessionLogSubscription, SetInstanceModEnabledRequest,
@@ -68,6 +69,18 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
         (
             "duplicate-instance-request",
             schema_for!(DuplicateInstanceRequest),
+        ),
+        (
+            "move-instance-storage-request",
+            schema_for!(MoveInstanceStorageRequest),
+        ),
+        (
+            "export-instance-request",
+            schema_for!(ExportInstanceRequest),
+        ),
+        (
+            "import-instance-request",
+            schema_for!(ImportInstanceRequest),
         ),
         (
             "instance-snapshot-summary",

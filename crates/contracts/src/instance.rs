@@ -197,6 +197,7 @@ impl From<InstanceSetupState> for InstanceSetupStateDto {
 pub struct InstanceSummary {
     pub id: Uuid,
     pub name: String,
+    pub storage_path: String,
     pub mode: InstanceModeDto,
     pub management_mode: ManagementModeDto,
     pub favorite: bool,
@@ -378,6 +379,24 @@ pub struct DuplicateInstanceRequest {
     pub include_settings: bool,
     pub expected_revision: u64,
 }
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveInstanceStorageRequest {
+    pub id: Uuid,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportInstanceRequest {
+    pub id: Uuid,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportInstanceRequest {}
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
