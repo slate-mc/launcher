@@ -6,6 +6,8 @@ import {
   Check,
   CircleHelp,
   LoaderCircle,
+  Pause,
+  Play,
   Plus,
   RefreshCw,
   ShieldX,
@@ -37,6 +39,7 @@ import {
   refreshMinecraftAccount,
   removeMinecraftAccount,
   retryInstallJob,
+  setInstallJobPaused,
   setDefaultMinecraftAccount,
   startMinecraftAuth,
 } from "../../lib/bridge";
@@ -69,6 +72,12 @@ export function DownloadsPage() {
       ]);
     },
   });
+  const pauseMutation = useMutation({
+    mutationFn: setInstallJobPaused,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["install-jobs"] });
+    },
+  });
 
   return (
     <div className="min-h-full bg-app-bg">
@@ -93,6 +102,19 @@ export function DownloadsPage() {
             {getUserFacingError(
               retryMutation.error,
               "Open the instance and try the installation again.",
+            )}
+          </InlineNotice>
+        </div>
+      ) : null}
+      {pauseMutation.isError ? (
+        <div className="mx-auto max-w-[940px] px-8 pt-6">
+          <InlineNotice
+            tone="danger"
+            title="Installation state was not changed"
+          >
+            {getUserFacingError(
+              pauseMutation.error,
+              "The installation may have already finished. Refresh and try again.",
             )}
           </InlineNotice>
         </div>
@@ -138,7 +160,9 @@ export function DownloadsPage() {
                     <small className="mt-1 block font-mono text-[10px] text-app-muted">
                       {installPhaseLabel(job.phase)}
                     </small>
-                    {job.state === "running" || job.state === "queued" ? (
+                    {job.state === "running" ||
+                    job.state === "queued" ||
+                    job.state === "paused" ? (
                       <InstallProgressIndicator job={job} className="mt-2" />
                     ) : null}
                   </span>
@@ -157,33 +181,66 @@ export function DownloadsPage() {
                   <time className="text-[11px] text-app-secondary">
                     {new Date(job.updatedAt).toLocaleString()}
                   </time>
-                  {job.state === "queued" || job.state === "running" ? (
-                    <button
-                      type="button"
-                      className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
-                      disabled={
-                        cancelMutation.isPending &&
-                        cancelMutation.variables?.jobId === job.id
-                      }
-                      onClick={() =>
-                        cancelMutation.mutate({
-                          jobId: job.id,
-                          revisionId: job.revisionId,
-                        })
-                      }
-                    >
-                      {cancelMutation.isPending &&
-                      cancelMutation.variables?.jobId === job.id ? (
-                        <LoaderCircle
-                          className="animate-spin"
-                          size={13}
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <X size={13} aria-hidden="true" />
-                      )}
-                      Cancel
-                    </button>
+                  {job.state === "queued" ||
+                  job.state === "running" ||
+                  job.state === "paused" ? (
+                    <span className="ml-auto inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
+                        disabled={
+                          pauseMutation.isPending &&
+                          pauseMutation.variables?.jobId === job.id
+                        }
+                        onClick={() =>
+                          pauseMutation.mutate({
+                            jobId: job.id,
+                            revisionId: job.revisionId,
+                            paused: job.state !== "paused",
+                          })
+                        }
+                      >
+                        {pauseMutation.isPending &&
+                        pauseMutation.variables?.jobId === job.id ? (
+                          <LoaderCircle
+                            className="animate-spin"
+                            size={13}
+                            aria-hidden="true"
+                          />
+                        ) : job.state === "paused" ? (
+                          <Play size={13} aria-hidden="true" />
+                        ) : (
+                          <Pause size={13} aria-hidden="true" />
+                        )}
+                        {job.state === "paused" ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary hover:text-app-text disabled:opacity-45"
+                        disabled={
+                          cancelMutation.isPending &&
+                          cancelMutation.variables?.jobId === job.id
+                        }
+                        onClick={() =>
+                          cancelMutation.mutate({
+                            jobId: job.id,
+                            revisionId: job.revisionId,
+                          })
+                        }
+                      >
+                        {cancelMutation.isPending &&
+                        cancelMutation.variables?.jobId === job.id ? (
+                          <LoaderCircle
+                            className="animate-spin"
+                            size={13}
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <X size={13} aria-hidden="true" />
+                        )}
+                        Cancel
+                      </button>
+                    </span>
                   ) : job.canRetry ? (
                     <span className="ml-auto inline-flex items-center gap-3">
                       <button

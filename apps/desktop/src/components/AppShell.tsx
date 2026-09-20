@@ -72,7 +72,10 @@ export function AppShell() {
     refetchInterval: 750,
   });
   const activeJobs = (jobsQuery.data ?? []).filter(
-    (job) => job.state === "queued" || job.state === "running",
+    (job) =>
+      job.state === "queued" ||
+      job.state === "running" ||
+      job.state === "paused",
   );
   const activeSessions = sessionsQuery.data ?? [];
   const leadingJob = activeJobs[0];

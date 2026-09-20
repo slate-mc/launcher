@@ -363,7 +363,14 @@ export const installJobSchema = z.object({
   id: z.string().uuid(),
   instanceId: z.string().uuid(),
   revisionId: z.string().uuid(),
-  state: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+  state: z.enum([
+    "queued",
+    "running",
+    "paused",
+    "succeeded",
+    "failed",
+    "cancelled",
+  ]),
   operation: z
     .enum(["instanceInstall", "modInstall", "modpackUpdate"])
     .optional(),

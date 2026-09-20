@@ -140,7 +140,7 @@ async fn queue_instance_install(
         )
         .await
         .map_err(|error| map_storage_error(error, "slate could not queue the installation."))?;
-    let cancellation = state.installs.register(pending.job.id);
+    let control = state.installs.register(pending.job.id);
     tracing::info!(
         instance_id = %instance_id,
         job_id = %pending.job.id,
@@ -156,6 +156,8 @@ async fn queue_instance_install(
     );
     let task_state = state.clone();
     tauri::async_runtime::spawn(async move {
+        let mut cancellation = control.cancellation;
+        let mut pause = control.pause;
         let (progress_tx, mut progress_rx) =
             tokio::sync::mpsc::unbounded_channel::<InstallProgress>();
         let progress_gate = Arc::new(Mutex::new((None, Instant::now() - Duration::from_secs(1))));
@@ -233,10 +235,29 @@ async fn queue_instance_install(
                 }
             };
             tokio::pin!(installation);
-            tokio::select! {
-                biased;
-                _ = cancellation => None,
-                result = &mut installation => Some(result),
+            loop {
+                if *pause.borrow() {
+                    tokio::select! {
+                        biased;
+                        _ = &mut cancellation => break None,
+                        changed = pause.changed() => {
+                            if changed.is_err() {
+                                break None;
+                            }
+                        }
+                    }
+                } else {
+                    tokio::select! {
+                        biased;
+                        _ = &mut cancellation => break None,
+                        changed = pause.changed() => {
+                            if changed.is_err() {
+                                break None;
+                            }
+                        }
+                        result = &mut installation => break Some(result),
+                    }
+                }
             }
         };
         let _ = progress_task.await;
@@ -381,7 +402,10 @@ pub(super) async fn install_job_cancel(
         .await
         .map_err(|error| map_storage_error(error, "That installation is no longer active."))?;
     if job.revision_id != revision_id
-        || !matches!(job.state, JobState::Queued | JobState::Running)
+        || !matches!(
+            job.state,
+            JobState::Queued | JobState::Running | JobState::Paused
+        )
         || !state.installs.cancel(job_id)
     {
         return Err(AppError::new(
@@ -394,6 +418,52 @@ pub(super) async fn install_job_cancel(
         .cancel_instance_install(job_id, revision_id, "Installation cancelled")
         .await
         .map_err(|error| map_storage_error(error, "slate could not cancel that installation."))?;
+    state
+        .database
+        .get_install_job(job_id)
+        .await
+        .map(install_job_summary)
+        .map_err(|error| map_storage_error(error, "slate could not reload that installation."))
+}
+
+#[tauri::command]
+pub(super) async fn install_job_set_paused(
+    state: tauri::State<'_, DesktopState>,
+    request: SetInstallJobPausedRequest,
+) -> Result<InstallJobSummary, AppError> {
+    let job_id = JobId::from_uuid(request.job_id);
+    let revision_id = RevisionId::from_uuid(request.revision_id);
+    let job = state
+        .database
+        .get_install_job(job_id)
+        .await
+        .map_err(|error| map_storage_error(error, "That installation is no longer active."))?;
+    let expected_state = if request.paused {
+        matches!(job.state, JobState::Queued | JobState::Running)
+    } else {
+        job.state == JobState::Paused
+    };
+    if job.revision_id != revision_id
+        || !expected_state
+        || !state.installs.set_paused(job_id, request.paused)
+    {
+        return Err(AppError::new(
+            "local.install_not_active",
+            "That installation has already finished or changed state.",
+        ));
+    }
+    let changed = state
+        .database
+        .set_install_paused(job_id, request.paused)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not update that installation."))?;
+    if !changed {
+        let _ = state.installs.set_paused(job_id, !request.paused);
+        return Err(AppError::new(
+            "local.install_not_active",
+            "That installation has already finished or changed state.",
+        ));
+    }
     state
         .database
         .get_install_job(job_id)

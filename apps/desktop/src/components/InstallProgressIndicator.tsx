@@ -13,6 +13,7 @@ export function InstallProgressIndicator({
   className?: string;
 }) {
   const message = installJobMessage(job);
+  const paused = job.state === "paused";
   const determinate =
     job.completedItems !== undefined &&
     job.totalItems !== undefined &&
@@ -28,7 +29,9 @@ export function InstallProgressIndicator({
         <span className="tabular-nums">
           {determinate
             ? `${job.completedItems!.toLocaleString()} / ${job.totalItems!.toLocaleString()} files`
-            : "Working"}
+            : paused
+              ? "Paused"
+              : "Working"}
         </span>
       </div>
       <div
@@ -39,7 +42,13 @@ export function InstallProgressIndicator({
         aria-valuemax={determinate ? job.totalItems : undefined}
         aria-valuenow={determinate ? job.completedItems : undefined}
         aria-valuetext={
-          determinate ? `${Math.round(percent!)}%` : "In progress"
+          determinate
+            ? paused
+              ? `Paused at ${Math.round(percent!)}%`
+              : `${Math.round(percent!)}%`
+            : paused
+              ? "Paused"
+              : "In progress"
         }
       >
         {determinate ? (
@@ -47,7 +56,7 @@ export function InstallProgressIndicator({
             className="absolute inset-0 origin-left rounded-full bg-app-accent transition-transform duration-200 ease-out"
             style={{ transform: `scaleX(${percent! / 100})` }}
           />
-        ) : (
+        ) : paused ? null : (
           <span className="install-progress-indeterminate absolute inset-y-0 w-1/3 rounded-full bg-app-accent" />
         )}
       </div>

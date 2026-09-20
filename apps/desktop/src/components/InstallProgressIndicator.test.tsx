@@ -86,4 +86,30 @@ describe("InstallProgressIndicator", () => {
     ).toBeVisible();
     expect(screen.queryByText(/private\.example/)).not.toBeInTheDocument();
   });
+
+  it("announces paused work without animating indeterminate progress", () => {
+    const { container } = render(
+      <InstallProgressIndicator
+        job={{
+          id: "12345678-1234-4234-8234-123456789abc",
+          instanceId: "22345678-1234-4234-8234-123456789abc",
+          revisionId: "32345678-1234-4234-8234-123456789abc",
+          state: "paused",
+          canRetry: false,
+          phase: "content",
+          message: "Installation paused",
+          createdAt: "2026-09-13T00:00:00Z",
+          updatedAt: "2026-09-13T00:00:01Z",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Paused")).toBeVisible();
+    expect(
+      screen.getByRole("progressbar", { name: "Installation paused" }),
+    ).toHaveAttribute("aria-valuetext", "Paused");
+    expect(
+      container.querySelector(".install-progress-indeterminate"),
+    ).not.toBeInTheDocument();
+  });
 });

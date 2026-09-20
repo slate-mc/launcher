@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub enum JobState {
     Queued,
     Running,
+    Paused,
     Succeeded,
     Failed,
     Cancelled,
@@ -20,6 +21,7 @@ impl JobState {
         match self {
             Self::Queued => "queued",
             Self::Running => "running",
+            Self::Paused => "paused",
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
@@ -34,6 +36,7 @@ impl TryFrom<&str> for JobState {
         match value {
             "queued" => Ok(Self::Queued),
             "running" => Ok(Self::Running),
+            "paused" => Ok(Self::Paused),
             "succeeded" => Ok(Self::Succeeded),
             "failed" => Ok(Self::Failed),
             "cancelled" => Ok(Self::Cancelled),
@@ -111,7 +114,7 @@ impl Database {
     pub async fn has_active_install_jobs(&self) -> Result<bool, StorageError> {
         Ok(sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM jobs WHERE kind = 'instance_install' \
-             AND state IN ('queued', 'running'))",
+             AND state IN ('queued', 'running', 'paused'))",
         )
         .fetch_one(&self.pool)
         .await?)
@@ -256,6 +259,39 @@ impl Database {
         update_job(&self.pool, job_id, JobState::Running, phase, message).await
     }
 
+    pub async fn set_install_paused(
+        &self,
+        job_id: JobId,
+        paused: bool,
+    ) -> Result<bool, StorageError> {
+        let now = now_rfc3339()?;
+        let updated = if paused {
+            sqlx::query(
+                "UPDATE jobs SET state = 'paused', \
+                 progress_json = json_set(progress_json, '$.message', 'Installation paused'), \
+                 updated_at = ? WHERE id = ? AND kind = 'instance_install' \
+                 AND state IN ('queued', 'running')",
+            )
+            .bind(&now)
+            .bind(job_id.to_string())
+            .execute(&self.pool)
+            .await?
+            .rows_affected()
+        } else {
+            sqlx::query(
+                "UPDATE jobs SET state = 'running', \
+                 progress_json = json_set(progress_json, '$.message', 'Resuming installation'), \
+                 updated_at = ? WHERE id = ? AND kind = 'instance_install' AND state = 'paused'",
+            )
+            .bind(&now)
+            .bind(job_id.to_string())
+            .execute(&self.pool)
+            .await?
+            .rows_affected()
+        };
+        Ok(updated == 1)
+    }
+
     pub async fn update_install_progress(
         &self,
         job_id: JobId,
@@ -296,7 +332,7 @@ impl Database {
         sqlx::query(
             "UPDATE instance_revisions SET status = 'failed' WHERE status IN ('proposed', 'staged') \
              AND id IN (SELECT json_extract(progress_json, '$.revisionId') FROM jobs \
-             WHERE kind = 'instance_install' AND state IN ('queued', 'running'))",
+             WHERE kind = 'instance_install' AND state IN ('queued', 'running', 'paused'))",
         )
         .execute(&mut *transaction)
         .await?;
@@ -318,7 +354,7 @@ impl Database {
                  THEN 'Installation was interrupted when slate closed. Retry the installation.' \
                  ELSE 'Installation stopped because the instance was moved to trash.' END, \
                  '$.completedItems', NULL, '$.totalItems', NULL), \
-             updated_at = ? WHERE kind = 'instance_install' AND state IN ('queued', 'running')",
+             updated_at = ? WHERE kind = 'instance_install' AND state IN ('queued', 'running', 'paused')",
         )
         .bind(now)
         .execute(&mut *transaction)
@@ -382,7 +418,7 @@ impl Database {
         let active: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM jobs j \
              INNER JOIN instances i ON i.id = j.entity_id \
-             WHERE j.id = ? AND j.state IN ('queued', 'running') AND i.trashed_at IS NULL)",
+             WHERE j.id = ? AND j.state IN ('queued', 'running', 'paused') AND i.trashed_at IS NULL)",
         )
         .bind(completion.job_id.to_string())
         .fetch_one(&mut *transaction)
@@ -526,7 +562,7 @@ impl Database {
         let now = now_rfc3339()?;
         let mut transaction = self.pool.begin().await?;
         let active: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM jobs WHERE id = ? AND state IN ('queued', 'running'))",
+            "SELECT EXISTS(SELECT 1 FROM jobs WHERE id = ? AND state IN ('queued', 'running', 'paused'))",
         )
         .bind(job_id.to_string())
         .fetch_one(&mut *transaction)
@@ -578,7 +614,7 @@ impl Database {
         let now = now_rfc3339()?;
         let mut transaction = self.pool.begin().await?;
         let instance_id: Option<String> = sqlx::query_scalar(
-            "SELECT entity_id FROM jobs WHERE id = ? AND state IN ('queued', 'running') \
+            "SELECT entity_id FROM jobs WHERE id = ? AND state IN ('queued', 'running', 'paused') \
              AND json_extract(progress_json, '$.revisionId') = ?",
         )
         .bind(job_id.to_string())
@@ -882,10 +918,60 @@ mod tests {
     #[test]
     fn job_states_match_database_values() {
         assert_eq!(JobState::Running.as_storage_value(), "running");
+        assert_eq!(JobState::Paused.as_storage_value(), "paused");
         assert_eq!(
             JobState::try_from("succeeded").ok(),
             Some(JobState::Succeeded)
         );
+    }
+
+    #[tokio::test]
+    async fn active_install_can_pause_resume_and_cancel() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let directory = tempfile::tempdir()?;
+        let database = Database::connect(&directory.path().join("state.sqlite")).await?;
+        let root = database.create_storage_root("C:/slate", None).await?;
+        let instance = database
+            .create_instance(NewInstance {
+                name: InstanceName::parse("Paused")?,
+                mode: InstanceMode::Vanilla,
+                management_mode: ManagementMode::Local,
+                root_id: root,
+                minecraft_version: "1.21.1".to_owned(),
+                loader_kind: LoaderFamily::Vanilla,
+                loader_version: None,
+                memory_mb: 4096,
+                modpack_source: None,
+            })
+            .await?;
+        let pending = database
+            .begin_instance_install(instance.id, instance.revision, RequestId::new())
+            .await?;
+
+        assert!(database.set_install_paused(pending.job.id, true).await?);
+        assert_eq!(
+            database.get_install_job(pending.job.id).await?.state,
+            JobState::Paused
+        );
+        assert!(database.has_active_install_jobs().await?);
+        assert!(database.set_install_paused(pending.job.id, false).await?);
+        assert_eq!(
+            database.get_install_job(pending.job.id).await?.state,
+            JobState::Running
+        );
+        database
+            .cancel_instance_install(
+                pending.job.id,
+                pending.revision_id,
+                "Installation cancelled",
+            )
+            .await?;
+        assert_eq!(
+            database.get_install_job(pending.job.id).await?.state,
+            JobState::Cancelled
+        );
+        database.close().await;
+        Ok(())
     }
 
     #[tokio::test]

@@ -28,7 +28,7 @@ pub use error::{AppError, FieldError};
 pub use events::EventEnvelope;
 pub use install::{
     CancelInstallJobRequest, InstallInstanceRequest, InstallJobStateDto, InstallJobSummary,
-    InstallOperationDto, ModpackInstallStarted, RetryInstallJobRequest,
+    InstallOperationDto, ModpackInstallStarted, RetryInstallJobRequest, SetInstallJobPausedRequest,
 };
 pub use instance::{
     CreateInstanceRequest, CreateInstanceSnapshotRequest, DeleteInstanceSnapshotRequest,

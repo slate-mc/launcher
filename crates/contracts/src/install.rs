@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub enum InstallJobStateDto {
     Queued,
     Running,
+    Paused,
     Succeeded,
     Failed,
     Cancelled,
@@ -33,6 +34,14 @@ pub struct InstallInstanceRequest {
 pub struct CancelInstallJobRequest {
     pub job_id: Uuid,
     pub revision_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetInstallJobPausedRequest {
+    pub job_id: Uuid,
+    pub revision_id: Uuid,
+    pub paused: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

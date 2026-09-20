@@ -497,7 +497,7 @@ impl Database {
                  'Installation stopped because the instance was moved to trash.', \
                  '$.completedItems', NULL, '$.totalItems', NULL), updated_at = ? \
              WHERE kind = 'instance_install' AND entity_id = ? \
-                 AND state IN ('queued', 'running')",
+                 AND state IN ('queued', 'running', 'paused')",
         )
         .bind(&now)
         .bind(id.to_string())

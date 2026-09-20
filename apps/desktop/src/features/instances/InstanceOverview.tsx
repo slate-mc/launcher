@@ -63,7 +63,11 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
     (job) => job.instanceId === instance.id,
   );
   const packUpdateQuery = useQuery({
-    queryKey: ["modpack-update", instance.id, instance.modpackSource?.versionId],
+    queryKey: [
+      "modpack-update",
+      instance.id,
+      instance.modpackSource?.versionId,
+    ],
     queryFn: () => checkModpackUpdate(instance.id),
     enabled:
       bridgeMode === "native" &&
@@ -165,7 +169,8 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
   const installing =
     instance.setupState === "preparing" ||
     installJob?.state === "queued" ||
-    installJob?.state === "running";
+    installJob?.state === "running" ||
+    installJob?.state === "paused";
   const ready = instance.setupState === "ready";
 
   return (
@@ -437,7 +442,9 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
               >
                 <RefreshCw
                   size={14}
-                  className={packUpdateQuery.isFetching ? "animate-spin" : undefined}
+                  className={
+                    packUpdateQuery.isFetching ? "animate-spin" : undefined
+                  }
                   aria-hidden="true"
                 />
               </button>
@@ -447,7 +454,10 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
                 Checking for a compatible update…
               </p>
             ) : packUpdateQuery.isError ? (
-              <p className="mt-3 mb-0 text-xs/[18px] text-app-danger" role="alert">
+              <p
+                className="mt-3 mb-0 text-xs/[18px] text-app-danger"
+                role="alert"
+              >
                 Updates could not be checked right now.
               </p>
             ) : packUpdateQuery.data?.updateAvailable &&
@@ -492,8 +502,8 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
                     packUpdateMutation.mutate({
                       instanceId: instance.id,
                       expectedRevision: instance.revision,
-                      targetVersionId:
-                        packUpdateQuery.data.latestVersionId as string,
+                      targetVersionId: packUpdateQuery.data
+                        .latestVersionId as string,
                     })
                   }
                 >
@@ -516,7 +526,10 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
               </div>
             )}
             {packUpdateMutation.isError ? (
-              <p className="mt-3 mb-0 text-xs/[18px] text-app-danger" role="alert">
+              <p
+                className="mt-3 mb-0 text-xs/[18px] text-app-danger"
+                role="alert"
+              >
                 The update could not be started. Check again and retry.
               </p>
             ) : null}

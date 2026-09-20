@@ -368,7 +368,8 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
   const installing =
     installMutation.isPending ||
     installJob?.state === "queued" ||
-    installJob?.state === "running";
+    installJob?.state === "running" ||
+    installJob?.state === "paused";
   const contentMutationPending =
     importMutation.isPending ||
     toggleMutation.isPending ||

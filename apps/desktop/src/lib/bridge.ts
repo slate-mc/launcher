@@ -978,6 +978,17 @@ export async function cancelInstallJob(input: {
   );
 }
 
+export async function setInstallJobPaused(input: {
+  jobId: string;
+  revisionId: string;
+  paused: boolean;
+}): Promise<InstallJob> {
+  requireNativeContent();
+  return installJobSchema.parse(
+    await invoke("install_job_set_paused", { request: input }),
+  );
+}
+
 export async function retryInstallJob(jobId: string): Promise<InstallJob> {
   requireNativeContent();
   return installJobSchema.parse(

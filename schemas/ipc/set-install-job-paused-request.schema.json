@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SetInstallJobPausedRequest",
+  "type": "object",
+  "properties": {
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "paused": {
+      "type": "boolean"
+    },
+    "revisionId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "jobId",
+    "revisionId",
+    "paused"
+  ]
+}

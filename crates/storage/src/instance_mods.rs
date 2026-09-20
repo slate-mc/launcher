@@ -207,7 +207,7 @@ impl Database {
             "UPDATE instances SET revision = revision + 1, updated_at = ? \
              WHERE id = ? AND revision = ? AND trashed_at IS NULL \
              AND NOT EXISTS (SELECT 1 FROM jobs WHERE kind = 'instance_install' \
-                 AND entity_id = ? AND state IN ('queued', 'running'))",
+                 AND entity_id = ? AND state IN ('queued', 'running', 'paused'))",
         )
         .bind(now)
         .bind(instance_id.to_string())
@@ -240,7 +240,7 @@ impl Database {
         }
         let busy: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM jobs WHERE kind = 'instance_install' \
-             AND entity_id = ? AND state IN ('queued', 'running'))",
+             AND entity_id = ? AND state IN ('queued', 'running', 'paused'))",
         )
         .bind(instance_id.to_string())
         .fetch_one(&self.pool)
