@@ -13,6 +13,7 @@ mod instance;
 mod launch;
 mod modpack;
 mod schema;
+mod server;
 mod settings;
 mod system;
 
@@ -55,6 +56,10 @@ pub use modpack::{
     SetInstanceModPinnedRequest,
 };
 pub use schema::schema_documents;
+pub use server::{
+    CreateSavedServerRequest, PingServerRequest, RemoveSavedServerRequest, SavedServerSummary,
+    ServerStatusSummary, UpdateSavedServerRequest,
+};
 pub use settings::{
     AppPreferencesDto, ReduceMotionPreferenceDto, ThemePreferenceDto, UpdateAppPreferencesRequest,
 };

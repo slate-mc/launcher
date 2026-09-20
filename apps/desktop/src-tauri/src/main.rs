@@ -17,6 +17,8 @@ mod launch_support;
 mod mapping;
 mod mod_install_support;
 mod portable_instance;
+mod server_commands;
+mod server_support;
 mod session_commands;
 mod session_support;
 mod settings_commands;
@@ -53,6 +55,8 @@ use mapping::*;
 use mod_install_support::*;
 use portable_instance::*;
 use serde::{Deserialize, Serialize};
+use server_commands::*;
+use server_support::*;
 use session_commands::*;
 use session_support::*;
 use settings_commands::*;
@@ -64,36 +68,38 @@ use slate_contracts::{
     AccountIdRequest, AppError, AppPreferencesDto, AuthCancelRequest, AuthFlowStateDto,
     AuthFlowStatus, AuthStartResponse, BootstrapResponse, CapabilitySummary,
     ClearStorageCategoryRequest, CreateInstanceRequest, CreateInstanceSnapshotRequest,
-    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
-    EmptyInstanceTrashRequest, ExportInstanceRequest, GameSessionStateDto, GameSessionSummary,
-    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
-    InstallInstanceRequest, InstallJobStateDto, InstallJobSummary, InstallModRequest,
-    InstallModpackRequest, InstanceArtworkAsset, InstanceArtworkKindDto,
-    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentKindDto,
-    InstanceDirectoryKindDto, InstanceGameOptionsSummary, InstanceModOriginDto,
-    InstanceModResolution, InstanceModSummary, InstanceModeDto, InstanceModsRequest,
-    InstanceSettingsSummary, InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary,
-    InstanceWindowModeDto, JavaRuntimeSummary, JavaSelectionModeDto, LaunchInstanceRequest,
-    LauncherBehaviorDto, LoaderKindDto, LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto,
-    MinecraftAccountStatusDto, MinecraftAccountSummary, MinecraftReleaseKindDto,
-    MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
-    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
-    ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
-    OpenInstanceDirectoryRequest, PerformancePresetDto, PreflightSummary, ProcessPriorityDto,
+    CreateSavedServerRequest, DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest,
+    DuplicateInstanceRequest, EmptyInstanceTrashRequest, ExportInstanceRequest,
+    GameSessionStateDto, GameSessionSummary, GetInstanceArtworkRequest,
+    GetInstanceGameOptionsRequest, ImportInstanceRequest, InstallInstanceRequest,
+    InstallJobStateDto, InstallJobSummary, InstallModRequest, InstallModpackRequest,
+    InstanceArtworkAsset, InstanceArtworkKindDto, InstanceContentFileSummary,
+    InstanceContentFilesRequest, InstanceContentKindDto, InstanceDirectoryKindDto,
+    InstanceGameOptionsSummary, InstanceModOriginDto, InstanceModResolution, InstanceModSummary,
+    InstanceModeDto, InstanceModsRequest, InstanceSettingsSummary, InstanceSnapshotSummary,
+    InstanceSnapshotsRequest, InstanceSummary, InstanceWindowModeDto, JavaRuntimeSummary,
+    JavaSelectionModeDto, LaunchInstanceRequest, LauncherBehaviorDto, LoaderKindDto,
+    LoaderVersionCatalog, LoaderVersionsRequest, MemoryModeDto, MinecraftAccountStatusDto,
+    MinecraftAccountSummary, MinecraftReleaseKindDto, MinecraftVersionCatalog,
+    MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary, ModpackVersionRequest,
+    ModpackVersionsRequest, MoveInstanceStorageRequest, OpenInstanceDirectoryRequest,
+    PerformancePresetDto, PingServerRequest, PreflightSummary, ProcessPriorityDto,
     ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
-    RenameInstanceRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, SessionLogEvent,
-    SessionLogEventKindDto, SessionLogSubscription, SetDefaultAccountRequest, SetFavoriteRequest,
+    RemoveSavedServerRequest, RenameInstanceRequest, RestoreInstanceSnapshotRequest,
+    RestoreTrashedInstanceRequest, SavedServerSummary, SelectInstanceArtworkRequest,
+    SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto,
+    SessionLogSubscription, SetDefaultAccountRequest, SetFavoriteRequest,
     SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
     StorageCategoryDto, StorageCategorySummary, StorageCleanupResult, StorageOverview,
     SubscribeSessionLogRequest, ThemePreferenceDto, TrashInstanceRequest, TrashedInstanceSummary,
     UnsubscribeSessionLogRequest, UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, LoaderFamily, ManagementMode,
-    RequestId, RevisionId, SessionId, StorageRootId,
+    RequestId, RevisionId, ServerId, SessionId, StorageRootId,
 };
 use slate_installer::{
     ContentUpdateRequest, InstallProgress, InstallRequest as NativeInstallRequest,
@@ -126,8 +132,9 @@ use slate_storage::{
     InstallJobRecord, InstalledRuntime, InstanceModEnabledChange, InstanceModRecord,
     InstanceModTarget, InstanceRecord, InstanceSnapshotRecord, InstanceWindowMode,
     JavaSelectionMode, JobState, LauncherBehavior, MemoryMode, NewInstance, NewInstanceMod,
-    NewModpackSource, PerformancePreset, ProcessPriority, ReduceMotionPreference, StorageError,
-    ThemePreference, TrashedInstanceRecord, UpdateInstanceSettings,
+    NewModpackSource, NewSavedServer, PerformancePreset, ProcessPriority, ReduceMotionPreference,
+    SavedServerRecord, StorageError, ThemePreference, TrashedInstanceRecord,
+    UpdateInstanceSettings,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -648,6 +655,11 @@ fn main() {
             session_force_stop,
             session_log_subscribe,
             session_log_unsubscribe,
+            servers_list,
+            server_create,
+            server_update,
+            server_remove,
+            server_ping,
             preferences_get,
             preferences_update,
             preflight_get,

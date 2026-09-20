@@ -7,6 +7,21 @@ pub(super) async fn instance_launch(
     request: LaunchInstanceRequest,
 ) -> Result<GameSessionSummary, AppError> {
     refresh_exited_sessions(state.inner()).await;
+    let requested_server = request
+        .server_address
+        .as_deref()
+        .map(normalize_server_address)
+        .transpose()
+        .map_err(|_| {
+            AppError::new(
+                "validation.server_address",
+                "Enter a valid Minecraft server address.",
+            )
+            .with_field_error(
+                "serverAddress",
+                "Use a hostname or IP address, with an optional port.",
+            )
+        })?;
     let instance_id = InstanceId::from_uuid(request.id);
     if state
         .processes
@@ -170,11 +185,9 @@ pub(super) async fn instance_launch(
             .map(|monitor| (monitor.size().width, monitor.size().height)),
         InstanceWindowMode::Fullscreen => None,
     };
-    let quick_play = instance
-        .settings
-        .quick_play_server
-        .as_ref()
-        .map(|server| QuickPlay::Multiplayer(server.clone()));
+    let quick_play = requested_server
+        .or_else(|| instance.settings.quick_play_server.clone())
+        .map(QuickPlay::Multiplayer);
     let additional_jvm_arguments = launch_jvm_arguments(&instance.settings);
     apply_managed_game_options(
         &layout.game_directory,

@@ -72,6 +72,28 @@ impl Database {
         Ok(())
     }
 
+    pub async fn update_saved_server(
+        &self,
+        id: ServerId,
+        server: NewSavedServer,
+    ) -> Result<SavedServerRecord, StorageError> {
+        let result = sqlx::query(
+            "UPDATE saved_servers SET name = ?, address = ?, preferred_instance_id = ?, \
+             updated_at = ? WHERE id = ?",
+        )
+        .bind(server.name.trim())
+        .bind(server.address.trim())
+        .bind(server.preferred_instance_id.map(|value| value.to_string()))
+        .bind(now_rfc3339()?)
+        .bind(id.to_string())
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(StorageError::ServerNotFound);
+        }
+        self.get_saved_server(id).await
+    }
+
     async fn get_saved_server(&self, id: ServerId) -> Result<SavedServerRecord, StorageError> {
         let row = sqlx::query(
             "SELECT id, name, address, preferred_instance_id, created_at, updated_at \
@@ -126,6 +148,18 @@ mod tests {
             database.list_saved_servers(20).await?,
             vec![created.clone()]
         );
+        let updated = database
+            .update_saved_server(
+                created.id,
+                NewSavedServer {
+                    name: "Renamed server".to_owned(),
+                    address: "play.example.test:25566".to_owned(),
+                    preferred_instance_id: None,
+                },
+            )
+            .await?;
+        assert_eq!(updated.name, "Renamed server");
+        assert_eq!(updated.address, "play.example.test:25566");
         database.remove_saved_server(created.id).await?;
         assert!(database.list_saved_servers(20).await?.is_empty());
         assert!(matches!(

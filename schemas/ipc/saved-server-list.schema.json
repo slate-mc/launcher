@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Array_of_SavedServerSummary",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/SavedServerSummary"
+  },
+  "$defs": {
+    "SavedServerSummary": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "preferredInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "address",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  }
+}

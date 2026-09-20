@@ -18,6 +18,8 @@ pub struct LaunchInstanceRequest {
     pub id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_address: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

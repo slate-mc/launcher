@@ -1,24 +1,25 @@
 use crate::{
     AppError, AppPreferencesDto, AuthFlowStatus, AuthStartResponse, BootstrapResponse,
     ClearStorageCategoryRequest, CreateInstanceRequest, CreateInstanceSnapshotRequest,
-    DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest, DuplicateInstanceRequest,
-    EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest, GameSessionSummary,
-    GetInstanceArtworkRequest, GetInstanceGameOptionsRequest, ImportInstanceRequest,
-    InstallInstanceRequest, InstallJobSummary, InstallModRequest, InstallModpackRequest,
-    InstanceContentFileSummary, InstanceContentFilesRequest, InstanceGameOptionsSummary,
-    InstanceModResolution, InstanceModSummary, InstanceModsRequest, InstanceSnapshotSummary,
-    InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest, LoaderVersionCatalog,
-    LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog, ModSearchRequest,
-    ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest, ModpackVersionRequest,
-    ModpackVersionsRequest, MoveInstanceStorageRequest, OpenInstanceDirectoryRequest,
-    PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
-    RemoveInstanceModRequest, RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, SessionLogEvent,
+    CreateSavedServerRequest, DeleteInstanceSnapshotRequest, DeleteTrashedInstanceRequest,
+    DuplicateInstanceRequest, EmptyInstanceTrashRequest, EventEnvelope, ExportInstanceRequest,
+    GameSessionSummary, GetInstanceArtworkRequest, GetInstanceGameOptionsRequest,
+    ImportInstanceRequest, InstallInstanceRequest, InstallJobSummary, InstallModRequest,
+    InstallModpackRequest, InstanceContentFileSummary, InstanceContentFilesRequest,
+    InstanceGameOptionsSummary, InstanceModResolution, InstanceModSummary, InstanceModsRequest,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, LaunchInstanceRequest,
+    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
+    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
+    ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceStorageRequest,
+    OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
+    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, SavedServerSummary,
+    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
     SessionLogSubscription, SetInstanceContentFileEnabledRequest, SetInstanceModEnabledRequest,
     SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
     StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
     UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -168,6 +169,22 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(SessionLogSubscription),
         ),
         ("session-log-event", schema_for!(SessionLogEvent)),
+        ("saved-server-summary", schema_for!(SavedServerSummary)),
+        ("saved-server-list", schema_for!(Vec<SavedServerSummary>)),
+        (
+            "create-saved-server-request",
+            schema_for!(CreateSavedServerRequest),
+        ),
+        (
+            "update-saved-server-request",
+            schema_for!(UpdateSavedServerRequest),
+        ),
+        (
+            "remove-saved-server-request",
+            schema_for!(RemoveSavedServerRequest),
+        ),
+        ("ping-server-request", schema_for!(PingServerRequest)),
+        ("server-status-summary", schema_for!(ServerStatusSummary)),
         ("modpack-search-request", schema_for!(ModpackSearchRequest)),
         (
             "modpack-search-response",
@@ -273,7 +290,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 71);
+        assert_eq!(schemas.len(), 78);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

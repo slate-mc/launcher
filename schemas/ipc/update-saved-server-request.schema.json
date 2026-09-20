@@ -1,27 +1,29 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "LaunchInstanceRequest",
+  "title": "UpdateSavedServerRequest",
   "type": "object",
   "properties": {
-    "accountId": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "format": "uuid"
+    "address": {
+      "type": "string"
     },
     "id": {
       "type": "string",
       "format": "uuid"
     },
-    "serverAddress": {
+    "name": {
+      "type": "string"
+    },
+    "preferredInstanceId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "format": "uuid"
     }
   },
   "required": [
-    "id"
+    "id",
+    "name",
+    "address"
   ]
 }
