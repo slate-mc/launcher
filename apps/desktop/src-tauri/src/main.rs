@@ -1718,14 +1718,28 @@ async fn instance_mod_install(
                     .to_owned()
             };
             let normalized_destination = normalized_content_path(&download.destination);
-            if installed.paths.contains(&normalized_destination) {
-                return Err(AppError::new(
-                    "mod.file_conflict",
-                    format!(
-                        "{} conflicts with an existing mod file named {}.",
-                        selection.display_name, download.destination
-                    ),
-                ));
+            if let Some(existing) = installed.artifacts.get(&normalized_destination) {
+                if !installed_artifact_matches(existing, download.size, &download.hashes) {
+                    return Err(AppError::new(
+                        "mod.file_conflict",
+                        format!(
+                            "{} conflicts with an existing mod file named {}.",
+                            selection.display_name, download.destination
+                        ),
+                    ));
+                }
+                pending_by_identity.insert(
+                    dependency_identity,
+                    NewInstanceMod {
+                        provider,
+                        project_id,
+                        version_id,
+                        display_name,
+                        file_path: download.destination,
+                        hashes: download.hashes,
+                    },
+                );
+                continue;
             }
             if let Some(existing) = planned_destinations.get(&normalized_destination) {
                 if !same_mod_artifact(
@@ -1815,7 +1829,12 @@ async fn instance_mod_install(
 
 struct InstalledModIndex {
     identities: HashSet<String>,
-    paths: HashSet<String>,
+    artifacts: HashMap<String, InstalledModArtifact>,
+}
+
+struct InstalledModArtifact {
+    size: u64,
+    known_hashes: Vec<Hashes>,
 }
 
 struct PlannedModDestination {
@@ -1845,6 +1864,16 @@ fn same_mod_artifact(left_size: u64, left: &Hashes, right_size: u64, right: &Has
     matched
 }
 
+fn installed_artifact_matches(
+    installed: &InstalledModArtifact,
+    planned_size: u64,
+    planned_hashes: &Hashes,
+) -> bool {
+    installed.known_hashes.iter().any(|known_hashes| {
+        same_mod_artifact(installed.size, known_hashes, planned_size, planned_hashes)
+    })
+}
+
 async fn installed_mod_index(
     state: &DesktopState,
     instance: &InstanceRecord,
@@ -1855,10 +1884,18 @@ async fn installed_mod_index(
         .await
         .map_err(|_| content_file_error())?
         .map_err(|_| content_file_error())?;
-    let installed_paths = files
+    let mut artifacts = files
         .into_iter()
-        .map(|file| normalized_content_path(&file.file_path))
-        .collect::<HashSet<_>>();
+        .map(|file| {
+            (
+                normalized_content_path(&file.file_path),
+                InstalledModArtifact {
+                    size: file.size,
+                    known_hashes: Vec::new(),
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
     let mut identities = HashSet::new();
     for installed in state
         .database
@@ -1866,8 +1903,9 @@ async fn installed_mod_index(
         .await
         .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?
     {
-        if installed_paths.contains(&normalized_content_path(&installed.file_path)) {
+        if let Some(artifact) = artifacts.get_mut(&normalized_content_path(&installed.file_path)) {
             identities.insert(format!("{}:{}", installed.provider, installed.project_id));
+            artifact.known_hashes.push(installed.hashes);
         }
     }
     if let Some(source) = &instance.modpack_source {
@@ -1878,16 +1916,18 @@ async fn installed_mod_index(
             .map_err(modpack_api_error)?;
         for file in version.files {
             if file.kind == PackFileType::Mod
-                && installed_paths.contains(&normalized_content_path(&file.path))
-                && let Some(reference) = file.source
+                && let Some(artifact) = artifacts.get_mut(&normalized_content_path(&file.path))
             {
-                identities.insert(format!("{}:{}", reference.provider, reference.project_id));
+                artifact.known_hashes.push(file.hashes);
+                if let Some(reference) = file.source {
+                    identities.insert(format!("{}:{}", reference.provider, reference.project_id));
+                }
             }
         }
     }
     Ok(InstalledModIndex {
         identities,
-        paths: installed_paths,
+        artifacts,
     })
 }
 
@@ -3203,7 +3243,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_mod_download_id, same_mod_artifact};
+    use super::{
+        InstalledModArtifact, installed_artifact_matches, parse_mod_download_id, same_mod_artifact,
+    };
     use slate_modpack_api_contracts::{Hashes, Provider};
 
     #[test]
@@ -3251,6 +3293,34 @@ mod tests {
                 sha256: None,
                 sha1: Some("c".repeat(40)),
             }
+        ));
+    }
+
+    #[test]
+    fn installed_cross_provider_dependency_is_reused_when_hashes_match() {
+        let installed = InstalledModArtifact {
+            size: 2_521_340,
+            known_hashes: vec![Hashes {
+                sha512: Some("a".repeat(128)),
+                sha256: None,
+                sha1: Some("16c30dfcceaed1ac3b6ac84cbd348a906dc5093e".to_owned()),
+            }],
+        };
+        let curseforge_dependency = Hashes {
+            sha512: None,
+            sha256: None,
+            sha1: Some("16c30dfcceaed1ac3b6ac84cbd348a906dc5093e".to_owned()),
+        };
+
+        assert!(installed_artifact_matches(
+            &installed,
+            2_521_340,
+            &curseforge_dependency
+        ));
+        assert!(!installed_artifact_matches(
+            &installed,
+            2_521_341,
+            &curseforge_dependency
         ));
     }
 }
