@@ -117,6 +117,30 @@ pub(super) async fn instance_mods_list(
 }
 
 #[tauri::command]
+pub(super) async fn instance_mod_versions(
+    state: tauri::State<'_, DesktopState>,
+    request: InstanceModVersionsRequest,
+) -> Result<ModVersionList, AppError> {
+    validate_instance_mod_reference(Some(request.provider), Some(&request.project_id))?;
+    let instance = state
+        .database
+        .get_instance(InstanceId::from_uuid(request.instance_id))
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
+    let (loader, _) = instance_mod_target(&instance)?;
+    state
+        .modpacks
+        .mod_versions(
+            request.provider,
+            &request.project_id,
+            &instance.minecraft_version,
+            loader,
+        )
+        .await
+        .map_err(modpack_api_error)
+}
+
+#[tauri::command]
 pub(super) async fn instance_mod_import(
     app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,

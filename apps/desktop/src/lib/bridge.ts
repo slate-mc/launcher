@@ -21,6 +21,7 @@ import {
   modpackSearchResultSchema,
   modpackVersionPageSchema,
   modpackVersionSchema,
+  modVersionListSchema,
   onboardingStateSchema,
   preferencesSchema,
   preflightSchema,
@@ -40,6 +41,7 @@ import {
   type ModpackProviders,
   type ModpackSearchResult,
   type ModpackVersion,
+  type ModVersionOption,
   type OnboardingState,
   type Provider,
   type InstallJob,
@@ -439,6 +441,17 @@ export async function listInstanceMods(
   return instanceModListSchema.parse(
     await invoke("instance_mods_list", { request: { instanceId } }),
   );
+}
+
+export async function listInstanceModVersions(input: {
+  instanceId: string;
+  provider: Exclude<Provider, "ftb">;
+  projectId: string;
+}): Promise<ModVersionOption[]> {
+  requireNativeContent();
+  return modVersionListSchema.parse(
+    await invoke("instance_mod_versions", { request: input }),
+  ).items;
 }
 
 export async function importLocalMod(input: {
