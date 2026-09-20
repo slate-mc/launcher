@@ -11,6 +11,13 @@ pub(super) struct PendingModChanges {
     pub(super) installed: Vec<NewInstanceMod>,
     pub(super) replaced_paths: Vec<String>,
     pub(super) dependency_sets: Vec<NewInstanceModDependencySet>,
+    pub(super) imported_overrides: Option<PendingImportedOverrides>,
+}
+
+#[derive(Debug)]
+pub(super) struct PendingImportedOverrides {
+    pub(super) archive_path: PathBuf,
+    pub(super) prefixes: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -29,6 +36,10 @@ pub(super) enum RetryableInstallOperation {
     ModpackUpdate {
         target_version_id: String,
     },
+    ImportedPackInstall {
+        plan: Box<InstallPlan>,
+        override_prefixes: Vec<String>,
+    },
 }
 
 impl RetryableInstallOperation {
@@ -38,6 +49,7 @@ impl RetryableInstallOperation {
             Self::ModInstall { .. } => "mod_install",
             Self::ModUpdate { .. } => "mod_update",
             Self::ModpackUpdate { .. } => "modpack_update",
+            Self::ImportedPackInstall { .. } => "imported_pack_install",
         }
     }
 
@@ -61,6 +73,13 @@ impl RetryableInstallOperation {
             Self::ModpackUpdate { target_version_id } => {
                 Some(serde_json::json!({ "targetVersionId": target_version_id }))
             }
+            Self::ImportedPackInstall {
+                plan,
+                override_prefixes,
+            } => Some(serde_json::json!({
+                "plan": plan,
+                "overridePrefixes": override_prefixes,
+            })),
         }
     }
 }
@@ -114,6 +133,7 @@ pub(super) async fn queue_instance_install(
         installed: pending_mods,
         replaced_paths: replaced_mod_paths,
         dependency_sets,
+        imported_overrides,
     } = mod_changes;
     let instance_id = instance.id;
     if state
@@ -319,6 +339,44 @@ pub(super) async fn queue_instance_install(
                 tracing::info!(job_id = %pending.job.id, instance_id = %instance_id, "installation cancelled");
             }
             Some(Ok(outcome)) => {
+                if let Some(imported_overrides) = imported_overrides {
+                    let _ = task_state
+                        .database
+                        .update_install_progress(
+                            pending.job.id,
+                            "content",
+                            "Applying imported pack settings",
+                            None,
+                            None,
+                        )
+                        .await;
+                    let instance_root = task_state.paths.instance(instance_id);
+                    let extraction = tauri::async_runtime::spawn_blocking(move || {
+                        extract_import_overrides(
+                            &imported_overrides.archive_path,
+                            &instance_root,
+                            &imported_overrides.prefixes,
+                        )
+                    })
+                    .await;
+                    if !matches!(extraction, Ok(Ok(()))) {
+                        let _ = task_state
+                            .database
+                            .fail_instance_install(
+                                pending.job.id,
+                                pending.revision_id,
+                                "The pack files were installed, but its local overrides could not be applied.",
+                            )
+                            .await;
+                        tracing::error!(
+                            job_id = %pending.job.id,
+                            instance_id = %instance_id,
+                            "imported pack overrides could not be applied"
+                        );
+                        task_state.installs.finish(pending.job.id);
+                        return;
+                    }
+                }
                 let runtime = InstalledRuntime {
                     vendor: outcome.runtime.vendor,
                     release_name: outcome.runtime.release_name.clone(),

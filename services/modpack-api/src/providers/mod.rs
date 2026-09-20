@@ -60,6 +60,14 @@ pub trait ModpackProvider: Send + Sync {
         loader: slate_modpack_api_contracts::LoaderKind,
         version_id: Option<&str>,
     ) -> Result<Vec<ResolvedMod>, ProviderError>;
+
+    async fn resolve_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: slate_modpack_api_contracts::LoaderKind,
+        version_id: &str,
+    ) -> Result<ResolvedMod, ProviderError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

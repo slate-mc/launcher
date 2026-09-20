@@ -14,6 +14,13 @@ pub(super) fn portable_instance_error() -> AppError {
     )
 }
 
+pub(super) fn pack_import_error() -> AppError {
+    AppError::new(
+        "local.pack_archive_invalid",
+        "Choose a valid CurseForge ZIP, Modrinth .mrpack, or slate instance archive.",
+    )
+}
+
 pub(super) async fn ensure_instance_stopped_and_current(
     state: &DesktopState,
     instance_id: InstanceId,

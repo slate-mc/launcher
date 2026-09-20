@@ -78,4 +78,14 @@ impl ModpackProvider for FtbProvider {
     ) -> Result<Vec<ResolvedMod>, ProviderError> {
         Err(ProviderError::UnsupportedContent)
     }
+
+    async fn resolve_mod(
+        &self,
+        _project_id: &str,
+        _minecraft_version: &str,
+        _loader: slate_modpack_api_contracts::LoaderKind,
+        _version_id: &str,
+    ) -> Result<ResolvedMod, ProviderError> {
+        Err(ProviderError::UnsupportedContent)
+    }
 }

@@ -22,6 +22,7 @@ mod mod_install_commands;
 mod mod_install_support;
 mod modpack_install_commands;
 mod onboarding_commands;
+mod pack_import;
 mod portable_instance;
 mod server_commands;
 mod server_support;
@@ -55,7 +56,6 @@ use instance_content::{
 use instance_files::{
     copy_duplicate_personal_data, create_snapshot, export_portable_archive,
     extract_portable_archive, prepare_instance_relocation, prepare_snapshot_restore,
-    read_portable_manifest,
 };
 use instance_lifecycle_commands::*;
 use instance_lifecycle_support::*;
@@ -70,6 +70,9 @@ use mod_install_commands::*;
 use mod_install_support::*;
 use modpack_install_commands::*;
 use onboarding_commands::*;
+use pack_import::{
+    DetectedImportArchive, detect_import_archive, extract_import_overrides, stage_import_archive,
+};
 use portable_instance::*;
 use serde::{Deserialize, Serialize};
 use server_commands::*;
@@ -138,10 +141,10 @@ use slate_minecraft::{
     ResolvedVersion, RuleContext,
 };
 use slate_modpack_api_contracts::{
-    Architecture as ModpackArchitecture, Hashes, InstallPlan, InstallPlanRequest, LoaderKind,
-    ModInstallPlanRequest, ModProjectReference, ModVersionList, Modpack, ModpackVersion,
-    PackFileType, Platform as ModpackPlatform, ProviderReference, ProvidersResponse,
-    ResolveModsRequest, SearchResponse, Side, VersionPage,
+    Architecture as ModpackArchitecture, Hashes, ImportPackPlanRequest, ImportedPackPlan,
+    InstallPlan, InstallPlanRequest, LoaderKind, ModInstallPlanRequest, ModProjectReference,
+    ModVersionList, Modpack, ModpackVersion, PackFileType, Platform as ModpackPlatform,
+    ProviderReference, ProvidersResponse, ResolveModsRequest, SearchResponse, Side, VersionPage,
 };
 use slate_modpack_client::{ModpackApiClient, SearchOptions, SearchSort, VersionOptions};
 use slate_platform::{

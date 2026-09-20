@@ -243,21 +243,47 @@ pub(super) async fn instance_import(
     let picked = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
-            .set_title("Import a portable slate instance")
-            .add_filter("slate instance", &["zip"])
+            .set_title("Import an instance or modpack")
+            .add_filter("Minecraft instance or modpack", &["zip", "mrpack"])
             .blocking_pick_file()
     })
     .await
-    .map_err(|_| portable_instance_error())?;
+    .map_err(|_| pack_import_error())?;
     let Some(source) = picked.and_then(|path| path.into_path().ok()) else {
         return Ok(None);
     };
-    let source_for_manifest = source.clone();
-    let manifest_bytes =
-        tauri::async_runtime::spawn_blocking(move || read_portable_manifest(&source_for_manifest))
+    let source_for_detection = source.clone();
+    let archive =
+        tauri::async_runtime::spawn_blocking(move || detect_import_archive(&source_for_detection))
             .await
-            .map_err(|_| portable_instance_error())?
-            .map_err(|_| portable_instance_error())?;
+            .map_err(|_| pack_import_error())?
+            .map_err(|_| pack_import_error())?;
+    let instance = match archive {
+        DetectedImportArchive::Slate(manifest_bytes) => {
+            import_portable_instance(state.inner(), source, manifest_bytes).await?
+        }
+        DetectedImportArchive::Pack { format, manifest } => {
+            let imported = state
+                .modpacks
+                .import_plan(&ImportPackPlanRequest {
+                    format,
+                    manifest,
+                    platform: current_modpack_platform(),
+                    arch: current_modpack_architecture()?,
+                })
+                .await
+                .map_err(modpack_api_error)?;
+            import_provider_pack(state.inner(), source, imported).await?
+        }
+    };
+    Ok(Some(instance_summary(instance)))
+}
+
+async fn import_portable_instance(
+    state: &DesktopState,
+    source: PathBuf,
+    manifest_bytes: Vec<u8>,
+) -> Result<InstanceRecord, AppError> {
     let manifest: PortableInstanceManifest =
         serde_json::from_slice(&manifest_bytes).map_err(|_| portable_instance_error())?;
     if manifest.schema != 1 {
@@ -276,7 +302,7 @@ pub(super) async fn instance_import(
     .map_err(configuration_app_error)?;
     let name = parse_instance_name(&manifest.name).map_err(instance_name_app_error)?;
     let modpack_source = validated_portable_modpack_source(manifest.modpack_source)?;
-    let root_id = preferred_storage_root_id(state.inner()).await?;
+    let root_id = preferred_storage_root_id(state).await?;
     let mut record = state
         .database
         .create_instance(NewInstance {
@@ -300,14 +326,14 @@ pub(super) async fn instance_import(
     })
     .await;
     if !matches!(extraction, Ok(Ok(()))) {
-        cleanup_failed_import(state.inner(), &record).await;
+        cleanup_failed_import(state, &record).await;
         return Err(portable_instance_error());
     }
     let settings_request = portable_settings_request(&record, manifest.settings.clone());
     let settings = match validated_instance_settings(&record, settings_request) {
         Ok(settings) => settings,
         Err(error) => {
-            cleanup_failed_import(state.inner(), &record).await;
+            cleanup_failed_import(state, &record).await;
             return Err(error);
         }
     };
@@ -316,7 +342,7 @@ pub(super) async fn instance_import(
         .update_instance_settings(record.id, record.revision, settings)
         .await
     {
-        cleanup_failed_import(state.inner(), &record).await;
+        cleanup_failed_import(state, &record).await;
         return Err(map_storage_error(
             error,
             "slate could not apply the imported profile.",
@@ -329,15 +355,114 @@ pub(super) async fn instance_import(
         .map_err(|error| {
             map_storage_error(error, "slate could not reload the imported profile.")
         })?;
-    record = match restore_imported_artwork(state.inner(), record.clone(), &manifest.settings).await
-    {
+    record = match restore_imported_artwork(state, record.clone(), &manifest.settings).await {
         Ok(record) => record,
         Err(error) => {
-            cleanup_failed_import(state.inner(), &record).await;
+            cleanup_failed_import(state, &record).await;
             return Err(error);
         }
     };
-    Ok(Some(instance_summary(record)))
+    Ok(record)
+}
+
+async fn import_provider_pack(
+    state: &DesktopState,
+    source: PathBuf,
+    imported: ImportedPackPlan,
+) -> Result<InstanceRecord, AppError> {
+    let ImportedPackPlan {
+        name,
+        version_name,
+        mut plan,
+        override_directories,
+    } = imported;
+    let loader_kind = launcher_loader_kind(plan.runtime.loader.kind)?;
+    let loader_version = validate_selected_loader_version(
+        &plan.runtime.minecraft,
+        loader_kind,
+        plan.runtime.loader.version.as_deref(),
+    )
+    .await?;
+    plan.runtime.loader.version.clone_from(&loader_version);
+    let mode = if loader_kind == LoaderKindDto::Vanilla {
+        InstanceModeDto::Vanilla
+    } else {
+        InstanceModeDto::Modded
+    };
+    let memory_mb = plan.runtime.memory.recommended_mb.clamp(1_024, 32_768);
+    validate_instance_configuration(
+        mode,
+        &plan.runtime.minecraft,
+        loader_kind,
+        loader_version.as_deref(),
+        memory_mb,
+    )
+    .map_err(configuration_app_error)?;
+    let name = parse_instance_name(&name).map_err(instance_name_app_error)?;
+    let root_id = preferred_storage_root_id(state).await?;
+    let record = state
+        .database
+        .create_instance(NewInstance {
+            name,
+            mode: mode.into(),
+            management_mode: ManagementMode::Local,
+            root_id,
+            minecraft_version: plan.runtime.minecraft.clone(),
+            loader_kind: loader_kind.into(),
+            loader_version,
+            memory_mb,
+            modpack_source: None,
+        })
+        .await
+        .map_err(|error| {
+            map_storage_error(error, "slate could not create the imported modpack.")
+        })?;
+    let source_for_staging = source;
+    let root_for_staging = record.storage_path.clone();
+    let archive_path = match tauri::async_runtime::spawn_blocking(move || {
+        stage_import_archive(&source_for_staging, &root_for_staging)
+    })
+    .await
+    {
+        Ok(Ok(path)) => path,
+        _ => {
+            cleanup_failed_import(state, &record).await;
+            return Err(pack_import_error());
+        }
+    };
+    tracing::info!(
+        instance_id = %record.id,
+        pack_version = %version_name,
+        "imported modpack queued"
+    );
+    let queued = queue_instance_install(
+        state,
+        record.clone(),
+        record.revision,
+        Some(plan.clone()),
+        PendingModChanges {
+            imported_overrides: Some(PendingImportedOverrides {
+                archive_path,
+                prefixes: override_directories.clone(),
+            }),
+            ..PendingModChanges::default()
+        },
+        None,
+        RetryableInstallOperation::ImportedPackInstall {
+            plan: Box::new(plan),
+            override_prefixes: override_directories,
+        },
+    )
+    .await;
+    if let Err(error) = queued {
+        cleanup_failed_import(state, &record).await;
+        return Err(error);
+    }
+    state
+        .database
+        .get_instance(record.id)
+        .await
+        .map_err(|error| map_storage_error(error, "slate could not reload the imported modpack."))
 }
 
 #[tauri::command]

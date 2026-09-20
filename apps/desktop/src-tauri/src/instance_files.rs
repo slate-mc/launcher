@@ -336,24 +336,6 @@ fn append_directory_to_archive(
     Ok(())
 }
 
-pub fn read_portable_manifest(source: &Path) -> Result<Vec<u8>, InstanceFileError> {
-    let input = std::fs::File::open(source)?;
-    let mut archive = ZipArchive::new(input)?;
-    let manifest = archive
-        .by_name(PORTABLE_MANIFEST)
-        .map_err(|_| InstanceFileError::ManifestMissing)?;
-    if manifest.size() > MAX_MANIFEST_BYTES {
-        return Err(InstanceFileError::ManifestTooLarge);
-    }
-    let mut bytes = Vec::with_capacity(usize::try_from(manifest.size()).unwrap_or(0));
-    let mut limited = manifest.take(MAX_MANIFEST_BYTES + 1);
-    limited.read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > MAX_MANIFEST_BYTES {
-        return Err(InstanceFileError::ManifestTooLarge);
-    }
-    Ok(bytes)
-}
-
 pub fn extract_portable_archive(
     source: &Path,
     instance_root: &Path,
@@ -442,8 +424,6 @@ pub enum InstanceFileError {
     InvalidDestination,
     #[error("snapshot data is missing")]
     SnapshotMissing,
-    #[error("portable instance manifest is missing")]
-    ManifestMissing,
     #[error("portable instance manifest is too large")]
     ManifestTooLarge,
     #[error("portable archive contains an unsafe path")]
@@ -458,7 +438,7 @@ pub enum InstanceFileError {
 mod tests {
     use super::{
         InstanceFileError, export_portable_archive, extract_portable_archive,
-        prepare_instance_relocation, read_portable_manifest,
+        prepare_instance_relocation,
     };
     use std::io::Write;
     use zip::write::SimpleFileOptions;
@@ -475,7 +455,6 @@ mod tests {
         let manifest = br#"{"schema":1}"#;
 
         export_portable_archive(&source, &archive, manifest)?;
-        assert_eq!(read_portable_manifest(&archive)?, manifest);
 
         let imported = temporary.path().join("imported");
         extract_portable_archive(&archive, &imported)?;

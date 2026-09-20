@@ -2,6 +2,7 @@
 
 mod error;
 mod file;
+mod import_plan;
 mod install;
 mod metadata;
 mod modpack;
@@ -12,6 +13,7 @@ pub use error::{ApiEnvelope, ApiErrorCode, ApiErrorDetail, ApiFieldError, ApiMet
 pub use file::{
     DownloadSource, FileOption, Hashes, ModpackFile, PackFileType, ProviderReference, Side,
 };
+pub use import_plan::{ImportPackFormat, ImportPackPlanRequest, ImportedPackPlan};
 pub use install::{
     Architecture, ExtractAction, InstallPlan, InstallPlanDownload, InstallPlanInstance,
     InstallPlanRequest, JavaPlan, ModInstallPlanRequest, Platform, RuntimePlan,

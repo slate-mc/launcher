@@ -119,6 +119,42 @@ pub(super) async fn install_job_retry(
             )
             .await
         }
+        Some("imported_pack_install") => {
+            let payload = job
+                .retry_payload
+                .as_ref()
+                .ok_or_else(retry_context_missing)?;
+            let plan = payload
+                .get("plan")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<InstallPlan>(value).ok())
+                .ok_or_else(retry_context_missing)?;
+            let override_prefixes = payload
+                .get("overridePrefixes")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<Vec<String>>(value).ok())
+                .ok_or_else(retry_context_missing)?;
+            let archive_path = instance.storage_path.join("metadata/import-source.zip");
+            queue_instance_install(
+                state.inner(),
+                instance,
+                expected_revision,
+                Some(plan.clone()),
+                PendingModChanges {
+                    imported_overrides: Some(PendingImportedOverrides {
+                        archive_path,
+                        prefixes: override_prefixes.clone(),
+                    }),
+                    ..PendingModChanges::default()
+                },
+                None,
+                RetryableInstallOperation::ImportedPackInstall {
+                    plan: Box::new(plan),
+                    override_prefixes,
+                },
+            )
+            .await
+        }
         _ => Err(retry_context_missing()),
     }
 }

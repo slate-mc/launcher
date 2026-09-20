@@ -188,6 +188,48 @@ impl ModpacksChProvider {
         }
     }
 
+    pub async fn resolve_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: LoaderKind,
+        version_id: &str,
+    ) -> Result<ResolvedMod, ProviderError> {
+        validate_identifier(project_id)?;
+        validate_identifier(version_id)?;
+        if minecraft_version.is_empty() || minecraft_version.len() > 32 {
+            return Err(ProviderError::InvalidIdentifier);
+        }
+        if loader == LoaderKind::Vanilla {
+            return Err(ProviderError::UnsupportedLoader);
+        }
+        match self.provider {
+            Provider::CurseForge => {
+                let version = self
+                    .select_curseforge_mod_version(
+                        project_id,
+                        Some(version_id),
+                        minecraft_version,
+                        loader,
+                    )
+                    .await?;
+                self.map_curseforge_mod_version(version, project_id).await
+            }
+            Provider::Modrinth => {
+                let version = self
+                    .select_modrinth_version(
+                        project_id,
+                        Some(version_id),
+                        minecraft_version,
+                        loader,
+                    )
+                    .await?;
+                self.map_modrinth_version(version, project_id).await
+            }
+            Provider::Ftb => Err(ProviderError::UnsupportedContent),
+        }
+    }
+
     pub async fn list_mod_versions(
         &self,
         project_id: &str,

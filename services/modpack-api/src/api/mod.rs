@@ -1,4 +1,5 @@
 mod health;
+mod imports;
 mod metadata;
 mod modpacks;
 mod mods;
@@ -17,6 +18,7 @@ pub fn router() -> Router<AppState> {
     Router::new().merge(health::routes()).nest(
         "/v1",
         metadata::routes()
+            .merge(imports::routes())
             .merge(providers::routes())
             .merge(mods::routes())
             .merge(modpacks::routes()),

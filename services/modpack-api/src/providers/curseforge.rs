@@ -82,4 +82,16 @@ impl ModpackProvider for CurseForgeProvider {
             .resolve_mods(project_id, minecraft_version, loader, version_id)
             .await
     }
+
+    async fn resolve_mod(
+        &self,
+        project_id: &str,
+        minecraft_version: &str,
+        loader: slate_modpack_api_contracts::LoaderKind,
+        version_id: &str,
+    ) -> Result<ResolvedMod, ProviderError> {
+        self.0
+            .resolve_mod(project_id, minecraft_version, loader, version_id)
+            .await
+    }
 }

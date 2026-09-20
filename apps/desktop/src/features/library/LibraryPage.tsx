@@ -1,20 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Plus, RotateCcw, Search, Star } from "lucide-react";
+import {
+  ChevronRight,
+  FolderInput,
+  Plus,
+  RotateCcw,
+  Search,
+  Star,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { InstanceArtwork } from "../../components/InstanceArtwork";
 import {
   EmptyState,
+  InlineNotice,
   PageHeader,
   StatusPill,
 } from "../../components/PageScaffold";
-import { listInstances, setInstanceFavorite } from "../../lib/bridge";
+import {
+  importInstance,
+  listInstances,
+  setInstanceFavorite,
+} from "../../lib/bridge";
 import {
   formatDate,
   instanceVersionLine,
   setupStateLabel,
   setupStateTone,
 } from "../../lib/format";
+import { getUserFacingError } from "../../lib/userFacingError";
 import type { LoaderKind } from "../../types/launcher";
 
 type LoaderFilter = "all" | LoaderKind;
@@ -23,6 +36,7 @@ export function LibraryPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [loader, setLoader] = useState<LoaderFilter>("all");
+  const [importedMessage, setImportedMessage] = useState<string>();
   const instancesQuery = useQuery({
     queryKey: ["instances"],
     queryFn: listInstances,
@@ -31,6 +45,19 @@ export function LibraryPage() {
     mutationFn: setInstanceFavorite,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
+    },
+  });
+  const importMutation = useMutation({
+    mutationFn: importInstance,
+    onMutate: () => setImportedMessage(undefined),
+    onSuccess: async (instance) => {
+      if (!instance) return;
+      await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      setImportedMessage(
+        instance.setupState === "preparing"
+          ? `${instance.name} was added. Installation is running.`
+          : `${instance.name} was added to your library.`,
+      );
     },
   });
 
@@ -54,17 +81,52 @@ export function LibraryPage() {
         title="Your instances"
         description="Keep each Minecraft setup separate, organized, and ready to play."
         actions={
-          <Link
-            to="/library/new"
-            className="inline-flex h-10 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent no-underline hover:brightness-105"
-          >
-            <Plus size={17} aria-hidden="true" />
-            New instance
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex h-10 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text hover:border-app-secondary disabled:opacity-50"
+              disabled={importMutation.isPending}
+              onClick={() => importMutation.mutate()}
+            >
+              {importMutation.isPending ? (
+                <RotateCcw
+                  className="animate-spin"
+                  size={16}
+                  aria-hidden="true"
+                />
+              ) : (
+                <FolderInput size={16} aria-hidden="true" />
+              )}
+              Import…
+            </button>
+            <Link
+              to="/library/new"
+              className="inline-flex h-10 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent no-underline hover:brightness-105"
+            >
+              <Plus size={17} aria-hidden="true" />
+              New instance
+            </Link>
+          </div>
         }
       />
 
       <div className="px-8 py-6">
+        {importMutation.isError ? (
+          <div className="mb-5">
+            <InlineNotice tone="danger" title="Import did not complete">
+              {getUserFacingError(
+                importMutation.error,
+                "Choose a valid CurseForge ZIP, Modrinth .mrpack, or slate instance archive.",
+              )}
+            </InlineNotice>
+          </div>
+        ) : importedMessage ? (
+          <div className="mb-5">
+            <InlineNotice tone="positive" title="Import started">
+              {importedMessage}
+            </InlineNotice>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between gap-4">
           <label className="relative block w-full max-w-[430px]">
             <span className="sr-only">Search instances</span>
@@ -155,13 +217,24 @@ export function LibraryPage() {
                   Clear filters
                 </button>
               ) : (
-                <Link
-                  to="/library/new"
-                  className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent no-underline"
-                >
-                  <Plus size={16} aria-hidden="true" />
-                  Create instance
-                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-9 items-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text disabled:opacity-50"
+                    disabled={importMutation.isPending}
+                    onClick={() => importMutation.mutate()}
+                  >
+                    <FolderInput size={16} aria-hidden="true" />
+                    Import
+                  </button>
+                  <Link
+                    to="/library/new"
+                    className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent no-underline"
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    Create instance
+                  </Link>
+                </div>
               )
             }
           />

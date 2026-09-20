@@ -2,10 +2,10 @@
 
 use reqwest::{Method, StatusCode};
 use slate_modpack_api_contracts::{
-    ApiEnvelope, ApiErrorCode, CategoriesResponse, InstallPlan, InstallPlanRequest, LoaderKind,
-    ModInstallPlanRequest, ModVersionList, Modpack, ModpackVersion, Provider, ProvidersResponse,
-    ReleaseType, ResolveModsRequest, ResolveModsResponse, SearchResponse, UpdateResponse,
-    VersionPage,
+    ApiEnvelope, ApiErrorCode, CategoriesResponse, ImportPackPlanRequest, ImportedPackPlan,
+    InstallPlan, InstallPlanRequest, LoaderKind, ModInstallPlanRequest, ModVersionList, Modpack,
+    ModpackVersion, Provider, ProvidersResponse, ReleaseType, ResolveModsRequest,
+    ResolveModsResponse, SearchResponse, UpdateResponse, VersionPage,
 };
 use std::time::Duration;
 use url::Url;
@@ -54,6 +54,18 @@ impl ModpackApiClient {
 
     pub async fn providers(&self) -> Result<ProvidersResponse, ClientError> {
         self.get(self.endpoint(&["v1", "providers"])?).await
+    }
+
+    pub async fn import_plan(
+        &self,
+        request: &ImportPackPlanRequest,
+    ) -> Result<ImportedPackPlan, ClientError> {
+        self.send(
+            Method::POST,
+            self.endpoint(&["v1", "import-plan"])?,
+            Some(serde_json::to_vec(request)?),
+        )
+        .await
     }
 
     pub async fn search(&self, options: &SearchOptions) -> Result<SearchResponse, ClientError> {
