@@ -192,43 +192,77 @@ async fn install_plan(
         })?;
     let adapter = provider_adapter(&state, &context, provider)?;
     let resolved = adapter
-        .resolve_mod(&project_id, minecraft_version, request.loader)
+        .resolve_mods(&project_id, minecraft_version, request.loader)
         .await
         .map_err(|error| provider_error(&context, error))?;
-    if !resolved.hashes.has_cryptographic_hash() {
-        return Err(ApiError::new(
+    let root = resolved.first().ok_or_else(|| {
+        ApiError::new(
             &context,
             StatusCode::BAD_GATEWAY,
             ApiErrorCode::DownloadUnavailable,
-            "The resolved mod has no cryptographic integrity hash.",
+            "The provider returned an empty mod installation plan.",
             false,
-        ));
-    }
-    let destination =
-        normalize_install_path(&format!("mods/{}", resolved.file_name)).map_err(|_| {
-            ApiError::new(
+        )
+    })?;
+    let mut destinations = BTreeSet::new();
+    let mut downloads = Vec::with_capacity(resolved.len());
+    let mut total_download_size = 0_u64;
+    for item in &resolved {
+        if !item.hashes.has_cryptographic_hash() {
+            return Err(ApiError::new(
+                &context,
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::DownloadUnavailable,
+                "A resolved mod dependency has no cryptographic integrity hash.",
+                false,
+            ));
+        }
+        let destination =
+            normalize_install_path(&format!("mods/{}", item.file_name)).map_err(|_| {
+                ApiError::new(
+                    &context,
+                    StatusCode::BAD_GATEWAY,
+                    ApiErrorCode::InvalidInstallPath,
+                    "The resolved mod has an unsafe installation path.",
+                    false,
+                )
+            })?;
+        if !destinations.insert(destination.clone()) {
+            return Err(ApiError::new(
                 &context,
                 StatusCode::BAD_GATEWAY,
                 ApiErrorCode::InvalidInstallPath,
-                "The resolved mod has an unsafe installation path.",
+                "Two resolved mod dependencies use the same installation path.",
+                false,
+            ));
+        }
+        total_download_size = total_download_size.checked_add(item.size).ok_or_else(|| {
+            ApiError::new(
+                &context,
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::DownloadUnavailable,
+                "The resolved mod dependency size is invalid.",
                 false,
             )
         })?;
-    let download = InstallPlanDownload {
-        id: format!("{provider}:{}:{}", resolved.project_id, resolved.version_id),
-        destination,
-        size: resolved.size,
-        hashes: resolved.hashes,
-        sources: vec![DownloadSource::Direct { url: resolved.url }],
-        required: true,
-    };
+        downloads.push(InstallPlanDownload {
+            id: format!("{provider}:{}:{}", item.project_id, item.version_id),
+            destination,
+            size: item.size,
+            hashes: item.hashes.clone(),
+            sources: vec![DownloadSource::Direct {
+                url: item.url.clone(),
+            }],
+            required: true,
+        });
+    }
     let plan = InstallPlan {
         schema: 1,
         instance: InstallPlanInstance {
             provider,
-            project_id: resolved.project_id,
-            version_id: resolved.version_id,
-            name: resolved.version_name,
+            project_id: root.project_id.clone(),
+            version_id: root.version_id.clone(),
+            name: root.version_name.clone(),
         },
         runtime: RuntimePlan {
             minecraft: minecraft_version.to_owned(),
@@ -244,8 +278,8 @@ async fn install_plan(
                 recommended_mb: 4_096,
             },
         },
-        total_download_size: download.size,
-        downloads: vec![download],
+        total_download_size,
+        downloads,
         extract: Vec::new(),
         delete: Vec::new(),
     };

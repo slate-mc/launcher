@@ -386,6 +386,20 @@ export function ModpackDetailPage() {
   }
   const project = projectQuery.data;
   const version = versionQuery.data;
+  const versionSummary = versionsQuery.data?.items.find(
+    (item) => item.id === effectiveVersionId,
+  );
+  const releaseName =
+    version?.name ??
+    versionSummary?.name ??
+    project.latest_version?.name ??
+    "Select a release";
+  const releaseMinecraft =
+    version?.minecraft.version ?? versionSummary?.minecraft_version;
+  const releaseLoader = version?.loader ?? versionSummary?.loader;
+  const resolvingRelease = Boolean(
+    effectiveVersionId && versionQuery.isPending,
+  );
   const resolvedInstanceName = instanceName ?? project.name;
   const optionalFiles = optionalFilesByVersion[effectiveVersionId] ?? [];
   const installable = version
@@ -393,6 +407,10 @@ export function ModpackDetailPage() {
     : false;
   const missingLoaderVersion =
     version?.loader.type !== "vanilla" && !version?.loader.version;
+  const deferredIntegrityFiles =
+    version?.files.filter(
+      (file) => !file.hashes.sha512 && !file.hashes.sha256 && !file.hashes.sha1,
+    ).length ?? 0;
   const optionalOptions =
     version?.files
       .filter((file) => file.optional && file.option)
@@ -550,118 +568,161 @@ export function ModpackDetailPage() {
           <p className="m-0 text-[10px] font-bold tracking-[.08em] text-app-muted uppercase">
             Install instance
           </p>
-          {versionQuery.isPending ? (
-            <div className="mt-4 h-44 animate-pulse rounded-control bg-app-raised" />
-          ) : version ? (
+          <h2 className="mt-2 mb-0 text-lg font-bold">{releaseName}</h2>
+          {releaseMinecraft && releaseLoader ? (
+            <dl className="mt-4 grid grid-cols-[110px_1fr] gap-y-2 text-xs">
+              <dt className="text-app-muted">Minecraft</dt>
+              <dd className="m-0 font-mono text-app-text">
+                {releaseMinecraft}
+              </dd>
+              <dt className="text-app-muted">Loader</dt>
+              <dd className="m-0 font-mono text-app-text">
+                {loaderLabel(releaseLoader.type)} {releaseLoader.version}
+              </dd>
+              <dt className="text-app-muted">Download</dt>
+              <dd className="m-0 font-mono text-app-text">
+                {version ? (
+                  `${formatBytes(version.total_download_size)}${deferredIntegrityFiles > 0 ? "+" : ""}`
+                ) : (
+                  <ResolvingValue />
+                )}
+              </dd>
+              <dt className="text-app-muted">Memory</dt>
+              <dd className="m-0 font-mono text-app-text">
+                {version ? (
+                  formatMemory(version.memory.recommended_mb)
+                ) : (
+                  <ResolvingValue />
+                )}
+              </dd>
+            </dl>
+          ) : resolvingRelease || versionsQuery.isPending ? (
+            <p className="mt-4 flex items-center gap-2 text-xs text-app-secondary">
+              <LoaderCircle
+                size={14}
+                className="animate-spin text-app-accent"
+                aria-hidden="true"
+              />
+              Loading release details
+            </p>
+          ) : (
+            <p className="mt-4 text-xs text-app-secondary">
+              Select an available release to inspect its install target.
+            </p>
+          )}
+          {deferredIntegrityFiles > 0 ? (
+            <p className="mt-3 mb-0 text-[10px]/[16px] text-app-muted">
+              {deferredIntegrityFiles} provider file
+              {deferredIntegrityFiles === 1 ? "" : "s"} will be sized and
+              verified when installation starts.
+            </p>
+          ) : null}
+          {effectiveVersionId ? (
+            <label className="mt-5 block text-xs font-bold text-app-text">
+              Instance name
+              <input
+                value={resolvedInstanceName}
+                maxLength={80}
+                onChange={(event) => setInstanceName(event.target.value)}
+                className="mt-2 h-10 w-full rounded-control border border-app-separator bg-app-bg px-3 text-[13px] font-normal text-app-text outline-none focus:border-app-accent"
+              />
+            </label>
+          ) : null}
+          {versionQuery.isError ? (
+            <div className="mt-5">
+              <InlineNotice tone="danger" title="Release details unavailable">
+                {errorMessage(versionQuery.error)}
+                <button
+                  type="button"
+                  className="mt-3 block text-[11px] font-bold text-app-accent hover:underline"
+                  onClick={() => void versionQuery.refetch()}
+                >
+                  Retry release
+                </button>
+              </InlineNotice>
+            </div>
+          ) : null}
+          {optionalOptions.length > 0 ? (
+            <fieldset className="mt-5 border-0 p-0">
+              <legend className="text-xs font-bold text-app-text">
+                Optional content
+              </legend>
+              <div className="mt-2 grid gap-2">
+                {optionalOptions.map((option) => (
+                  <label
+                    key={option.id}
+                    className="flex items-center gap-2 text-[11px] text-app-secondary"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={
+                        option.default || optionalFiles.includes(option.id)
+                      }
+                      disabled={option.default}
+                      onChange={(event) =>
+                        setOptionalFilesByVersion((current) => ({
+                          ...current,
+                          [effectiveVersionId]: event.target.checked
+                            ? [
+                                ...(current[effectiveVersionId] ?? []),
+                                option.id,
+                              ]
+                            : (current[effectiveVersionId] ?? []).filter(
+                                (id) => id !== option.id,
+                              ),
+                        }))
+                      }
+                    />
+                    {option.name}
+                    {option.default ? " (included)" : ""}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+          {version && (!installable || missingLoaderVersion) ? (
+            <div className="mt-5">
+              <InlineNotice
+                tone="warning"
+                title="This release cannot be installed yet"
+              >
+                {!installable
+                  ? `${loaderLabel(version.loader.type)} support is not available in slate yet.`
+                  : "The provider did not resolve an exact loader version, so slate will not guess one."}
+              </InlineNotice>
+            </div>
+          ) : null}
+          {installMutation.isError ? (
+            <div className="mt-5">
+              <InlineNotice tone="danger" title="Installation could not start">
+                {errorMessage(installMutation.error)}
+              </InlineNotice>
+            </div>
+          ) : null}
+          {effectiveVersionId ? (
             <>
-              <h2 className="mt-2 mb-0 text-lg font-bold">{version.name}</h2>
-              <dl className="mt-4 grid grid-cols-[110px_1fr] gap-y-2 text-xs">
-                <dt className="text-app-muted">Minecraft</dt>
-                <dd className="m-0 font-mono text-app-text">
-                  {version.minecraft.version}
-                </dd>
-                <dt className="text-app-muted">Loader</dt>
-                <dd className="m-0 font-mono text-app-text">
-                  {loaderLabel(version.loader.type)} {version.loader.version}
-                </dd>
-                <dt className="text-app-muted">Download</dt>
-                <dd className="m-0 font-mono text-app-text">
-                  {formatBytes(version.total_download_size)}
-                </dd>
-                <dt className="text-app-muted">Memory</dt>
-                <dd className="m-0 font-mono text-app-text">
-                  {formatMemory(version.memory.recommended_mb)}
-                </dd>
-              </dl>
-              <label className="mt-5 block text-xs font-bold text-app-text">
-                Instance name
-                <input
-                  value={resolvedInstanceName}
-                  maxLength={80}
-                  onChange={(event) => setInstanceName(event.target.value)}
-                  className="mt-2 h-10 w-full rounded-control border border-app-separator bg-app-bg px-3 text-[13px] font-normal text-app-text outline-none focus:border-app-accent"
-                />
-              </label>
-              {optionalOptions.length > 0 ? (
-                <fieldset className="mt-5 border-0 p-0">
-                  <legend className="text-xs font-bold text-app-text">
-                    Optional content
-                  </legend>
-                  <div className="mt-2 grid gap-2">
-                    {optionalOptions.map((option) => (
-                      <label
-                        key={option.id}
-                        className="flex items-center gap-2 text-[11px] text-app-secondary"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            option.default || optionalFiles.includes(option.id)
-                          }
-                          disabled={option.default}
-                          onChange={(event) =>
-                            setOptionalFilesByVersion((current) => ({
-                              ...current,
-                              [effectiveVersionId]: event.target.checked
-                                ? [
-                                    ...(current[effectiveVersionId] ?? []),
-                                    option.id,
-                                  ]
-                                : (current[effectiveVersionId] ?? []).filter(
-                                    (id) => id !== option.id,
-                                  ),
-                            }))
-                          }
-                        />
-                        {option.name}
-                        {option.default ? " (included)" : ""}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              ) : null}
-              {!installable || missingLoaderVersion ? (
-                <div className="mt-5">
-                  <InlineNotice
-                    tone="warning"
-                    title="This release cannot be installed yet"
-                  >
-                    {!installable
-                      ? `${loaderLabel(version.loader.type)} support is not available in slate yet.`
-                      : "The provider did not resolve an exact loader version, so slate will not guess one."}
-                  </InlineNotice>
-                </div>
-              ) : null}
-              {installMutation.isError ? (
-                <div className="mt-5">
-                  <InlineNotice
-                    tone="danger"
-                    title="Installation could not start"
-                  >
-                    {errorMessage(installMutation.error)}
-                  </InlineNotice>
-                </div>
-              ) : null}
               <button
                 type="button"
                 disabled={
+                  !version ||
                   !installable ||
                   missingLoaderVersion ||
                   !resolvedInstanceName.trim() ||
                   installMutation.isPending
                 }
                 className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:bg-app-raised disabled:text-app-muted"
-                onClick={() =>
+                onClick={() => {
+                  if (!version) return;
                   installMutation.mutate({
                     provider,
                     projectId: project.id,
                     versionId: version.id,
                     instanceName: resolvedInstanceName.trim(),
                     includeOptional: optionalFiles,
-                  })
-                }
+                  });
+                }}
               >
-                {installMutation.isPending ? (
+                {installMutation.isPending || resolvingRelease ? (
                   <LoaderCircle
                     size={17}
                     className="animate-spin"
@@ -671,8 +732,10 @@ export function ModpackDetailPage() {
                   <HardDriveDownload size={17} aria-hidden="true" />
                 )}
                 {installMutation.isPending
-                  ? "Creating instance"
-                  : "Install modpack"}
+                  ? "Verifying pack files"
+                  : resolvingRelease
+                    ? "Resolving release"
+                    : "Install modpack"}
               </button>
               <p className="mt-3 mb-0 flex items-start gap-2 text-[10px]/[16px] text-app-muted">
                 <ShieldCheck
@@ -684,14 +747,19 @@ export function ModpackDetailPage() {
                 is re-queried on retry.
               </p>
             </>
-          ) : (
-            <p className="mt-4 text-xs text-app-secondary">
-              Select an available release to inspect its install target.
-            </p>
-          )}
+          ) : null}
         </aside>
       </main>
     </div>
+  );
+}
+
+function ResolvingValue() {
+  return (
+    <span className="inline-flex items-center gap-1.5 font-sans text-[11px] text-app-muted">
+      <LoaderCircle size={12} className="animate-spin" aria-hidden="true" />
+      Resolving
+    </span>
   );
 }
 

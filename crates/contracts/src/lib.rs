@@ -37,10 +37,10 @@ pub use launch::{
     SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
 };
 pub use modpack::{
-    InstallModRequest, InstallModpackRequest, InstanceModOriginDto, InstanceModResolution,
-    InstanceModSummary, InstanceModsRequest, ModSearchRequest, ModpackProjectRequest,
-    ModpackSearchRequest, ModpackSortDto, ModpackVersionRequest, ModpackVersionsRequest,
-    RemoveInstanceModRequest, SetInstanceModEnabledRequest,
+    InstallModRequest, InstallModSelection, InstallModpackRequest, InstanceModOriginDto,
+    InstanceModResolution, InstanceModSummary, InstanceModsRequest, ModSearchRequest,
+    ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackVersionRequest,
+    ModpackVersionsRequest, RemoveInstanceModRequest, SetInstanceModEnabledRequest,
 };
 pub use schema::schema_documents;
 pub use settings::{

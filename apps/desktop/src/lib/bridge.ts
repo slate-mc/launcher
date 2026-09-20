@@ -516,12 +516,14 @@ export async function removeInstanceMod(input: {
   );
 }
 
-export async function installMod(input: {
+export async function installMods(input: {
   instanceId: string;
   expectedRevision: number;
-  provider: Exclude<Provider, "ftb">;
-  projectId: string;
-  displayName: string;
+  mods: Array<{
+    provider: Exclude<Provider, "ftb">;
+    projectId: string;
+    displayName: string;
+  }>;
 }): Promise<InstallJob> {
   requireNativeContent();
   return installJobSchema.parse(

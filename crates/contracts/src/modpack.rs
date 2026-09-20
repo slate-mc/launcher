@@ -79,12 +79,18 @@ pub struct ModSearchRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct InstallModRequest {
-    pub instance_id: uuid::Uuid,
-    pub expected_revision: u64,
+pub struct InstallModSelection {
     pub provider: Provider,
     pub project_id: String,
     pub display_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallModRequest {
+    pub instance_id: uuid::Uuid,
+    pub expected_revision: u64,
+    pub mods: Vec<InstallModSelection>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

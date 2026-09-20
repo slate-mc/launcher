@@ -40,7 +40,7 @@ import {
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
   installInstance,
-  installMod,
+  installMods,
   launchInstance,
   listAccounts,
   listGameSessions,
@@ -712,6 +712,9 @@ function Content({ instance }: { instance: LauncherInstance }) {
     "relevance" | "downloads" | "updated" | "newest"
   >("relevance");
   const [page, setPage] = useState(1);
+  const [selectedMods, setSelectedMods] = useState<
+    Record<string, ModpackSummary>
+  >({});
   const [installJobId, setInstallJobId] = useState<string>();
   const [removeTargetPath, setRemoveTargetPath] = useState<string>();
   const [notice, setNotice] = useState<{
@@ -758,20 +761,26 @@ function Content({ instance }: { instance: LauncherInstance }) {
   });
   const installJob = jobsQuery.data?.find((job) => job.id === installJobId);
   const installMutation = useMutation({
-    mutationFn: (item: ModpackSummary) => {
-      if (item.provider === "ftb") {
+    mutationFn: (items: ModpackSummary[]) => {
+      if (items.length === 0) {
+        throw new Error("Select at least one mod to install.");
+      }
+      if (items.some((item) => item.provider === "ftb")) {
         throw new Error("FTB does not provide individual mod downloads.");
       }
-      return installMod({
+      return installMods({
         instanceId: instance.id,
         expectedRevision: instance.revision,
-        provider: item.provider,
-        projectId: item.id,
-        displayName: item.name,
+        mods: items.map((item) => ({
+          provider: item.provider as Exclude<Provider, "ftb">,
+          projectId: item.id,
+          displayName: item.name,
+        })),
       });
     },
     onMutate: () => setNotice(undefined),
     onSuccess: async (job) => {
+      setSelectedMods({});
       setInstallJobId(job.id);
       queryClient.setQueryData(["install-jobs"], (current: unknown) =>
         Array.isArray(current) ? [job, ...current] : [job],
@@ -784,7 +793,7 @@ function Content({ instance }: { instance: LauncherInstance }) {
     onError: (error) =>
       setNotice({
         tone: "danger",
-        title: "Mod was not queued",
+        title: "Mods were not queued",
         message: contentErrorMessage(error),
       }),
   });
@@ -884,7 +893,7 @@ function Content({ instance }: { instance: LauncherInstance }) {
               : ("danger" as const),
           title:
             installJob.state === "succeeded"
-              ? "Mod installed"
+              ? "Mods installed"
               : "Mod installation stopped",
           message: installJob.message,
         }
@@ -935,6 +944,7 @@ function Content({ instance }: { instance: LauncherInstance }) {
         : [],
     ),
   );
+  const selectedModItems = Object.values(selectedMods);
   const unavailableProviders = Object.entries(
     searchQuery.data?.provider_status ?? {},
   )
@@ -1012,6 +1022,7 @@ function Content({ instance }: { instance: LauncherInstance }) {
             className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:cursor-not-allowed disabled:opacity-45"
             disabled={isVanilla || installing}
             onClick={() => {
+              if (browserOpen) setSelectedMods({});
               setBrowserOpen((open) => !open);
               setNotice(undefined);
             }}
@@ -1062,20 +1073,53 @@ function Content({ instance }: { instance: LauncherInstance }) {
         {browserOpen && !isVanilla ? (
           <div className="border-b border-app-separator/55">
             <div className="border-b border-app-separator/45 bg-app-bg/35 px-5 py-4">
-              <div className="mb-4 flex items-start gap-3">
-                <ShieldCheck
-                  size={18}
-                  className="mt-0.5 text-app-accent"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="m-0 text-xs font-bold text-app-text">
-                    Compatibility locked to this instance
-                  </p>
-                  <p className="mt-1 mb-0 font-mono text-[10px] text-app-secondary">
-                    Minecraft {instance.minecraftVersion} ·{" "}
-                    {loaderLabel(instance.loaderKind)} {instance.loaderVersion}
-                  </p>
+              <div className="mb-4 flex items-start justify-between gap-5">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck
+                    size={18}
+                    className="mt-0.5 text-app-accent"
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <p className="m-0 text-xs font-bold text-app-text">
+                      Compatibility locked to this instance
+                    </p>
+                    <p className="mt-1 mb-0 font-mono text-[10px] text-app-secondary">
+                      Minecraft {instance.minecraftVersion} ·{" "}
+                      {loaderLabel(instance.loaderKind)}{" "}
+                      {instance.loaderVersion}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="font-mono text-[10px] text-app-muted">
+                    {selectedModItems.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      selectedModItems.length === 0 ||
+                      installing ||
+                      installedIdentityPending
+                    }
+                    className="inline-flex h-9 items-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:bg-app-raised disabled:text-app-muted"
+                    onClick={() => installMutation.mutate(selectedModItems)}
+                  >
+                    {installMutation.isPending ? (
+                      <LoaderCircle
+                        size={14}
+                        className="animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Download size={14} aria-hidden="true" />
+                    )}
+                    {installMutation.isPending
+                      ? "Resolving dependencies"
+                      : selectedModItems.length > 0
+                        ? `Install ${selectedModItems.length} selected`
+                        : "Install selected"}
+                  </button>
                 </div>
               </div>
               <form
@@ -1165,18 +1209,28 @@ function Content({ instance }: { instance: LauncherInstance }) {
                 aria-busy={searchQuery.isFetching}
               >
                 {searchQuery.data.items.map((item) => {
-                  const installedAlready = installedIds.has(
-                    `${item.provider}:${item.id}`,
-                  );
+                  const identity = `${item.provider}:${item.id}`;
+                  const installedAlready = installedIds.has(identity);
+                  const selected = Boolean(selectedMods[identity]);
                   return (
                     <ModSearchResult
-                      key={`${item.provider}:${item.id}`}
+                      key={identity}
                       item={item}
                       installed={installedAlready}
+                      selected={selected}
                       checkingInstalled={installedIdentityPending}
-                      disabled={installing}
-                      onInstall={() => {
-                        if (!installedAlready) installMutation.mutate(item);
+                      disabled={
+                        installing ||
+                        (selectedModItems.length >= 50 && !selected)
+                      }
+                      onToggleSelected={() => {
+                        if (installedAlready) return;
+                        setSelectedMods((current) => {
+                          const next = { ...current };
+                          if (next[identity]) delete next[identity];
+                          else next[identity] = item;
+                          return next;
+                        });
                       }}
                     />
                   );
@@ -1490,15 +1544,17 @@ function Content({ instance }: { instance: LauncherInstance }) {
 function ModSearchResult({
   item,
   installed,
+  selected,
   checkingInstalled,
   disabled,
-  onInstall,
+  onToggleSelected,
 }: {
   item: ModpackSummary;
   installed: boolean;
+  selected: boolean;
   checkingInstalled: boolean;
   disabled: boolean;
-  onInstall: () => void;
+  onToggleSelected: () => void;
 }) {
   return (
     <article className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 py-3.5">
@@ -1524,16 +1580,19 @@ function ModSearchResult({
         disabled={
           disabled || installed || checkingInstalled || item.provider === "ftb"
         }
-        onClick={onInstall}
+        onClick={onToggleSelected}
+        aria-pressed={selected}
         title={
           installed
             ? "Already installed in this instance"
-            : checkingInstalled
-              ? "Checking installed mods"
-              : undefined
+            : selected
+              ? "Remove from install selection"
+              : checkingInstalled
+                ? "Checking installed mods"
+                : undefined
         }
         className={`inline-flex h-8 min-w-20 items-center justify-center gap-1.5 rounded-control border px-3 text-[11px] font-bold disabled:cursor-not-allowed ${
-          installed
+          installed || selected
             ? "border-app-accent/30 bg-app-accent/10 text-app-accent"
             : "border-app-accent/55 bg-app-accent/10 text-app-accent hover:bg-app-accent/15 disabled:opacity-45"
         }`}
@@ -1541,6 +1600,10 @@ function ModSearchResult({
         {installed ? (
           <>
             <Check size={13} aria-hidden="true" /> Installed
+          </>
+        ) : selected ? (
+          <>
+            <Check size={13} aria-hidden="true" /> Selected
           </>
         ) : checkingInstalled ? (
           <>

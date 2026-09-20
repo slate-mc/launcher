@@ -304,7 +304,7 @@ mod tests {
                     },
                     message: "Installed".to_owned(),
                 },
-                NewInstanceMod {
+                vec![NewInstanceMod {
                     provider: Provider::Modrinth,
                     project_id: "AANobbMI".to_owned(),
                     version_id: "version".to_owned(),
@@ -315,7 +315,7 @@ mod tests {
                         sha256: Some("a".repeat(64)),
                         sha1: None,
                     },
-                },
+                }],
             )
             .await?;
 

@@ -300,16 +300,16 @@ impl Database {
     pub async fn complete_instance_mod_install(
         &self,
         completion: CompletedInstall,
-        installed_mod: NewInstanceMod,
+        installed_mods: Vec<NewInstanceMod>,
     ) -> Result<(), StorageError> {
-        self.complete_instance_install_inner(completion, Some(installed_mod))
+        self.complete_instance_install_inner(completion, Some(installed_mods))
             .await
     }
 
     async fn complete_instance_install_inner(
         &self,
         completion: CompletedInstall,
-        installed_mod: Option<NewInstanceMod>,
+        installed_mods: Option<Vec<NewInstanceMod>>,
     ) -> Result<(), StorageError> {
         let now = now_rfc3339()?;
         let runtime_id = Uuid::new_v4().to_string();
@@ -363,9 +363,10 @@ impl Database {
                 .fetch_optional(&mut *transaction)
                 .await?
                 .ok_or(StorageError::RevisionNotFound)?;
-        if let Some(installed_mod) = installed_mod {
-            sqlx::query(
-                "INSERT INTO instance_mods \
+        if let Some(installed_mods) = installed_mods {
+            for installed_mod in installed_mods {
+                sqlx::query(
+                    "INSERT INTO instance_mods \
                  (instance_id, provider, project_id, version_id, display_name, file_path, \
                   hashes_json, enabled, pinned, installed_at) \
                  VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?) \
@@ -373,17 +374,18 @@ impl Database {
                   version_id = excluded.version_id, display_name = excluded.display_name, \
                   file_path = excluded.file_path, hashes_json = excluded.hashes_json, \
                   enabled = 1, installed_at = excluded.installed_at",
-            )
-            .bind(&instance_id)
-            .bind(installed_mod.provider.as_str())
-            .bind(installed_mod.project_id.trim())
-            .bind(installed_mod.version_id.trim())
-            .bind(installed_mod.display_name.trim())
-            .bind(installed_mod.file_path.trim())
-            .bind(serde_json::to_string(&installed_mod.hashes)?)
-            .bind(&now)
-            .execute(&mut *transaction)
-            .await?;
+                )
+                .bind(&instance_id)
+                .bind(installed_mod.provider.as_str())
+                .bind(installed_mod.project_id.trim())
+                .bind(installed_mod.version_id.trim())
+                .bind(installed_mod.display_name.trim())
+                .bind(installed_mod.file_path.trim())
+                .bind(serde_json::to_string(&installed_mod.hashes)?)
+                .bind(&now)
+                .execute(&mut *transaction)
+                .await?;
+            }
         }
         sqlx::query(
             "UPDATE instance_revisions SET manifest_digest = ?, client_version = ?, \
@@ -450,8 +452,12 @@ impl Database {
             .await?;
         if let Some(instance_id) = instance_id {
             sqlx::query(
-                "UPDATE instance_configuration SET setup_state = 'blocked' WHERE instance_id = ?",
+                "UPDATE instance_configuration SET setup_state = \
+                 CASE WHEN EXISTS(SELECT 1 FROM instances WHERE id = ? \
+                 AND active_revision_id IS NOT NULL) THEN 'ready' ELSE 'blocked' END \
+                 WHERE instance_id = ?",
             )
+            .bind(&instance_id)
             .bind(instance_id)
             .execute(&mut *transaction)
             .await?;

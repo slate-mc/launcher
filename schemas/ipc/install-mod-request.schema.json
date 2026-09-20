@@ -3,9 +3,6 @@
   "title": "InstallModRequest",
   "type": "object",
   "properties": {
-    "displayName": {
-      "type": "string"
-    },
     "expectedRevision": {
       "type": "integer",
       "format": "uint64",
@@ -15,21 +12,38 @@
       "type": "string",
       "format": "uuid"
     },
-    "projectId": {
-      "type": "string"
-    },
-    "provider": {
-      "$ref": "#/$defs/Provider"
+    "mods": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/InstallModSelection"
+      }
     }
   },
   "required": [
     "instanceId",
     "expectedRevision",
-    "provider",
-    "projectId",
-    "displayName"
+    "mods"
   ],
   "$defs": {
+    "InstallModSelection": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        }
+      },
+      "required": [
+        "provider",
+        "projectId",
+        "displayName"
+      ]
+    },
     "Provider": {
       "type": "string",
       "enum": [

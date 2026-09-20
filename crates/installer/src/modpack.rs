@@ -29,12 +29,28 @@ pub(super) fn validate_plan_compatibility(
     plan: &InstallPlan,
     required_java_major: u32,
 ) -> Result<(), ContentInstallError> {
+    validate_plan_target(
+        &request.minecraft_version,
+        request.loader_kind,
+        request.loader_version.as_deref(),
+        plan,
+        required_java_major,
+    )
+}
+
+pub(super) fn validate_plan_target(
+    minecraft_version: &str,
+    loader_kind: LoaderFamily,
+    loader_version: Option<&str>,
+    plan: &InstallPlan,
+    required_java_major: u32,
+) -> Result<(), ContentInstallError> {
     if plan.schema != 1 {
         return Err(ContentInstallError::UnsupportedSchema(plan.schema));
     }
-    if plan.runtime.minecraft != request.minecraft_version {
+    if plan.runtime.minecraft != minecraft_version {
         return Err(ContentInstallError::MinecraftMismatch {
-            expected: request.minecraft_version.clone(),
+            expected: minecraft_version.to_owned(),
             actual: plan.runtime.minecraft.clone(),
         });
     }
@@ -48,10 +64,10 @@ pub(super) fn validate_plan_compatibility(
             ));
         }
     };
-    if plan_loader != request.loader_kind {
+    if plan_loader != loader_kind {
         return Err(ContentInstallError::LoaderMismatch);
     }
-    if plan.runtime.loader.version.as_deref() != request.loader_version.as_deref() {
+    if plan.runtime.loader.version.as_deref() != loader_version {
         return Err(ContentInstallError::LoaderVersionMismatch);
     }
     if plan.runtime.java.major != required_java_major {

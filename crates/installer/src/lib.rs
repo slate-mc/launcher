@@ -48,6 +48,20 @@ pub struct InstallRequest {
 }
 
 #[derive(Clone, Debug)]
+pub struct ContentUpdateRequest {
+    pub instance_id: InstanceId,
+    pub revision_id: RevisionId,
+    pub parent_revision_id: RevisionId,
+    pub parent_manifest_digest: String,
+    pub minecraft_version: String,
+    pub loader_kind: LoaderFamily,
+    pub loader_version: Option<String>,
+    pub plan: InstallPlan,
+    pub download_concurrency: u8,
+    pub paths: AppPaths,
+}
+
+#[derive(Clone, Debug)]
 pub struct InstallOutcome {
     pub manifest_digest: String,
     pub manifest_path: PathBuf,
@@ -367,6 +381,135 @@ where
         reused_artifacts: summary.reused,
         installed_content_files,
     })
+}
+
+pub async fn update_content_with_progress<F>(
+    request: ContentUpdateRequest,
+    on_progress: F,
+) -> Result<InstallOutcome, InstallError>
+where
+    F: Fn(InstallProgress) + Send + Sync,
+{
+    if request.minecraft_version.trim().is_empty() {
+        return Err(InstallError::MinecraftVersionRequired);
+    }
+    if request.loader_kind.requires_version()
+        && request.loader_version.as_deref().is_none_or(str::is_empty)
+    {
+        return Err(InstallError::LoaderVersionRequired);
+    }
+    let instance_directory = request.paths.instance(request.instance_id);
+    let parent_manifest_path = instance_directory
+        .join("revisions")
+        .join(request.parent_revision_id.to_string())
+        .join("metadata")
+        .join("installed-revision.json");
+    on_progress(InstallProgress::indeterminate(
+        InstallPhase::Metadata,
+        "Loading the verified instance revision",
+    ));
+    let installed = load_installed_revision(
+        &parent_manifest_path,
+        request.instance_id,
+        request.parent_revision_id,
+        &request.parent_manifest_digest,
+    )
+    .await?;
+    let resolved = ResolvedVersion::resolve(installed.metadata_layers.clone())?;
+    modpack::validate_plan_target(
+        &request.minecraft_version,
+        request.loader_kind,
+        request.loader_version.as_deref(),
+        &request.plan,
+        installed.runtime.major_version,
+    )?;
+
+    let revision_directory = instance_directory
+        .join("revisions")
+        .join(request.revision_id.to_string());
+    let metadata_directory = revision_directory.join("metadata");
+    let game_directory = instance_directory.join("game");
+    tokio::fs::create_dir_all(&metadata_directory).await?;
+    tokio::fs::create_dir_all(&game_directory).await?;
+    let parent_natives = instance_directory
+        .join("revisions")
+        .join(request.parent_revision_id.to_string())
+        .join("natives");
+    let revision_natives = revision_directory.join("natives");
+    tokio::task::spawn_blocking(move || clone_directory_tree(&parent_natives, &revision_natives))
+        .await??;
+    let added_content = modpack::install_plan_content(
+        &request.plan,
+        &game_directory,
+        &revision_directory,
+        request.paths.storage_root(),
+        request.download_concurrency,
+        |completed, total, message| {
+            on_progress(InstallProgress {
+                phase: InstallPhase::Content,
+                message,
+                completed_items: Some(completed),
+                total_items: Some(total),
+            });
+        },
+    )
+    .await?;
+
+    on_progress(InstallProgress::indeterminate(
+        InstallPhase::Commit,
+        "Updating the verified content index",
+    ));
+    let installed_content_files = added_content.len();
+    let mut content_by_path = installed
+        .content_artifacts
+        .into_iter()
+        .map(|artifact| (artifact.relative_path.clone(), artifact))
+        .collect::<BTreeMap<_, _>>();
+    for artifact in added_content {
+        content_by_path.insert(artifact.relative_path.clone(), artifact);
+    }
+    let installed_manifest = InstalledRevisionManifest {
+        schema_version: 2,
+        instance_id: request.instance_id,
+        revision_id: request.revision_id,
+        minecraft_version: request.minecraft_version,
+        loader_kind: request.loader_kind,
+        loader_version: request.loader_version,
+        resolved_version_id: resolved.id().to_owned(),
+        metadata_layers: installed.metadata_layers,
+        runtime: installed.runtime.clone(),
+        launch_artifacts: installed.launch_artifacts,
+        content_artifacts: content_by_path.into_values().collect(),
+    };
+    let manifest_bytes = serde_json::to_vec_pretty(&installed_manifest)?;
+    let manifest_digest = digest_hex(&Sha256::digest(&manifest_bytes));
+    let manifest_path = metadata_directory.join("installed-revision.json");
+    atomic_write(&manifest_path, &manifest_bytes).await?;
+
+    Ok(InstallOutcome {
+        manifest_digest,
+        manifest_path,
+        resolved_version_id: resolved.id().to_owned(),
+        runtime: installed.runtime,
+        downloaded_artifacts: installed_content_files,
+        reused_artifacts: 0,
+        installed_content_files,
+    })
+}
+
+fn clone_directory_tree(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    std::fs::create_dir_all(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            clone_directory_tree(&entry.path(), &target)?;
+        } else if file_type.is_file() && std::fs::hard_link(entry.path(), &target).is_err() {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }
 
 async fn download_install_phase<F>(
@@ -930,8 +1073,9 @@ pub enum InstallError {
 #[cfg(test)]
 mod tests {
     use super::{
-        InstallError, InstallRequest, InstalledArtifactDigest, load_installed_revision,
-        relative_artifact_path, validate_installed_artifact_declarations, validate_request,
+        InstallError, InstallRequest, InstalledArtifactDigest, clone_directory_tree,
+        load_installed_revision, relative_artifact_path, validate_installed_artifact_declarations,
+        validate_request,
     };
     use slate_domain::{InstanceId, LoaderFamily, RevisionId};
     use slate_platform::AppPaths;
@@ -991,6 +1135,26 @@ mod tests {
             result,
             Err(InstallError::InstalledManifestDigestMismatch)
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn content_updates_clone_revision_native_files() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let source = directory.path().join("parent-natives");
+        let nested = source.join("nested");
+        let destination = directory.path().join("next-natives");
+        std::fs::create_dir_all(&nested)?;
+        std::fs::write(source.join("lwjgl.dll"), b"native-one")?;
+        std::fs::write(nested.join("helper.dll"), b"native-two")?;
+
+        clone_directory_tree(&source, &destination)?;
+
+        assert_eq!(std::fs::read(destination.join("lwjgl.dll"))?, b"native-one");
+        assert_eq!(
+            std::fs::read(destination.join("nested/helper.dll"))?,
+            b"native-two"
+        );
         Ok(())
     }
 }

@@ -44,6 +44,14 @@ impl ModpackProvider for ModrinthProvider {
         self.0.get_version(project_id, version_id).await
     }
 
+    async fn get_install_version(
+        &self,
+        project_id: &str,
+        version_id: &str,
+    ) -> Result<ModpackVersion, ProviderError> {
+        self.0.get_install_version(project_id, version_id).await
+    }
+
     async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError> {
         self.0.categories().await
     }
@@ -52,14 +60,14 @@ impl ModpackProvider for ModrinthProvider {
         self.0.search_mods(request).await
     }
 
-    async fn resolve_mod(
+    async fn resolve_mods(
         &self,
         project_id: &str,
         minecraft_version: &str,
         loader: slate_modpack_api_contracts::LoaderKind,
-    ) -> Result<ResolvedMod, ProviderError> {
+    ) -> Result<Vec<ResolvedMod>, ProviderError> {
         self.0
-            .resolve_mod(project_id, minecraft_version, loader)
+            .resolve_mods(project_id, minecraft_version, loader)
             .await
     }
 }

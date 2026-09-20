@@ -238,7 +238,7 @@ async fn install_plan(
     let provider = provider_from_str(&context, &provider)?;
     let adapter = provider_adapter(&state, &context, provider)?;
     let (version, project) = tokio::join!(
-        adapter.get_version(&project_id, &version_id),
+        adapter.get_install_version(&project_id, &version_id),
         adapter.get_project(&project_id),
     );
     let version = version.map_err(|error| provider_error(&context, error))?;

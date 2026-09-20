@@ -31,8 +31,9 @@ use slate_domain::{
     RequestId, RevisionId, SessionId, StorageRootId,
 };
 use slate_installer::{
-    InstallProgress, InstallRequest as NativeInstallRequest, install_with_progress,
-    load_installed_revision, verify_installed_launch_artifacts,
+    ContentUpdateRequest, InstallProgress, InstallRequest as NativeInstallRequest,
+    install_with_progress, load_installed_revision, update_content_with_progress,
+    verify_installed_launch_artifacts,
 };
 use slate_loaders::{FabricAdapter, NeoForgeAdapter};
 use slate_minecraft::{
@@ -60,6 +61,7 @@ use slate_storage::{
     ReduceMotionPreference, StorageError, ThemePreference,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -1250,7 +1252,7 @@ async fn instance_install(
         instance,
         request.expected_revision,
         plan,
-        None,
+        Vec::new(),
     )
     .await
 }
@@ -1259,8 +1261,8 @@ async fn queue_instance_install(
     state: &DesktopState,
     instance: InstanceRecord,
     expected_revision: u64,
-    modpack_plan: Option<InstallPlan>,
-    pending_mod: Option<NewInstanceMod>,
+    mut modpack_plan: Option<InstallPlan>,
+    pending_mods: Vec<NewInstanceMod>,
 ) -> Result<InstallJobSummary, AppError> {
     let instance_id = instance.id;
     if state
@@ -1280,6 +1282,27 @@ async fn queue_instance_install(
             "That instance already has an installation in progress.",
         ));
     }
+    let content_update = if pending_mods.is_empty() {
+        None
+    } else {
+        let plan = modpack_plan.take().ok_or_else(|| {
+            AppError::new(
+                "mod.invalid_plan",
+                "The mod service returned an empty content plan.",
+            )
+        })?;
+        let parent = state
+            .database
+            .get_installed_revision(instance_id)
+            .await
+            .map_err(|error| {
+                map_storage_error(
+                    error,
+                    "Install the base instance before adding individual mods.",
+                )
+            })?;
+        Some((parent, plan))
+    };
     let preferences = state
         .database
         .get_app_preferences()
@@ -1311,39 +1334,59 @@ async fn queue_instance_install(
                     .await;
             }
         });
-        let result = install_with_progress(
-            NativeInstallRequest {
-                instance_id,
-                revision_id: pending.revision_id,
-                minecraft_version: instance.minecraft_version,
-                loader_kind: instance.loader_kind,
-                loader_version: instance.loader_version,
-                modpack_plan,
-                download_concurrency: preferences.download_concurrency,
-                paths: task_state.paths.clone(),
-            },
-            move |progress| {
-                let now = Instant::now();
-                let finished_stage = progress.completed_items == progress.total_items
-                    && progress.total_items.is_some();
-                let should_send = progress_gate.lock().is_ok_and(|mut gate| {
-                    let phase_changed = gate.0 != Some(progress.phase);
-                    if phase_changed
-                        || finished_stage
-                        || now.duration_since(gate.1) >= Duration::from_millis(125)
-                    {
-                        *gate = (Some(progress.phase), now);
-                        true
-                    } else {
-                        false
-                    }
-                });
-                if should_send {
-                    let _ = progress_tx.send(progress);
+        let progress_callback = move |progress: InstallProgress| {
+            let now = Instant::now();
+            let finished_stage =
+                progress.completed_items == progress.total_items && progress.total_items.is_some();
+            let should_send = progress_gate.lock().is_ok_and(|mut gate| {
+                let phase_changed = gate.0 != Some(progress.phase);
+                if phase_changed
+                    || finished_stage
+                    || now.duration_since(gate.1) >= Duration::from_millis(125)
+                {
+                    *gate = (Some(progress.phase), now);
+                    true
+                } else {
+                    false
                 }
-            },
-        )
-        .await;
+            });
+            if should_send {
+                let _ = progress_tx.send(progress);
+            }
+        };
+        let result = if let Some((parent, plan)) = content_update {
+            update_content_with_progress(
+                ContentUpdateRequest {
+                    instance_id,
+                    revision_id: pending.revision_id,
+                    parent_revision_id: parent.id,
+                    parent_manifest_digest: parent.manifest_digest,
+                    minecraft_version: instance.minecraft_version,
+                    loader_kind: instance.loader_kind,
+                    loader_version: instance.loader_version,
+                    plan,
+                    download_concurrency: preferences.download_concurrency,
+                    paths: task_state.paths.clone(),
+                },
+                progress_callback,
+            )
+            .await
+        } else {
+            install_with_progress(
+                NativeInstallRequest {
+                    instance_id,
+                    revision_id: pending.revision_id,
+                    minecraft_version: instance.minecraft_version,
+                    loader_kind: instance.loader_kind,
+                    loader_version: instance.loader_version,
+                    modpack_plan,
+                    download_concurrency: preferences.download_concurrency,
+                    paths: task_state.paths.clone(),
+                },
+                progress_callback,
+            )
+            .await
+        };
         let _ = progress_task.await;
         match result {
             Ok(outcome) => {
@@ -1357,7 +1400,12 @@ async fn queue_instance_install(
                     executable_ref: outcome.runtime.executable.to_string_lossy().into_owned(),
                     source_digest: outcome.runtime.package_sha256,
                 };
-                let message = if outcome.installed_content_files > 0 {
+                let message = if !pending_mods.is_empty() {
+                    format!(
+                        "Installed {} verified mod files without reinstalling the base instance",
+                        outcome.installed_content_files
+                    )
+                } else if outcome.installed_content_files > 0 {
                     format!(
                         "Ready with {} verified pack files; downloaded {} game files and reused {} cached files",
                         outcome.installed_content_files,
@@ -1370,7 +1418,19 @@ async fn queue_instance_install(
                         outcome.downloaded_artifacts, outcome.reused_artifacts
                     )
                 };
-                let completion = if let Some(installed_mod) = pending_mod {
+                let completion = if pending_mods.is_empty() {
+                    task_state
+                        .database
+                        .complete_instance_install(
+                            pending.job.id,
+                            pending.revision_id,
+                            &outcome.manifest_digest,
+                            &outcome.resolved_version_id,
+                            runtime,
+                            &message,
+                        )
+                        .await
+                } else {
                     task_state
                         .database
                         .complete_instance_mod_install(
@@ -1382,19 +1442,7 @@ async fn queue_instance_install(
                                 runtime,
                                 message,
                             },
-                            installed_mod,
-                        )
-                        .await
-                } else {
-                    task_state
-                        .database
-                        .complete_instance_install(
-                            pending.job.id,
-                            pending.revision_id,
-                            &outcome.manifest_digest,
-                            &outcome.resolved_version_id,
-                            runtime,
-                            &message,
+                            pending_mods,
                         )
                         .await
                 };
@@ -1534,7 +1582,7 @@ async fn modpack_install(
         record.clone(),
         record.revision,
         Some(plan),
-        None,
+        Vec::new(),
     )
     .await
     {
@@ -1566,15 +1614,29 @@ async fn instance_mod_install(
     request: InstallModRequest,
 ) -> Result<InstallJobSummary, AppError> {
     refresh_exited_sessions(state.inner()).await;
-    let display_name = request.display_name.trim();
-    if display_name.is_empty()
-        || display_name.chars().count() > 160
-        || display_name.chars().any(char::is_control)
-    {
+    if request.mods.is_empty() || request.mods.len() > 50 {
         return Err(AppError::new(
-            "mod.invalid_name",
-            "The mod name returned by the provider is invalid.",
+            "mod.invalid_selection",
+            "Select between 1 and 50 mods to install at once.",
         ));
+    }
+    let mut requested = HashSet::new();
+    for selection in &request.mods {
+        let display_name = selection.display_name.trim();
+        let project_id = selection.project_id.trim();
+        if selection.provider == slate_modpack_api_contracts::Provider::Ftb
+            || display_name.is_empty()
+            || display_name.chars().count() > 160
+            || display_name.chars().any(char::is_control)
+            || project_id.is_empty()
+            || project_id.len() > 128
+            || !requested.insert(format!("{}:{project_id}", selection.provider))
+        {
+            return Err(AppError::new(
+                "mod.invalid_selection",
+                "The selected mod list contains an invalid or duplicate project.",
+            ));
+        }
     }
     let instance_id = InstanceId::from_uuid(request.instance_id);
     let instance = state
@@ -1582,64 +1644,158 @@ async fn instance_mod_install(
         .get_instance(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not load that instance."))?;
-    if instance_mod_is_installed(
-        state.inner(),
-        &instance,
-        request.provider,
-        &request.project_id,
-    )
-    .await?
-    {
-        return Err(AppError::new(
-            "mod.already_installed",
-            "That mod is already installed in this instance.",
-        ));
-    }
+    let installed = installed_mod_index(state.inner(), &instance).await?;
     let (loader, loader_version) = instance_mod_target(&instance)?;
-    let plan = state
-        .modpacks
-        .mod_install_plan(
-            request.provider,
-            &request.project_id,
-            &ModInstallPlanRequest {
-                minecraft_version: instance.minecraft_version.clone(),
-                loader,
-                loader_version: Some(loader_version.clone()),
-            },
-        )
-        .await
-        .map_err(modpack_api_error)?;
-    validate_instance_mod_plan(&instance, &request, &plan)?;
-    let download = plan.downloads.first().cloned().ok_or_else(|| {
+    let mut merged_plan: Option<InstallPlan> = None;
+    let mut pending_by_identity = BTreeMap::<String, NewInstanceMod>::new();
+    let mut planned_destinations = BTreeMap::<String, String>::new();
+    for selection in &request.mods {
+        let root_identity = format!("{}:{}", selection.provider, selection.project_id.trim());
+        if installed.identities.contains(&root_identity) {
+            return Err(AppError::new(
+                "mod.already_installed",
+                format!(
+                    "{} is already installed in this instance.",
+                    selection.display_name
+                ),
+            ));
+        }
+        let mut plan = state
+            .modpacks
+            .mod_install_plan(
+                selection.provider,
+                selection.project_id.trim(),
+                &ModInstallPlanRequest {
+                    minecraft_version: instance.minecraft_version.clone(),
+                    loader,
+                    loader_version: Some(loader_version.clone()),
+                },
+            )
+            .await
+            .map_err(modpack_api_error)?;
+        validate_instance_mod_plan(
+            &instance,
+            selection.provider,
+            selection.project_id.trim(),
+            &plan,
+        )?;
+        let mut accepted_downloads = Vec::new();
+        for download in plan.downloads {
+            let (provider, project_id, version_id) = parse_mod_download_id(&download.id)
+                .ok_or_else(|| {
+                    AppError::new(
+                        "mod.invalid_plan",
+                        "The mod service returned an invalid dependency identity.",
+                    )
+                })?;
+            let dependency_identity = format!("{provider}:{project_id}");
+            if installed.identities.contains(&dependency_identity) {
+                continue;
+            }
+            if let Some(existing) = pending_by_identity.get_mut(&dependency_identity) {
+                if existing.version_id != version_id {
+                    return Err(AppError::new(
+                        "mod.dependency_conflict",
+                        "The selected mods require conflicting versions of the same dependency.",
+                    ));
+                }
+                if dependency_identity == root_identity {
+                    existing.display_name = selection.display_name.trim().to_owned();
+                }
+                continue;
+            }
+            let normalized_destination = normalized_content_path(&download.destination);
+            if installed.paths.contains(&normalized_destination) {
+                return Err(AppError::new(
+                    "mod.file_conflict",
+                    format!(
+                        "{} conflicts with an existing mod file named {}.",
+                        selection.display_name, download.destination
+                    ),
+                ));
+            }
+            if let Some(existing_id) = planned_destinations.get(&normalized_destination) {
+                if existing_id == &download.id {
+                    continue;
+                }
+                return Err(AppError::new(
+                    "mod.file_conflict",
+                    "Two selected mods resolve to different files with the same name.",
+                ));
+            }
+            planned_destinations.insert(normalized_destination, download.id.clone());
+            let display_name = if dependency_identity == root_identity {
+                selection.display_name.trim().to_owned()
+            } else {
+                let file_name = download
+                    .destination
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(project_id.as_str());
+                file_name
+                    .strip_suffix(".jar")
+                    .unwrap_or(file_name)
+                    .to_owned()
+            };
+            pending_by_identity.insert(
+                dependency_identity,
+                NewInstanceMod {
+                    provider,
+                    project_id,
+                    version_id,
+                    display_name,
+                    file_path: download.destination.clone(),
+                    hashes: download.hashes.clone(),
+                },
+            );
+            accepted_downloads.push(download);
+        }
+        plan.downloads = accepted_downloads;
+        if let Some(merged) = &mut merged_plan {
+            merged.downloads.extend(plan.downloads);
+        } else {
+            merged_plan = Some(plan);
+        }
+    }
+    let mut plan = merged_plan.ok_or_else(|| {
         AppError::new(
-            "mod.invalid_plan",
-            "The mod service returned an empty install plan.",
+            "mod.already_installed",
+            "Every selected mod and dependency is already installed.",
         )
     })?;
-    let pending_mod = NewInstanceMod {
-        provider: request.provider,
-        project_id: request.project_id,
-        version_id: plan.instance.version_id.clone(),
-        display_name: display_name.to_owned(),
-        file_path: download.destination,
-        hashes: download.hashes,
-    };
+    if plan.downloads.is_empty() || pending_by_identity.is_empty() {
+        return Err(AppError::new(
+            "mod.already_installed",
+            "Every selected mod and dependency is already installed.",
+        ));
+    }
+    plan.total_download_size = plan.downloads.iter().try_fold(0_u64, |total, download| {
+        total.checked_add(download.size).ok_or_else(|| {
+            AppError::new(
+                "mod.invalid_plan",
+                "The selected mod download size is invalid.",
+            )
+        })
+    })?;
     queue_instance_install(
         state.inner(),
         instance,
         request.expected_revision,
         Some(plan),
-        Some(pending_mod),
+        pending_by_identity.into_values().collect(),
     )
     .await
 }
 
-async fn instance_mod_is_installed(
+struct InstalledModIndex {
+    identities: HashSet<String>,
+    paths: HashSet<String>,
+}
+
+async fn installed_mod_index(
     state: &DesktopState,
     instance: &InstanceRecord,
-    provider: slate_modpack_api_contracts::Provider,
-    project_id: &str,
-) -> Result<bool, AppError> {
+) -> Result<InstalledModIndex, AppError> {
     let paths = state.paths.clone();
     let instance_id = instance.id;
     let files = tokio::task::spawn_blocking(move || scan_instance_mods(&paths, instance_id))
@@ -1650,59 +1806,52 @@ async fn instance_mod_is_installed(
         .into_iter()
         .map(|file| normalized_content_path(&file.file_path))
         .collect::<HashSet<_>>();
-    let stored_match = state
+    let mut identities = HashSet::new();
+    for installed in state
         .database
         .list_instance_mods(instance_id)
         .await
         .map_err(|error| map_storage_error(error, "slate could not inspect installed mods."))?
-        .into_iter()
-        .any(|installed| {
-            installed_mod_reference_matches(
-                &installed_paths,
-                provider,
-                project_id,
-                installed.provider,
-                &installed.project_id,
-                &installed.file_path,
-            )
-        });
-    if stored_match {
-        return Ok(true);
+    {
+        if installed_paths.contains(&normalized_content_path(&installed.file_path)) {
+            identities.insert(format!("{}:{}", installed.provider, installed.project_id));
+        }
     }
-    let Some(source) = &instance.modpack_source else {
-        return Ok(false);
-    };
-    let version = state
-        .modpacks
-        .version(source.provider, &source.project_id, &source.version_id)
-        .await
-        .map_err(modpack_api_error)?;
-    Ok(version.files.into_iter().any(|file| {
-        file.kind == PackFileType::Mod
-            && file.source.as_ref().is_some_and(|reference| {
-                installed_mod_reference_matches(
-                    &installed_paths,
-                    provider,
-                    project_id,
-                    reference.provider,
-                    &reference.project_id,
-                    &file.path,
-                )
-            })
-    }))
+    if let Some(source) = &instance.modpack_source {
+        let version = state
+            .modpacks
+            .version(source.provider, &source.project_id, &source.version_id)
+            .await
+            .map_err(modpack_api_error)?;
+        for file in version.files {
+            if file.kind == PackFileType::Mod
+                && installed_paths.contains(&normalized_content_path(&file.path))
+                && let Some(reference) = file.source
+            {
+                identities.insert(format!("{}:{}", reference.provider, reference.project_id));
+            }
+        }
+    }
+    Ok(InstalledModIndex {
+        identities,
+        paths: installed_paths,
+    })
 }
 
-fn installed_mod_reference_matches(
-    installed_paths: &HashSet<String>,
-    requested_provider: slate_modpack_api_contracts::Provider,
-    requested_project_id: &str,
-    candidate_provider: slate_modpack_api_contracts::Provider,
-    candidate_project_id: &str,
-    candidate_path: &str,
-) -> bool {
-    requested_provider == candidate_provider
-        && requested_project_id == candidate_project_id
-        && installed_paths.contains(&normalized_content_path(candidate_path))
+fn parse_mod_download_id(
+    value: &str,
+) -> Option<(slate_modpack_api_contracts::Provider, String, String)> {
+    let mut parts = value.splitn(3, ':');
+    let provider = slate_modpack_api_contracts::Provider::from_str(parts.next()?).ok()?;
+    let project_id = parts.next()?.trim();
+    let version_id = parts.next()?.trim();
+    if provider == slate_modpack_api_contracts::Provider::Ftb
+        || project_id.is_empty()
+        || version_id.is_empty()
+    {
+        return None;
+    }
+    Some((provider, project_id.to_owned(), version_id.to_owned()))
 }
 
 fn instance_mod_target(instance: &InstanceRecord) -> Result<(LoaderKind, String), AppError> {
@@ -1732,21 +1881,27 @@ fn instance_mod_target(instance: &InstanceRecord) -> Result<(LoaderKind, String)
 
 fn validate_instance_mod_plan(
     instance: &InstanceRecord,
-    request: &InstallModRequest,
+    provider: slate_modpack_api_contracts::Provider,
+    project_id: &str,
     plan: &InstallPlan,
 ) -> Result<(), AppError> {
     let (loader, loader_version) = instance_mod_target(instance)?;
-    let valid_download = plan.downloads.len() == 1
+    let valid_downloads = !plan.downloads.is_empty()
+        && plan.downloads.len() <= 257
         && plan.extract.is_empty()
-        && plan.downloads[0].destination.starts_with("mods/")
-        && plan.downloads[0].hashes.has_cryptographic_hash();
+        && plan.delete.is_empty()
+        && plan.downloads.iter().all(|download| {
+            download.destination.starts_with("mods/")
+                && download.hashes.has_cryptographic_hash()
+                && parse_mod_download_id(&download.id).is_some()
+        });
     if plan.schema != 1
-        || plan.instance.provider != request.provider
-        || plan.instance.project_id != request.project_id
+        || plan.instance.provider != provider
+        || plan.instance.project_id != project_id
         || plan.runtime.minecraft != instance.minecraft_version
         || plan.runtime.loader.kind != loader
         || plan.runtime.loader.version.as_deref() != Some(loader_version.as_str())
-        || !valid_download
+        || !valid_downloads
     {
         return Err(AppError::new(
             "mod.resolution_mismatch",
@@ -2994,45 +3149,28 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::installed_mod_reference_matches;
+    use super::parse_mod_download_id;
     use slate_modpack_api_contracts::Provider;
-    use std::collections::HashSet;
 
     #[test]
-    fn installed_mod_identity_requires_provider_project_and_present_file() {
-        let installed_paths = HashSet::from(["mods/sodium.jar".to_owned()]);
-
-        assert!(installed_mod_reference_matches(
-            &installed_paths,
-            Provider::Modrinth,
-            "AANobbMI",
-            Provider::Modrinth,
-            "AANobbMI",
-            "mods/sodium.jar.disabled",
-        ));
-        assert!(!installed_mod_reference_matches(
-            &installed_paths,
-            Provider::Modrinth,
-            "AANobbMI",
-            Provider::CurseForge,
-            "AANobbMI",
-            "mods/sodium.jar",
-        ));
-        assert!(!installed_mod_reference_matches(
-            &installed_paths,
-            Provider::Modrinth,
-            "AANobbMI",
-            Provider::Modrinth,
-            "different-project",
-            "mods/sodium.jar",
-        ));
-        assert!(!installed_mod_reference_matches(
-            &installed_paths,
-            Provider::Modrinth,
-            "AANobbMI",
-            Provider::Modrinth,
-            "AANobbMI",
-            "mods/missing.jar",
-        ));
+    fn mod_install_plan_ids_preserve_dependency_identity() {
+        assert_eq!(
+            parse_mod_download_id("modrinth:AANobbMI:version-id"),
+            Some((
+                Provider::Modrinth,
+                "AANobbMI".to_owned(),
+                "version-id".to_owned()
+            ))
+        );
+        assert_eq!(
+            parse_mod_download_id("curseforge:1689768:8928631"),
+            Some((
+                Provider::CurseForge,
+                "1689768".to_owned(),
+                "8928631".to_owned()
+            ))
+        );
+        assert_eq!(parse_mod_download_id("ftb:1:2"), None);
+        assert_eq!(parse_mod_download_id("modrinth:missing-version"), None);
     }
 }

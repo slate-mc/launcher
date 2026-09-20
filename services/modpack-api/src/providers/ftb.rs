@@ -44,6 +44,14 @@ impl ModpackProvider for FtbProvider {
         self.0.get_version(project_id, version_id).await
     }
 
+    async fn get_install_version(
+        &self,
+        project_id: &str,
+        version_id: &str,
+    ) -> Result<ModpackVersion, ProviderError> {
+        self.0.get_install_version(project_id, version_id).await
+    }
+
     async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError> {
         self.0.categories().await
     }
@@ -52,12 +60,12 @@ impl ModpackProvider for FtbProvider {
         Err(ProviderError::UnsupportedContent)
     }
 
-    async fn resolve_mod(
+    async fn resolve_mods(
         &self,
         _project_id: &str,
         _minecraft_version: &str,
         _loader: slate_modpack_api_contracts::LoaderKind,
-    ) -> Result<ResolvedMod, ProviderError> {
+    ) -> Result<Vec<ResolvedMod>, ProviderError> {
         Err(ProviderError::UnsupportedContent)
     }
 }

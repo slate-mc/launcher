@@ -35,16 +35,22 @@ pub trait ModpackProvider: Send + Sync {
         version_id: &str,
     ) -> Result<ModpackVersion, ProviderError>;
 
+    async fn get_install_version(
+        &self,
+        project_id: &str,
+        version_id: &str,
+    ) -> Result<ModpackVersion, ProviderError>;
+
     async fn categories(&self) -> Result<Vec<CategorySummary>, ProviderError>;
 
     async fn search_mods(&self, request: SearchRequest) -> Result<SearchPage, ProviderError>;
 
-    async fn resolve_mod(
+    async fn resolve_mods(
         &self,
         project_id: &str,
         minecraft_version: &str,
         loader: slate_modpack_api_contracts::LoaderKind,
-    ) -> Result<ResolvedMod, ProviderError>;
+    ) -> Result<Vec<ResolvedMod>, ProviderError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
