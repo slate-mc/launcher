@@ -335,6 +335,35 @@ pub struct InstanceContentFileSummary {
     pub icon_url: Option<String>,
     pub pinned: bool,
     pub installed_at: Option<String>,
+    pub active: Option<bool>,
+    pub priority: Option<u32>,
+    pub can_move_higher: bool,
+    pub can_move_lower: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResourcePackOrderDirectionDto {
+    Higher,
+    Lower,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetInstanceResourcePackActiveRequest {
+    pub instance_id: Uuid,
+    pub file_path: String,
+    pub active: bool,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveInstanceResourcePackRequest {
+    pub instance_id: Uuid,
+    pub file_path: String,
+    pub direction: ResourcePackOrderDirectionDto,
+    pub expected_revision: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

@@ -9,6 +9,18 @@
     "InstanceContentFileSummary": {
       "type": "object",
       "properties": {
+        "active": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "canMoveHigher": {
+          "type": "boolean"
+        },
+        "canMoveLower": {
+          "type": "boolean"
+        },
         "canToggle": {
           "type": "boolean"
         },
@@ -53,6 +65,14 @@
         "pinned": {
           "type": "boolean"
         },
+        "priority": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
         "projectId": {
           "type": [
             "string",
@@ -90,7 +110,9 @@
         "canToggle",
         "origin",
         "fileSize",
-        "pinned"
+        "pinned",
+        "canMoveHigher",
+        "canMoveLower"
       ]
     },
     "InstanceContentKindDto": {

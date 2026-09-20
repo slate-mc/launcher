@@ -18,10 +18,12 @@ import {
   listInstallJobs,
   listInstanceContentFiles,
   listInstanceWorlds,
+  moveInstanceResourcePack,
   removeInstanceContentFile,
   searchContent,
   setInstanceContentPinned,
   setInstanceContentFileEnabled,
+  setInstanceResourcePackActive,
   updateInstanceContent,
 } from "../../lib/bridge";
 import { installJobMessage } from "../../lib/installJobPresentation";
@@ -214,6 +216,51 @@ export function InstanceFileContent({
         message: contentErrorMessage(error),
       }),
   });
+  const activeMutation = useMutation({
+    mutationFn: (file: InstanceContentFile) =>
+      setInstanceResourcePackActive({
+        instanceId: instance.id,
+        filePath: file.filePath,
+        active: !file.active,
+        expectedRevision: instance.revision,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, file) =>
+      refresh(
+        updated,
+        `${file.displayName} is now ${file.active ? "inactive" : "active"}.`,
+      ),
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Resource pack was not changed",
+        message: contentErrorMessage(error),
+      }),
+  });
+  const moveMutation = useMutation({
+    mutationFn: ({
+      file,
+      direction,
+    }: {
+      file: InstanceContentFile;
+      direction: "higher" | "lower";
+    }) =>
+      moveInstanceResourcePack({
+        instanceId: instance.id,
+        filePath: file.filePath,
+        direction,
+        expectedRevision: instance.revision,
+      }),
+    onMutate: () => setNotice(undefined),
+    onSuccess: (updated, { file, direction }) =>
+      refresh(updated, `${file.displayName} moved to ${direction} priority.`),
+    onError: (error) =>
+      setNotice({
+        tone: "danger",
+        title: "Resource pack priority was not changed",
+        message: contentErrorMessage(error),
+      }),
+  });
   const pinMutation = useMutation({
     mutationFn: (file: InstanceContentFile) => {
       if (!file.provider || !file.projectId) {
@@ -363,6 +410,8 @@ export function InstanceFileContent({
     importMutation.isPending ||
     toggleMutation.isPending ||
     removeMutation.isPending ||
+    activeMutation.isPending ||
+    moveMutation.isPending ||
     pinMutation.isPending ||
     installing;
 
@@ -662,11 +711,13 @@ export function InstanceFileContent({
             <table className="w-full min-w-[760px] table-fixed border-collapse text-left">
               <thead className="border-b border-app-separator/55 bg-app-bg/20 font-mono text-[9px] uppercase tracking-[0.08em] text-app-muted">
                 <tr>
-                  <th className="w-[34%] px-5 py-3 font-medium">Name</th>
-                  <th className="w-[16%] px-3 py-3 font-medium">Scope</th>
+                  <th className="w-[30%] px-5 py-3 font-medium">Name</th>
+                  <th className="w-[16%] px-3 py-3 font-medium">
+                    {kind === "resourcePack" ? "Status" : "Scope"}
+                  </th>
                   <th className="w-[16%] px-3 py-3 font-medium">Ownership</th>
                   <th className="w-[13%] px-3 py-3 font-medium">Size</th>
-                  <th className="w-[21%] px-3 py-3 font-medium">Actions</th>
+                  <th className="w-[25%] px-3 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-app-separator/45">
@@ -680,6 +731,10 @@ export function InstanceFileContent({
                     confirmingRemove={removeTarget === file.filePath}
                     onToggle={() =>
                       toggleMutation.mutate({ file, enabled: !file.enabled })
+                    }
+                    onSetActive={() => activeMutation.mutate(file)}
+                    onMove={(direction) =>
+                      moveMutation.mutate({ file, direction })
                     }
                     onPin={() => pinMutation.mutate(file)}
                     onUpdate={(versionId) =>

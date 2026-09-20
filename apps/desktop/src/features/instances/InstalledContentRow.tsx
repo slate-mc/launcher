@@ -1,5 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowDown,
+  ArrowUp,
+  CircleCheck,
+  CirclePlus,
   LoaderCircle,
   Pin,
   PinOff,
@@ -29,6 +33,8 @@ export function InstalledContentRow({
   disabled,
   confirmingRemove,
   onToggle,
+  onSetActive,
+  onMove,
   onPin,
   onUpdate,
   onRequestRemove,
@@ -41,6 +47,8 @@ export function InstalledContentRow({
   disabled: boolean;
   confirmingRemove: boolean;
   onToggle: () => void;
+  onSetActive: () => void;
+  onMove: (direction: "higher" | "lower") => void;
   onPin: () => void;
   onUpdate: (versionId: string) => void;
   onRequestRemove: () => void;
@@ -151,7 +159,18 @@ export function InstalledContentRow({
           </div>
         </td>
         <td className="px-3 py-3 text-app-secondary">
-          {item.worldName ?? "Instance"}
+          {kind === "resourcePack" ? (
+            item.active ? (
+              <span className="inline-flex items-center gap-1.5 text-app-accent">
+                <CircleCheck size={12} aria-hidden="true" /> Priority{" "}
+                {item.priority}
+              </span>
+            ) : (
+              "Available"
+            )
+          ) : (
+            (item.worldName ?? "Instance")
+          )}
         </td>
         <td className="px-3 py-3">
           <span
@@ -170,6 +189,44 @@ export function InstalledContentRow({
         </td>
         <td className="px-3 py-3">
           <div className="flex items-center justify-end gap-1.5">
+            {kind === "resourcePack" ? (
+              <>
+                <button
+                  type="button"
+                  className={`inline-flex size-7 items-center justify-center rounded-control border bg-app-bg disabled:opacity-35 ${item.active ? "border-app-accent/40 text-app-accent" : "border-app-separator text-app-secondary hover:border-app-accent/45 hover:text-app-accent"}`}
+                  disabled={disabled || !item.enabled}
+                  onClick={onSetActive}
+                  aria-label={`${item.active ? "Deactivate" : "Activate"} ${item.displayName}`}
+                  title={item.active ? "Deactivate pack" : "Activate pack"}
+                >
+                  {item.active ? (
+                    <CircleCheck size={13} aria-hidden="true" />
+                  ) : (
+                    <CirclePlus size={13} aria-hidden="true" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex size-7 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary hover:border-app-accent/45 hover:text-app-accent disabled:opacity-35"
+                  disabled={disabled || !item.canMoveHigher}
+                  onClick={() => onMove("higher")}
+                  aria-label={`Increase priority of ${item.displayName}`}
+                  title="Increase priority"
+                >
+                  <ArrowUp size={13} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex size-7 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary hover:border-app-accent/45 hover:text-app-accent disabled:opacity-35"
+                  disabled={disabled || !item.canMoveLower}
+                  onClick={() => onMove("lower")}
+                  aria-label={`Decrease priority of ${item.displayName}`}
+                  title="Decrease priority"
+                >
+                  <ArrowDown size={13} aria-hidden="true" />
+                </button>
+              </>
+            ) : null}
             {linked ? (
               <>
                 <button

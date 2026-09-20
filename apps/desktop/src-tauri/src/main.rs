@@ -49,7 +49,10 @@ use diagnostics::init_diagnostics;
 use external_instance_import::{
     ExternalImportError, copy_external_game_directory, inspect_external_instance,
 };
-use game_options::{prepare_options_update, read_recognized_options};
+use game_options::{
+    PendingGameOptionsWrite, ResourcePackOrderChange, prepare_options_update,
+    prepare_resource_pack_update, read_recognized_options, read_resource_packs,
+};
 use install_commands::*;
 use install_supervisor::{InstallSupervisor, QueueDirection};
 use instance_commands::*;
@@ -116,19 +119,21 @@ use slate_contracts::{
     MinecraftVersionCatalog, MinecraftVersionOption, ModSearchRequest, ModpackInstallStarted,
     ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackSourceSummary,
     ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest, MoveInstallJobRequest,
-    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
-    PerformancePresetDto, PingServerRequest, PreflightSummary, ProcessPriorityDto,
-    ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
-    RemoveSavedServerRequest, RenameInstanceRequest, ResolveInstanceModRelationshipsRequest,
+    MoveInstanceResourcePackRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
+    OpenInstanceDirectoryRequest, PerformancePresetDto, PingServerRequest, PreflightSummary,
+    ProcessPriorityDto, ReduceMotionPreferenceDto, RemoveInstanceContentFileRequest,
+    RemoveInstanceModRequest, RemoveSavedServerRequest, RenameInstanceRequest,
+    ResolveInstanceModRelationshipsRequest, ResourcePackOrderDirectionDto,
     RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
     SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
     ServerStatusSummary, SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription,
     SetDefaultAccountRequest, SetFavoriteRequest, SetInstallJobPausedRequest,
     SetInstanceContentFileEnabledRequest, SetInstanceContentPinnedRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
-    StopGameSessionRequest, StorageCategoryDto, StorageCategorySummary, StorageCleanupResult,
-    StorageOverview, SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview,
-    ThemePreferenceDto, TrashInstanceRequest, TrashedInstanceSummary, UnsubscribeSessionLogRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest,
+    SetInstanceResourcePackActiveRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    StorageCategoryDto, StorageCategorySummary, StorageCleanupResult, StorageOverview,
+    SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview, ThemePreferenceDto,
+    TrashInstanceRequest, TrashedInstanceSummary, UnsubscribeSessionLogRequest,
     UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest, UpdateInstanceContentRequest,
     UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
     UpdateSavedServerRequest,
@@ -809,6 +814,8 @@ fn main() {
             instance_worlds_list,
             instance_content_file_import,
             instance_content_file_set_enabled,
+            instance_resource_pack_set_active,
+            instance_resource_pack_move,
             instance_content_set_pinned,
             instance_content_file_remove,
             instance_mod_set_enabled,

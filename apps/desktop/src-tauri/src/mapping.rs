@@ -218,6 +218,10 @@ pub(super) fn content_file_summary(
             .and_then(|item| item.icon_url.clone()),
         pinned: provider_content.as_ref().is_some_and(|item| item.pinned),
         installed_at: provider_content.map(|item| item.installed_at),
+        active: None,
+        priority: None,
+        can_move_higher: false,
+        can_move_lower: false,
     }
 }
 

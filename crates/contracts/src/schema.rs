@@ -16,19 +16,19 @@ use crate::{
     LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
     ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
     ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest, MoveInstallJobRequest,
-    MoveInstanceStorageRequest, OnboardingStateSummary, OpenInstanceDirectoryRequest,
-    PingServerRequest, PreflightSummary, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
-    RemoveInstanceModRequest, RemoveSavedServerRequest, ResolveInstanceModRelationshipsRequest,
-    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
-    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
-    ServerStatusSummary, SessionLogEvent, SessionLogSubscription, SetInstallJobPausedRequest,
-    SetInstanceContentFileEnabledRequest, SetInstanceContentPinnedRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, SetInstanceSnapshotPinnedRequest,
-    StopGameSessionRequest, StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest,
-    SupportReportExport, SupportReportPreview, UnsubscribeSessionLogRequest,
-    UpdateInstanceConfigurationRequest, UpdateInstanceContentRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
-    UpdateSavedServerRequest,
+    MoveInstanceResourcePackRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
+    OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
+    ResolveInstanceModRelationshipsRequest, RestoreInstanceSnapshotRequest,
+    RestoreTrashedInstanceRequest, RetryInstallJobRequest, SavedServerSummary,
+    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
+    SessionLogSubscription, SetInstallJobPausedRequest, SetInstanceContentFileEnabledRequest,
+    SetInstanceContentPinnedRequest, SetInstanceModEnabledRequest, SetInstanceModPinnedRequest,
+    SetInstanceResourcePackActiveRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
+    StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
+    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
+    UpdateInstanceContentRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
+    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -365,6 +365,14 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(RemoveInstanceContentFileRequest),
         ),
         (
+            "set-instance-resource-pack-active-request",
+            schema_for!(SetInstanceResourcePackActiveRequest),
+        ),
+        (
+            "move-instance-resource-pack-request",
+            schema_for!(MoveInstanceResourcePackRequest),
+        ),
+        (
             "instance-mod-resolution-list",
             schema_for!(Vec<InstanceModResolution>),
         ),
@@ -400,7 +408,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 107);
+        assert_eq!(schemas.len(), 109);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

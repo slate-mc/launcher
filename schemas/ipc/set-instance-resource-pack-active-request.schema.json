@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SetInstanceResourcePackActiveRequest",
+  "type": "object",
+  "properties": {
+    "active": {
+      "type": "boolean"
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "filePath": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "instanceId",
+    "filePath",
+    "active",
+    "expectedRevision"
+  ]
+}

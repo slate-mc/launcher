@@ -655,6 +655,10 @@ export const instanceContentFileSchema = z.object({
   iconUrl: z.string().url().nullable(),
   pinned: z.boolean(),
   installedAt: z.string().min(1).nullable(),
+  active: z.boolean().nullable(),
+  priority: z.number().int().positive().nullable(),
+  canMoveHigher: z.boolean(),
+  canMoveLower: z.boolean(),
 });
 
 export const instanceContentFileListSchema = z.array(instanceContentFileSchema);

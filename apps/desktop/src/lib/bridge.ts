@@ -640,6 +640,30 @@ export async function setInstanceContentFileEnabled(input: {
   );
 }
 
+export async function setInstanceResourcePackActive(input: {
+  instanceId: string;
+  filePath: string;
+  active: boolean;
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_resource_pack_set_active", { request: input }),
+  );
+}
+
+export async function moveInstanceResourcePack(input: {
+  instanceId: string;
+  filePath: string;
+  direction: "higher" | "lower";
+  expectedRevision: number;
+}): Promise<LauncherInstance> {
+  requireNativeContent();
+  return instanceSummarySchema.parse(
+    await invoke("instance_resource_pack_move", { request: input }),
+  );
+}
+
 export async function removeInstanceContentFile(input: {
   instanceId: string;
   kind: InstanceContentKind;

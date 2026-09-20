@@ -60,11 +60,12 @@ pub use modpack::{
     InstanceModReferenceSummary, InstanceModResolution, InstanceModSummary,
     InstanceModVersionsRequest, InstanceModsRequest, InstanceWorldsRequest, ModSearchRequest,
     ModpackProjectRequest, ModpackSearchRequest, ModpackSortDto, ModpackUpdateSummary,
-    ModpackVersionRequest, ModpackVersionsRequest, RemoveInstanceContentFileRequest,
-    RemoveInstanceModRequest, ResolveInstanceModRelationshipsRequest,
+    ModpackVersionRequest, ModpackVersionsRequest, MoveInstanceResourcePackRequest,
+    RemoveInstanceContentFileRequest, RemoveInstanceModRequest,
+    ResolveInstanceModRelationshipsRequest, ResourcePackOrderDirectionDto,
     SetInstanceContentFileEnabledRequest, SetInstanceContentPinnedRequest,
-    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest, UpdateInstanceContentRequest,
-    UpdateInstanceModRequest,
+    SetInstanceModEnabledRequest, SetInstanceModPinnedRequest,
+    SetInstanceResourcePackActiveRequest, UpdateInstanceContentRequest, UpdateInstanceModRequest,
 };
 pub use onboarding::OnboardingStateSummary;
 pub use schema::schema_documents;

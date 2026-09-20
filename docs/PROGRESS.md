@@ -39,10 +39,12 @@ Last updated: September 20, 2026
   pack-vs-user ownership, enable/disable behavior where supported, recoverable removal, local mod
   JAR import, local resource/shader/data-pack ZIP import, and compatible Modrinth browsing and batch
   installation. Provider content uses exact Minecraft/runtime matching, explicit world selection for
-   data packs, verified downloads, duplicate protection, version pinning, exact-version changes,
-   bounded downgrade history, transitive required-dependency installation, snapshots, and rollback.
-   Required loader mods are installed into the Mods inventory; installed exact versions are reused
-   and pinned or conflicting dependencies fail safely.
+  data packs, verified downloads, duplicate protection, version pinning, exact-version changes,
+  bounded downgrade history, transitive required-dependency installation, snapshots, and rollback.
+  Resource packs can be activated, deactivated, and reordered through Minecraft's own pack list
+  without discarding built-in packs or unrelated game options. Required loader mods are installed
+  into the Mods inventory; installed exact versions are reused and pinned or conflicting
+  dependencies fail safely.
 - Saved-server create, edit, remove, Java status ping, DNS SRV resolution, validated server icons,
   formatted Minecraft messages, compatible-instance guidance, remembered instance selection, and
   authenticated quick join.
@@ -69,22 +71,19 @@ Verified on Windows on September 20, 2026:
 - 15 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace --all-features` passes: 149 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 152 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 
 ## F1 release blockers
 
-1. **Resource content workflows:** resource packs, shaders, and world-targeted data packs support
-   validated local ZIP import plus compatible Modrinth browsing and batch installation. Provider
-   resource-pack ordering remains incomplete.
-2. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
+1. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
-3. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
+2. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
    NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
    recovery scenarios need automated native coverage.
-4. **Operational readiness:** structured local tracing and local support-report export are active.
+3. **Operational readiness:** structured local tracing and local support-report export are active.
    Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
    telemetry, offline delivery, and private support-report submission still need production
    implementations.
@@ -128,5 +127,5 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add resource-pack ordering, then add native clean-install smoke coverage so release claims are
-evidence-based rather than inferred from unit tests.
+Add native clean-install smoke coverage for fresh Vanilla, Fabric, NeoForge, and representative
+modpack installs so release claims are evidence-based rather than inferred from unit tests.
