@@ -1,17 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  Gauge,
   LoaderCircle,
   Pencil,
   Play,
   Plus,
   RefreshCw,
-  Server,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
-import { EmptyState, InlineNotice, PageHeader, StatusPill } from "../../components/PageScaffold";
+import {
+  EmptyState,
+  InlineNotice,
+  PageHeader,
+  StatusPill,
+} from "../../components/PageScaffold";
 import {
   createSavedServer,
   launchInstance,
@@ -24,6 +30,7 @@ import {
   updateSavedServer,
 } from "../../lib/bridge";
 import { cn } from "../../lib/cn";
+import { loaderLabel } from "../../lib/format";
 import { getUserFacingError } from "../../lib/userFacingError";
 import type {
   LauncherInstance,
@@ -158,9 +165,13 @@ export function ServersPage() {
                   accountsQuery.data?.find((account) => account.isDefault) ??
                   accountsQuery.data?.[0]
                 }
-                runningInstanceIds={new Set(
-                  (sessionsQuery.data ?? []).map((session) => session.instanceId),
-                )}
+                runningInstanceIds={
+                  new Set(
+                    (sessionsQuery.data ?? []).map(
+                      (session) => session.instanceId,
+                    ),
+                  )
+                }
                 onEdit={() => {
                   saveMutation.reset();
                   setEditingId(server.id);
@@ -274,7 +285,11 @@ function ServerForm({
         </div>
       ) : null}
       <div className="mt-5 flex justify-end gap-2">
-        <button type="button" className={secondaryButtonClass} onClick={onCancel}>
+        <button
+          type="button"
+          className={secondaryButtonClass}
+          onClick={onCancel}
+        >
           Cancel
         </button>
         <button
@@ -282,7 +297,11 @@ function ServerForm({
           className={primaryButtonClass}
           disabled={!valid || pending}
         >
-          {pending ? <LoaderCircle className="animate-spin" size={15} /> : <Check size={15} />}
+          {pending ? (
+            <LoaderCircle className="animate-spin" size={15} />
+          ) : (
+            <Check size={15} />
+          )}
           {pending ? "Saving…" : "Save server"}
         </button>
       </div>
@@ -321,6 +340,18 @@ function SavedServerRow({
         serverMatchesInstance(statusQuery.data, instance),
       ),
     [readyInstances, statusQuery.data],
+  );
+  const orderedInstances = useMemo(
+    () => [
+      ...compatibleInstances,
+      ...readyInstances.filter(
+        (instance) =>
+          !compatibleInstances.some(
+            (compatible) => compatible.id === instance.id,
+          ),
+      ),
+    ],
+    [compatibleInstances, readyInstances],
   );
   const automaticInstance = compatibleInstances[0] ?? readyInstances[0];
   const [selectedOverride, setSelectedOverride] = useState(
@@ -381,12 +412,16 @@ function SavedServerRow({
     launchMutation.isPending;
 
   return (
-    <article className="rounded-control border border-app-separator/70 bg-app-surface p-5">
-      <div className="grid grid-cols-[68px_minmax(220px,1fr)_minmax(240px,300px)_auto] items-start gap-5 max-[980px]:grid-cols-[68px_minmax(0,1fr)_auto]">
-        <ServerIcon status={statusQuery.data} name={server.name} />
-        <div className="min-w-0">
+    <article className="overflow-hidden rounded-control border border-app-separator/70 bg-app-surface">
+      <div className="grid grid-cols-[72px_minmax(0,1fr)_minmax(270px,320px)] gap-5 p-5 max-[860px]:grid-cols-[72px_minmax(0,1fr)]">
+        <ServerIcon
+          status={statusQuery.data}
+          name={server.name}
+          loading={statusQuery.isPending}
+        />
+        <div className="min-w-0 py-0.5">
           <div className="flex flex-wrap items-center gap-2">
-            <strong className="overflow-hidden text-sm font-bold text-ellipsis whitespace-nowrap">
+            <strong className="overflow-hidden text-[15px] font-bold text-ellipsis whitespace-nowrap">
               {server.name}
             </strong>
             <ServerStatusPill query={statusQuery} />
@@ -395,85 +430,103 @@ function SavedServerRow({
             {server.address}
           </small>
           <ServerMotd status={statusQuery.data} />
-          {statusQuery.data?.online ? (
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-app-muted">
-              {statusQuery.data.versionName ? (
-                <span>{statusQuery.data.versionName}</span>
-              ) : null}
+          <ServerFacts status={statusQuery.data} />
+        </div>
+
+        <div className="border-s border-app-separator/60 ps-5 max-[860px]:col-span-2 max-[860px]:border-s-0 max-[860px]:border-t max-[860px]:pt-4 max-[860px]:ps-0">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <span className="text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
+              Join this server
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                className={iconButtonClass}
+                aria-label={`Refresh ${server.name}`}
+                title="Refresh status"
+                disabled={statusQuery.isFetching}
+                onClick={() => void statusQuery.refetch()}
+              >
+                <RefreshCw
+                  className={statusQuery.isFetching ? "animate-spin" : ""}
+                  size={15}
+                />
+              </button>
+              <button
+                type="button"
+                className={iconButtonClass}
+                aria-label={`Edit ${server.name}`}
+                title="Edit server"
+                onClick={onEdit}
+              >
+                <Pencil size={15} />
+              </button>
+              <button
+                type="button"
+                className={iconButtonClass}
+                aria-label={`Remove ${server.name}`}
+                title="Remove server"
+                onClick={() => setConfirmRemove(true)}
+              >
+                <Trash2 size={15} />
+              </button>
             </div>
-          ) : null}
-        </div>
-        <div className="max-[980px]:col-span-2 max-[980px]:col-start-2">
-          <label className="text-[10px] font-bold tracking-[.06em] text-app-muted uppercase">
-            Join with
-            <select
-              className="mt-1.5 h-9 w-full rounded-control border border-app-separator bg-app-bg px-3 text-xs text-app-text focus:border-app-accent focus:outline-none disabled:opacity-50"
-              value={selectedInstanceId}
-              disabled={readyInstances.length === 0 || preferenceMutation.isPending}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSelectedOverride(value);
-                preferenceMutation.mutate(value);
-              }}
-            >
-              {readyInstances.length === 0 ? (
-                <option value="">No playable instances</option>
-              ) : null}
-              {readyInstances.map((instance) => (
-                <option key={instance.id} value={instance.id}>
-                  {instance.name} · {instance.minecraftVersion}
-                  {serverMatchesInstance(statusQuery.data, instance)
-                    ? " · Match"
-                    : ""}
-                </option>
-              ))}
-            </select>
+          </div>
+
+          <label className="sr-only" htmlFor={`server-instance-${server.id}`}>
+            Instance for {server.name}
           </label>
-          {selectedInstance && statusQuery.data?.versionName ? (
-            <p
-              className={cn(
-                "mt-1.5 mb-0 text-[10px]",
-                selectedCompatible ? "text-app-accent" : "text-app-warning",
-              )}
-            >
-              {selectedCompatible
-                ? "Minecraft version matches"
-                : `Server reports ${statusQuery.data.versionName}`}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex items-center justify-end gap-2 max-[980px]:row-start-1">
-          <button
-            type="button"
-            className={iconButtonClass}
-            aria-label={`Refresh ${server.name}`}
-            title="Refresh status"
-            disabled={statusQuery.isFetching}
-            onClick={() => void statusQuery.refetch()}
+          <select
+            id={`server-instance-${server.id}`}
+            className="h-9 w-full rounded-control border border-app-separator bg-app-bg px-3 text-xs text-app-text focus:border-app-accent focus:outline-none disabled:opacity-50"
+            value={selectedInstanceId}
+            disabled={
+              readyInstances.length === 0 || preferenceMutation.isPending
+            }
+            onChange={(event) => {
+              const value = event.target.value;
+              setSelectedOverride(value);
+              preferenceMutation.mutate(value);
+            }}
           >
-            <RefreshCw className={statusQuery.isFetching ? "animate-spin" : ""} size={15} />
-          </button>
+            {readyInstances.length === 0 ? (
+              <option value="">No playable instances</option>
+            ) : null}
+            {orderedInstances.map((instance) => (
+              <option key={instance.id} value={instance.id}>
+                {instance.name} · {instance.minecraftVersion}
+                {serverMatchesInstance(statusQuery.data, instance)
+                  ? " · Reported match"
+                  : ""}
+              </option>
+            ))}
+          </select>
+
+          <div className="mt-2 flex min-h-4 items-center justify-between gap-3">
+            {selectedInstance && statusQuery.data?.versionName ? (
+              <span
+                className={cn(
+                  "text-[10px]",
+                  selectedCompatible ? "text-app-accent" : "text-app-muted",
+                )}
+              >
+                {selectedCompatible
+                  ? "Reported version match"
+                  : `Server reports ${statusQuery.data.versionName}`}
+              </span>
+            ) : (
+              <span />
+            )}
+            {selectedInstance ? (
+              <span className="truncate font-mono text-[10px] text-app-muted">
+                {loaderLabel(selectedInstance.loaderKind)}
+              </span>
+            ) : null}
+          </div>
+
           <button
             type="button"
-            className={iconButtonClass}
-            aria-label={`Edit ${server.name}`}
-            title="Edit server"
-            onClick={onEdit}
-          >
-            <Pencil size={15} />
-          </button>
-          <button
-            type="button"
-            className={iconButtonClass}
-            aria-label={`Remove ${server.name}`}
-            title="Remove server"
-            onClick={() => setConfirmRemove(true)}
-          >
-            <Trash2 size={15} />
-          </button>
-          <button
-            type="button"
-            className={primaryButtonClass}
+            className={`${primaryButtonClass} mt-3 w-full`}
             disabled={joinDisabled}
             title={joinReason({
               online: statusQuery.data?.online,
@@ -488,7 +541,7 @@ function SavedServerRow({
             ) : (
               <Play size={15} fill="currentColor" />
             )}
-            {launchMutation.isPending ? "Starting…" : "Join"}
+            {launchMutation.isPending ? "Starting…" : "Join server"}
           </button>
         </div>
       </div>
@@ -518,7 +571,9 @@ function SavedServerRow({
         </div>
       ) : null}
 
-      {launchMutation.isError || preferenceMutation.isError || removeMutation.isError ? (
+      {launchMutation.isError ||
+      preferenceMutation.isError ||
+      removeMutation.isError ? (
         <div className="mt-4">
           <InlineNotice tone="danger" title="Server action did not complete">
             {getUserFacingError(
@@ -537,25 +592,42 @@ function SavedServerRow({
 function ServerIcon({
   status,
   name,
+  loading,
 }: {
   status?: ServerStatus;
   name: string;
+  loading: boolean;
 }) {
+  if (loading) {
+    return (
+      <span
+        className="inline-flex size-[72px] animate-pulse rounded-control border border-app-separator bg-app-raised"
+        aria-label={`Loading ${name} server icon`}
+      />
+    );
+  }
   if (status?.favicon) {
     return (
       <img
         src={status.favicon}
         alt=""
-        className="size-16 rounded-control border border-app-separator bg-app-raised object-cover [image-rendering:pixelated]"
+        className="size-[72px] rounded-control border border-app-separator bg-app-raised object-cover [image-rendering:pixelated]"
       />
     );
   }
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toLocaleUpperCase();
   return (
     <span
-      className="inline-flex size-16 items-center justify-center rounded-control border border-app-separator bg-app-raised text-app-accent"
+      className="inline-flex size-[72px] items-center justify-center rounded-control border border-app-separator bg-app-accent/10 font-mono text-base font-bold tracking-[.08em] text-app-accent"
       aria-label={`${name} server icon`}
     >
-      <Server size={27} aria-hidden="true" />
+      <span aria-hidden="true">{initials || "MC"}</span>
     </span>
   );
 }
@@ -563,21 +635,23 @@ function ServerIcon({
 function ServerMotd({ status }: { status?: ServerStatus }) {
   if (!status?.description) {
     return (
-      <p className="mt-3 mb-0 text-[11px] text-app-muted">
-        {status?.online === false ? "Server did not respond." : "Checking server message…"}
+      <p className="mt-4 mb-0 min-h-[34px] text-[11px]/[17px] text-app-muted">
+        {status?.online === false
+          ? "Server did not respond."
+          : "Checking server message…"}
       </p>
     );
   }
   if (status.descriptionSegments.length === 0) {
     return (
-      <p className="mt-3 mb-0 line-clamp-2 font-mono text-[11px]/[17px] text-app-secondary">
+      <p className="mt-4 mb-0 line-clamp-2 min-h-[34px] font-mono text-[11px]/[17px] text-app-secondary">
         {status.description}
       </p>
     );
   }
   return (
     <p
-      className="mt-3 mb-0 line-clamp-2 min-h-[34px] whitespace-pre-wrap font-mono text-[11px]/[17px]"
+      className="mt-4 mb-0 line-clamp-2 min-h-[34px] whitespace-pre-wrap font-mono text-[11px]/[17px]"
       aria-label={status.description}
     >
       {status.descriptionSegments.map((segment, index) => (
@@ -586,12 +660,51 @@ function ServerMotd({ status }: { status?: ServerStatus }) {
           aria-hidden="true"
           style={segmentStyle(segment)}
         >
-          {segment.obfuscated
-            ? segment.text.replace(/\S/g, "█")
-            : segment.text}
+          {segment.obfuscated ? segment.text.replace(/\S/g, "█") : segment.text}
         </span>
       ))}
     </p>
+  );
+}
+
+function ServerFacts({ status }: { status?: ServerStatus }) {
+  if (!status?.online) return null;
+  const players =
+    status.playersOnline !== undefined
+      ? status.playersMax !== undefined
+        ? `${formatCount(status.playersOnline)} / ${formatCount(status.playersMax)}`
+        : formatCount(status.playersOnline)
+      : undefined;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-app-muted">
+      {players ? (
+        <span className="inline-flex items-center gap-1.5 font-mono">
+          <Users size={12} aria-hidden="true" />
+          {players} players
+        </span>
+      ) : null}
+      {status.latencyMs !== undefined ? (
+        <span className="inline-flex items-center gap-1.5 font-mono">
+          <Gauge size={12} aria-hidden="true" />
+          {status.latencyMs} ms
+        </span>
+      ) : null}
+      {status.versionName ? (
+        <span
+          className="max-w-full truncate font-mono"
+          title={status.versionName}
+        >
+          {status.versionName}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(
+    value,
   );
 }
 
@@ -620,16 +733,7 @@ function ServerStatusPill({
   if (!query.data?.online) {
     return <StatusPill tone="danger">Offline</StatusPill>;
   }
-  const players =
-    query.data.playersOnline !== undefined && query.data.playersMax !== undefined
-      ? `${query.data.playersOnline} / ${query.data.playersMax}`
-      : "Online";
-  return (
-    <StatusPill tone="positive">
-      {players}
-      {query.data.latencyMs !== undefined ? ` · ${query.data.latencyMs} ms` : ""}
-    </StatusPill>
-  );
+  return <StatusPill tone="positive">Online</StatusPill>;
 }
 
 function serverMatchesInstance(
@@ -639,7 +743,15 @@ function serverMatchesInstance(
   if (!status?.versionName) return true;
   const versions: string[] =
     status.versionName.match(/\d+\.\d+(?:\.\d+)?/g) ?? [];
-  return versions.length === 0 || versions.includes(instance.minecraftVersion);
+  return (
+    versions.length === 0 ||
+    versions.some(
+      (version) =>
+        version === instance.minecraftVersion ||
+        (version.split(".").length === 2 &&
+          instance.minecraftVersion.startsWith(`${version}.`)),
+    )
+  );
 }
 
 function joinReason({

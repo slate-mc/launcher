@@ -514,7 +514,16 @@ fn joined_description(segments: &[ServerTextSegment]) -> Option<String> {
 }
 
 fn validated_favicon(value: Option<&str>) -> Option<String> {
-    let encoded = value?.strip_prefix("data:image/png;base64,")?;
+    const PREFIX: &str = "data:image/png;base64,";
+    let value = value?;
+    if !value.get(..PREFIX.len())?.eq_ignore_ascii_case(PREFIX) {
+        return None;
+    }
+    let encoded = value
+        .get(PREFIX.len()..)?
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect::<String>();
     if encoded.len() > MAX_FAVICON_BYTES.saturating_mul(2) {
         return None;
     }
@@ -527,7 +536,7 @@ fn validated_favicon(value: Option<&str>) -> Option<String> {
     {
         return None;
     }
-    Some(format!("data:image/png;base64,{encoded}"))
+    Some(format!("{PREFIX}{}", BASE64_STANDARD.encode(decoded)))
 }
 
 #[cfg(test)]
@@ -578,6 +587,11 @@ mod tests {
         let favicon = format!("data:image/png;base64,{encoded}");
         assert_eq!(
             validated_favicon(Some(&favicon)).as_deref(),
+            Some(favicon.as_str())
+        );
+        let wrapped = format!("DATA:IMAGE/PNG;BASE64,\n {encoded}\n");
+        assert_eq!(
+            validated_favicon(Some(&wrapped)).as_deref(),
             Some(favicon.as_str())
         );
         assert!(validated_favicon(Some("data:image/svg+xml;base64,bad")).is_none());
