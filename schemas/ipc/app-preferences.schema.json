@@ -31,6 +31,9 @@
       "format": "uint16",
       "maximum": 65535,
       "minimum": 0
+    },
+    "updateChannel": {
+      "$ref": "#/$defs/UpdateChannelDto"
     }
   },
   "required": [
@@ -39,6 +42,7 @@
     "downloadBandwidthLimitMib",
     "telemetryEnabled",
     "crashReportingEnabled",
+    "updateChannel",
     "reduceMotion",
     "trashRetentionDays"
   ],
@@ -57,6 +61,13 @@
         "dark",
         "light",
         "system"
+      ]
+    },
+    "UpdateChannelDto": {
+      "type": "string",
+      "enum": [
+        "stable",
+        "beta"
       ]
     }
   }

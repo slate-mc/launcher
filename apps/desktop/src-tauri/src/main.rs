@@ -142,9 +142,9 @@ use slate_contracts::{
     StorageCategoryDto, StorageCategorySummary, StorageCleanupResult, StorageOverview,
     SubscribeSessionLogRequest, SupportReportExport, SupportReportPreview, SupportReportSubmission,
     ThemePreferenceDto, TrashInstanceRequest, TrashedInstanceSummary, UnsubscribeSessionLogRequest,
-    UpdateAppPreferencesRequest, UpdateInstanceConfigurationRequest, UpdateInstanceContentRequest,
-    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
-    UpdateSavedServerRequest,
+    UpdateAppPreferencesRequest, UpdateChannelDto, UpdateInstanceConfigurationRequest,
+    UpdateInstanceContentRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
+    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
 };
 use slate_domain::{
     AccountId, InstanceId, InstanceName, InstanceNameError, JobId, LoaderFamily, ManagementMode,
@@ -185,7 +185,7 @@ use slate_storage::{
     LauncherBehavior, MemoryMode, NewInstance, NewInstanceMod, NewInstanceModDependencySet,
     NewInstanceProviderContent, NewModpackSource, NewSavedServer, PerformancePreset,
     ProcessPriority, ReduceMotionPreference, SavedServerRecord, SessionState, StorageError,
-    ThemePreference, TrashedInstanceRecord, UpdateInstanceSettings,
+    ThemePreference, TrashedInstanceRecord, UpdateChannel, UpdateInstanceSettings,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;

@@ -79,9 +79,11 @@ export {
 } from "./bridgeServers";
 export {
   checkForLauncherUpdate,
+  getLauncherUpdateHistory,
   installLauncherUpdate,
   type LauncherUpdateCheck,
   type LauncherUpdateProgress,
+  type LauncherUpdateRecord,
 } from "./bridgeUpdates";
 export * from "./bridgeContent";
 
@@ -210,7 +212,7 @@ export async function getBootstrap(): Promise<Bootstrap> {
   return bootstrapSchema.parse({
     productName: "slate",
     ipcSchemaVersion: 1,
-    databaseSchemaVersion: 19,
+    databaseSchemaVersion: 20,
     capabilities: [
       { id: "instance.library", available: true },
       { id: "instance.create", available: true },
@@ -852,6 +854,7 @@ function defaultPreferences(): AppPreferences {
     downloadBandwidthLimitMib: 0,
     telemetryEnabled: false,
     crashReportingEnabled: false,
+    updateChannel: "stable",
     reduceMotion: "system",
     trashRetentionDays: 30,
   };

@@ -57,6 +57,10 @@ pub(super) async fn preferences_update(
             download_bandwidth_limit_mib: request.download_bandwidth_limit_mib,
             telemetry_enabled: request.telemetry_enabled,
             crash_reporting_enabled: request.crash_reporting_enabled,
+            update_channel: match request.update_channel {
+                UpdateChannelDto::Stable => UpdateChannel::Stable,
+                UpdateChannelDto::Beta => UpdateChannel::Beta,
+            },
             reduce_motion: match request.reduce_motion {
                 ReduceMotionPreferenceDto::System => ReduceMotionPreference::System,
                 ReduceMotionPreferenceDto::On => ReduceMotionPreference::On,

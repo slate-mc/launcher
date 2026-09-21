@@ -19,6 +19,7 @@ import {
   bridgeMode,
   checkForLauncherUpdate,
   getBootstrap,
+  getLauncherUpdateHistory,
   getPreferences,
   getPreflight,
   installLauncherUpdate,
@@ -65,7 +66,10 @@ export function SettingsPage() {
           <PreferencesForm initial={preferencesQuery.data} />
         )}
         <aside className="grid content-start gap-5">
-          <UpdatePanel bootstrap={bootstrapQuery.data} />
+          <UpdatePanel
+            bootstrap={bootstrapQuery.data}
+            channel={preferencesQuery.data?.updateChannel ?? "stable"}
+          />
           <PreflightPanel query={preflightQuery} />
         </aside>
       </div>
@@ -75,8 +79,10 @@ export function SettingsPage() {
 
 function UpdatePanel({
   bootstrap,
+  channel,
 }: {
   bootstrap: Awaited<ReturnType<typeof getBootstrap>> | undefined;
+  channel: AppPreferences["updateChannel"];
 }) {
   const [available, setAvailable] = useState<LauncherUpdateCheck>();
   const [checked, setChecked] = useState(false);
@@ -86,16 +92,23 @@ function UpdatePanel({
   );
   const enabled = bridgeMode === "native" && capability?.available === true;
   const checkMutation = useMutation({
-    mutationFn: checkForLauncherUpdate,
+    mutationFn: () => checkForLauncherUpdate(channel),
     onSuccess: (update) => {
       setChecked(true);
       setAvailable(update);
       setProgress(undefined);
     },
   });
+  const historyQuery = useQuery({
+    queryKey: ["launcher-update-history"],
+    queryFn: getLauncherUpdateHistory,
+    enabled: bridgeMode === "native",
+  });
   const installMutation = useMutation({
     mutationFn: () => installLauncherUpdate(setProgress),
+    onSettled: () => void historyQuery.refetch(),
   });
+  const lastAttempt = historyQuery.data?.[0];
   const percent =
     progress?.totalBytes && progress.totalBytes > 0
       ? Math.min(
@@ -112,7 +125,7 @@ function UpdatePanel({
       </div>
       <p className="mt-1 mb-4 text-[11px]/[17px] text-app-secondary">
         {enabled
-          ? "Check for a signed slate release and install it when you are ready."
+          ? `Check the ${channel === "beta" ? "Beta" : "Stable"} channel for a signed slate release.`
           : "Signed release builds can check for launcher updates here."}
       </p>
 
@@ -154,6 +167,16 @@ function UpdatePanel({
           {installMutation.isError
             ? "The update was not installed. Restart slate and try again."
             : "slate could not check for updates. Try again later."}
+        </p>
+      ) : null}
+
+      {lastAttempt?.state === "interrupted" ? (
+        <p className="mt-3 mb-0 text-[10px]/[16px] text-app-warning">
+          The previous update did not finish. Your current version was kept.
+        </p>
+      ) : lastAttempt?.state === "installed" ? (
+        <p className="mt-3 mb-0 text-[10px]/[16px] text-app-secondary">
+          Last installed update: {lastAttempt.toVersion}
         </p>
       ) : null}
 
@@ -251,6 +274,24 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
             <option value="system">System</option>
             <option value="on">On</option>
             <option value="off">Off</option>
+          </select>
+        </SettingRow>
+        <SettingRow
+          title="Update channel"
+          description="Stable receives production releases. Beta receives signed previews and may change more often."
+        >
+          <select
+            value={values.updateChannel}
+            className={selectClass}
+            onChange={(event) =>
+              update(
+                "updateChannel",
+                event.target.value as AppPreferences["updateChannel"],
+              )
+            }
+          >
+            <option value="stable">Stable</option>
+            <option value="beta">Beta</option>
           </select>
         </SettingRow>
         <SettingRow
@@ -465,6 +506,7 @@ function samePreferences(left: AppPreferences, right: AppPreferences) {
     left.downloadBandwidthLimitMib === right.downloadBandwidthLimitMib &&
     left.telemetryEnabled === right.telemetryEnabled &&
     left.crashReportingEnabled === right.crashReportingEnabled &&
+    left.updateChannel === right.updateChannel &&
     left.reduceMotion === right.reduceMotion &&
     left.trashRetentionDays === right.trashRetentionDays
   );

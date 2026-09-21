@@ -1,6 +1,7 @@
 use moka::sync::Cache;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,9 +11,33 @@ const MAX_MANIFEST_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct ReleaseCatalog {
-    manifest_url: Url,
+    manifest_urls: BTreeMap<ReleaseChannel, Url>,
+    rollouts: BTreeMap<ReleaseChannel, u8>,
     client: reqwest::Client,
-    cache: Cache<&'static str, Arc<StaticReleaseManifest>>,
+    cache: Cache<ReleaseChannel, Arc<StaticReleaseManifest>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ReleaseChannel {
+    Stable,
+    Beta,
+}
+
+impl ReleaseChannel {
+    pub fn parse(value: &str) -> Result<Self, ReleaseError> {
+        match value {
+            "stable" => Ok(Self::Stable),
+            "beta" => Ok(Self::Beta),
+            _ => Err(ReleaseError::InvalidChannel),
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Beta => "beta",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -43,11 +68,25 @@ pub struct LauncherUpdate {
 }
 
 impl ReleaseCatalog {
-    pub fn new(manifest_url: Url, user_agent: &str) -> Result<Self, ReleaseError> {
-        let configured_host = manifest_url
-            .host_str()
-            .ok_or(ReleaseError::InvalidManifest)?
-            .to_owned();
+    pub fn new(
+        stable_manifest_url: Url,
+        beta_manifest_url: Option<Url>,
+        stable_rollout: u8,
+        beta_rollout: u8,
+        user_agent: &str,
+    ) -> Result<Self, ReleaseError> {
+        let mut manifest_urls = BTreeMap::from([(ReleaseChannel::Stable, stable_manifest_url)]);
+        if let Some(url) = beta_manifest_url {
+            manifest_urls.insert(ReleaseChannel::Beta, url);
+        }
+        let configured_hosts = manifest_urls
+            .values()
+            .map(|url| {
+                url.host_str()
+                    .map(str::to_owned)
+                    .ok_or(ReleaseError::InvalidManifest)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(15))
@@ -58,7 +97,9 @@ impl ReleaseCatalog {
                 }
                 let host = attempt.url().host_str();
                 if attempt.url().scheme() == "https"
-                    && (host == Some(configured_host.as_str())
+                    && (configured_hosts
+                        .iter()
+                        .any(|allowed| host == Some(allowed.as_str()))
                         || matches!(
                             host,
                             Some(
@@ -75,11 +116,15 @@ impl ReleaseCatalog {
             }))
             .build()?;
         Ok(Self {
-            manifest_url,
+            manifest_urls,
+            rollouts: BTreeMap::from([
+                (ReleaseChannel::Stable, stable_rollout.min(100)),
+                (ReleaseChannel::Beta, beta_rollout.min(100)),
+            ]),
             client,
             cache: Cache::builder()
                 .time_to_live(Duration::from_secs(60))
-                .max_capacity(1)
+                .max_capacity(2)
                 .build(),
         })
     }
@@ -89,16 +134,35 @@ impl ReleaseCatalog {
         target: &str,
         architecture: &str,
         current_version: &str,
+        channel: ReleaseChannel,
+        cohort_id: Option<uuid::Uuid>,
     ) -> Result<Option<LauncherUpdate>, ReleaseError> {
-        let manifest = self.manifest().await?;
-        select_update(&manifest, target, architecture, current_version)
+        let Some(manifest) = self.manifest(channel).await? else {
+            return Ok(None);
+        };
+        let update = select_update(&manifest, target, architecture, current_version, channel)?;
+        let Some(update) = update else {
+            return Ok(None);
+        };
+        let rollout = self.rollouts.get(&channel).copied().unwrap_or_default();
+        if rollout_eligible(cohort_id, channel, &update.version, rollout) {
+            Ok(Some(update))
+        } else {
+            Ok(None)
+        }
     }
 
-    async fn manifest(&self) -> Result<Arc<StaticReleaseManifest>, ReleaseError> {
-        if let Some(manifest) = self.cache.get("latest") {
-            return Ok(manifest);
+    async fn manifest(
+        &self,
+        channel: ReleaseChannel,
+    ) -> Result<Option<Arc<StaticReleaseManifest>>, ReleaseError> {
+        if let Some(manifest) = self.cache.get(&channel) {
+            return Ok(Some(manifest));
         }
-        let response = self.client.get(self.manifest_url.clone()).send().await?;
+        let Some(manifest_url) = self.manifest_urls.get(&channel) else {
+            return Ok(None);
+        };
+        let response = self.client.get(manifest_url.clone()).send().await?;
         if !response.status().is_success()
             || response
                 .content_length()
@@ -111,8 +175,8 @@ impl ReleaseCatalog {
             return Err(ReleaseError::InvalidManifest);
         }
         let manifest: Arc<StaticReleaseManifest> = Arc::new(serde_json::from_slice(&bytes)?);
-        self.cache.insert("latest", manifest.clone());
-        Ok(manifest)
+        self.cache.insert(channel, manifest.clone());
+        Ok(Some(manifest))
     }
 }
 
@@ -121,6 +185,7 @@ fn select_update(
     target: &str,
     architecture: &str,
     current_version: &str,
+    channel: ReleaseChannel,
 ) -> Result<Option<LauncherUpdate>, ReleaseError> {
     if !matches!(target, "windows" | "linux" | "darwin")
         || !matches!(architecture, "x86_64" | "aarch64" | "i686" | "armv7")
@@ -129,6 +194,9 @@ fn select_update(
     }
     let current = parse_version(current_version)?;
     let latest = parse_version(&manifest.version)?;
+    if channel == ReleaseChannel::Stable && !latest.pre.is_empty() {
+        return Err(ReleaseError::InvalidManifest);
+    }
     if latest <= current {
         return Ok(None);
     }
@@ -156,12 +224,36 @@ fn select_update(
     }))
 }
 
+fn rollout_eligible(
+    cohort_id: Option<uuid::Uuid>,
+    channel: ReleaseChannel,
+    version: &str,
+    percentage: u8,
+) -> bool {
+    if percentage >= 100 {
+        return true;
+    }
+    if percentage == 0 {
+        return false;
+    }
+    let Some(cohort_id) = cohort_id else {
+        return false;
+    };
+    let digest = Sha256::digest(format!("{}:{version}:{cohort_id}", channel.as_str()).as_bytes());
+    let bucket = u64::from_be_bytes([
+        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+    ]) % 100;
+    bucket < u64::from(percentage)
+}
+
 fn parse_version(value: &str) -> Result<Version, ReleaseError> {
     Version::parse(value.trim().trim_start_matches('v')).map_err(|_| ReleaseError::InvalidVersion)
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ReleaseError {
+    #[error("the release channel is invalid")]
+    InvalidChannel,
     #[error("the release target is unsupported")]
     UnsupportedTarget,
     #[error("the release version is invalid")]
@@ -178,7 +270,10 @@ pub enum ReleaseError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReleaseError, StaticReleaseManifest, parse_version, select_update};
+    use super::{
+        ReleaseChannel, ReleaseError, StaticReleaseManifest, parse_version, rollout_eligible,
+        select_update,
+    };
 
     fn release_manifest() -> Result<StaticReleaseManifest, serde_json::Error> {
         serde_json::from_str(
@@ -216,15 +311,74 @@ mod tests {
     fn selects_only_newer_updates_for_the_requested_platform()
     -> Result<(), Box<dyn std::error::Error>> {
         let manifest = release_manifest()?;
-        let update =
-            select_update(&manifest, "windows", "x86_64", "0.1.0")?.ok_or("expected an update")?;
+        let update = select_update(
+            &manifest,
+            "windows",
+            "x86_64",
+            "0.1.0",
+            ReleaseChannel::Stable,
+        )?
+        .ok_or("expected an update")?;
         assert_eq!(update.version, "0.2.0");
         assert!(update.url.starts_with("https://github.com/"));
-        assert!(select_update(&manifest, "windows", "x86_64", "0.2.0")?.is_none());
+        assert!(
+            select_update(
+                &manifest,
+                "windows",
+                "x86_64",
+                "0.2.0",
+                ReleaseChannel::Stable,
+            )?
+            .is_none()
+        );
         assert!(matches!(
-            select_update(&manifest, "darwin", "aarch64", "0.1.0"),
+            select_update(
+                &manifest,
+                "darwin",
+                "aarch64",
+                "0.1.0",
+                ReleaseChannel::Stable,
+            ),
             Err(ReleaseError::UnsupportedTarget)
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn staged_rollouts_are_stable_and_require_a_cohort() {
+        let cohort = uuid::Uuid::parse_str("041328e2-92e4-413b-8813-64b229dadd49").ok();
+        assert!(rollout_eligible(None, ReleaseChannel::Stable, "1.0.0", 100));
+        assert!(!rollout_eligible(None, ReleaseChannel::Stable, "1.0.0", 20));
+        assert_eq!(
+            rollout_eligible(cohort, ReleaseChannel::Stable, "1.0.0", 20),
+            rollout_eligible(cohort, ReleaseChannel::Stable, "1.0.0", 20)
+        );
+    }
+
+    #[test]
+    fn stable_channel_rejects_prerelease_manifests() -> Result<(), Box<dyn std::error::Error>> {
+        let mut manifest = release_manifest()?;
+        manifest.version = "0.2.0-beta.1".to_owned();
+        assert!(matches!(
+            select_update(
+                &manifest,
+                "windows",
+                "x86_64",
+                "0.1.0",
+                ReleaseChannel::Stable,
+            ),
+            Err(ReleaseError::InvalidManifest)
+        ));
+        assert!(
+            select_update(
+                &manifest,
+                "windows",
+                "x86_64",
+                "0.1.0",
+                ReleaseChannel::Beta,
+            )?
+            .is_some()
+        );
         Ok(())
     }
 }

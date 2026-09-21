@@ -7,6 +7,14 @@ on:
         description: Short release notes shown in the updater
         required: true
         type: string
+      channel:
+        description: Release channel
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
 
 permissions:
   contents: write
@@ -74,7 +82,7 @@ jobs:
           releaseName: slate __VERSION__
           releaseBody: ${{ inputs.release_notes }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ inputs.channel == 'beta' }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           args: --config src-tauri/tauri.release.generated.json ${{ matrix.args }}

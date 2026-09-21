@@ -69,12 +69,43 @@ impl TryFrom<&str> for ReduceMotionPreference {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UpdateChannel {
+    Stable,
+    Beta,
+}
+
+impl UpdateChannel {
+    pub const fn as_storage_value(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Beta => "beta",
+        }
+    }
+}
+
+impl TryFrom<&str> for UpdateChannel {
+    type Error = StorageError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "stable" => Ok(Self::Stable),
+            "beta" => Ok(Self::Beta),
+            other => Err(StorageError::InvalidStoredValue {
+                field: "app_preferences.update_channel",
+                value: other.to_owned(),
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AppPreferences {
     pub theme: ThemePreference,
     pub download_concurrency: u8,
     pub download_bandwidth_limit_mib: u32,
     pub telemetry_enabled: bool,
     pub crash_reporting_enabled: bool,
+    pub update_channel: UpdateChannel,
     pub reduce_motion: ReduceMotionPreference,
     pub trash_retention_days: u16,
 }
@@ -87,6 +118,7 @@ impl Default for AppPreferences {
             download_bandwidth_limit_mib: 0,
             telemetry_enabled: false,
             crash_reporting_enabled: false,
+            update_channel: UpdateChannel::Stable,
             reduce_motion: ReduceMotionPreference::System,
             trash_retention_days: 30,
         }
@@ -103,7 +135,7 @@ impl Database {
 
     pub async fn get_app_preferences(&self) -> Result<AppPreferences, StorageError> {
         let row = sqlx::query(
-            "SELECT theme, download_concurrency, download_bandwidth_limit_mib, telemetry_enabled, crash_reporting_enabled, reduce_motion, trash_retention_days \
+            "SELECT theme, download_concurrency, download_bandwidth_limit_mib, telemetry_enabled, crash_reporting_enabled, update_channel, reduce_motion, trash_retention_days \
              FROM app_preferences WHERE singleton_id = 1",
         )
         .fetch_optional(&self.pool)
@@ -118,6 +150,7 @@ impl Database {
         let download_bandwidth_limit_mib: i64 = row.try_get("download_bandwidth_limit_mib")?;
         let telemetry_enabled: i64 = row.try_get("telemetry_enabled")?;
         let crash_reporting_enabled: i64 = row.try_get("crash_reporting_enabled")?;
+        let update_channel: String = row.try_get("update_channel")?;
         let trash_retention_days: i64 = row.try_get("trash_retention_days")?;
 
         Ok(AppPreferences {
@@ -136,6 +169,7 @@ impl Database {
             )?,
             telemetry_enabled: telemetry_enabled != 0,
             crash_reporting_enabled: crash_reporting_enabled != 0,
+            update_channel: UpdateChannel::try_from(update_channel.as_str())?,
             reduce_motion: ReduceMotionPreference::try_from(reduce_motion.as_str())?,
             trash_retention_days: u16::try_from(trash_retention_days).map_err(|_| {
                 StorageError::InvalidStoredValue {
@@ -152,13 +186,14 @@ impl Database {
     ) -> Result<AppPreferences, StorageError> {
         sqlx::query(
             "INSERT INTO app_preferences \
-             (singleton_id, theme, download_concurrency, download_bandwidth_limit_mib, telemetry_enabled, crash_reporting_enabled, reduce_motion, trash_retention_days, updated_at) \
-             VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?) \
+             (singleton_id, theme, download_concurrency, download_bandwidth_limit_mib, telemetry_enabled, crash_reporting_enabled, update_channel, reduce_motion, trash_retention_days, updated_at) \
+             VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
              ON CONFLICT(singleton_id) DO UPDATE SET theme = excluded.theme, \
              download_concurrency = excluded.download_concurrency, \
              download_bandwidth_limit_mib = excluded.download_bandwidth_limit_mib, \
              telemetry_enabled = excluded.telemetry_enabled, \
              crash_reporting_enabled = excluded.crash_reporting_enabled, \
+             update_channel = excluded.update_channel, \
              reduce_motion = excluded.reduce_motion, \
              trash_retention_days = excluded.trash_retention_days, updated_at = excluded.updated_at",
         )
@@ -167,6 +202,7 @@ impl Database {
         .bind(i64::from(preferences.download_bandwidth_limit_mib))
         .bind(if preferences.telemetry_enabled { 1_i64 } else { 0 })
         .bind(if preferences.crash_reporting_enabled { 1_i64 } else { 0 })
+        .bind(preferences.update_channel.as_storage_value())
         .bind(preferences.reduce_motion.as_storage_value())
         .bind(i64::from(preferences.trash_retention_days))
         .bind(now_rfc3339()?)
@@ -179,7 +215,7 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppPreferences, ReduceMotionPreference, ThemePreference};
+    use super::{AppPreferences, ReduceMotionPreference, ThemePreference, UpdateChannel};
     use crate::Database;
 
     #[tokio::test]
@@ -197,6 +233,7 @@ mod tests {
             download_bandwidth_limit_mib: 25,
             telemetry_enabled: true,
             crash_reporting_enabled: true,
+            update_channel: UpdateChannel::Beta,
             reduce_motion: ReduceMotionPreference::On,
             trash_retention_days: 60,
         };

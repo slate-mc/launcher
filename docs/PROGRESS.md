@@ -90,7 +90,7 @@ Verified on Windows on September 20, 2026:
   snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 169 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 171 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -124,7 +124,7 @@ Verified on Windows on September 20, 2026:
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
 | Backend observability | OpenTelemetry to Grafana Cloud | Environment-gated OTLP export now covers API traces, structured logs, HTTP latency, provider failures/latency, cache outcomes, install plans, and service resources while retaining local JSON output. Configure production credentials, dashboards, alerts, sampling, and retention. |
 | Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash reports avoid local queuing, and failed support uploads deliberately leave no extra archive behind. |
-| Updates | Tauri updater plus the slate release API | Signed release builds, update UI, multi-platform artifact workflow, and the release endpoint are implemented. Add controlled channels, staged rollout, rollback protection, and recorded recovery evidence. |
+| Updates | Tauri updater plus the slate release API | Signed release builds, Stable/Beta channels, deterministic staged rollout, an emergency stop percentage, downgrade protection, prerelease isolation, bounded local attempt history, update UI, and multi-platform artifacts are implemented. Configure channel manifests and complete the production rollout/recovery drill. |
 | Support reports | In-app report flow plus private object storage | User-reviewed local export, explicit bounded submission, private S3-compatible storage, server-only credentials, report IDs, rate limiting, and user-safe failures are implemented. Configure the production bucket lifecycle and validate access controls and expiry. |
 
 ## Quality and documentation gaps

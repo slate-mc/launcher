@@ -106,3 +106,26 @@ actual bucket.
 
 Local S3 emulators may use a loopback HTTP endpoint with `AWS_ALLOW_HTTP=true`. The API rejects
 non-loopback HTTP storage endpoints, and production deployments must not enable that override.
+
+## Launcher update rollout
+
+Stable and Beta are separate signed update channels. Stable uses
+`SLATE_LAUNCHER_RELEASE_MANIFEST_URL`; Beta remains unavailable unless
+`SLATE_LAUNCHER_BETA_RELEASE_MANIFEST_URL` is configured. Both URLs must use HTTPS. Control staged
+availability with integer percentages from 0 through 100:
+
+```text
+SLATE_LAUNCHER_STABLE_ROLLOUT_PERCENT=10
+SLATE_LAUNCHER_BETA_ROLLOUT_PERCENT=100
+```
+
+Each desktop installation generates a random update cohort ID. The API hashes the channel, target
+version, and cohort so assignment is stable for a release without identifying a Minecraft account.
+Clients outside the percentage receive `204 No Content`. Increase Stable gradually after reviewing
+crash rate, launch success, and support volume. Set it to `0` to stop offering a release immediately.
+
+The desktop updater always verifies the Tauri signature and refuses downgrades. Stable rejects
+prerelease versions even if its configured manifest points to one. The launcher records the five
+most recent update attempts locally; after restart it marks an attempt installed or interrupted so
+the UI can explain that the previous version was preserved. A production rollout drill must cover
+10%, 50%, 100%, emergency stop, invalid signature, interrupted installation, and Beta isolation.

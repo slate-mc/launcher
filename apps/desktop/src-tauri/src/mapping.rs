@@ -244,6 +244,10 @@ pub(super) fn preferences_dto(value: AppPreferences) -> AppPreferencesDto {
         download_bandwidth_limit_mib: value.download_bandwidth_limit_mib,
         telemetry_enabled: value.telemetry_enabled,
         crash_reporting_enabled: value.crash_reporting_enabled,
+        update_channel: match value.update_channel {
+            UpdateChannel::Stable => UpdateChannelDto::Stable,
+            UpdateChannel::Beta => UpdateChannelDto::Beta,
+        },
         reduce_motion: match value.reduce_motion {
             ReduceMotionPreference::System => ReduceMotionPreferenceDto::System,
             ReduceMotionPreference::On => ReduceMotionPreferenceDto::On,

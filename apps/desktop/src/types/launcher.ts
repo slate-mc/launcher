@@ -247,6 +247,7 @@ export const preferencesSchema = z.object({
   downloadBandwidthLimitMib: z.number().int().min(0).max(1024),
   telemetryEnabled: z.boolean(),
   crashReportingEnabled: z.boolean(),
+  updateChannel: z.enum(["stable", "beta"]),
   reduceMotion: z.enum(["system", "on", "off"]),
   trashRetentionDays: z
     .number()

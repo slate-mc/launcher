@@ -15,6 +15,9 @@ pub struct Config {
     pub upstream_url: Url,
     pub upstream_user_agent: String,
     pub release_manifest_url: Url,
+    pub beta_release_manifest_url: Option<Url>,
+    pub stable_release_rollout: u8,
+    pub beta_release_rollout: u8,
     pub posthog_host: Url,
     pub posthog_project_token: Option<String>,
     pub observability: ObservabilityConfig,
@@ -63,6 +66,21 @@ impl Config {
         {
             return Err(ConfigError::UnsafeReleaseManifestUrl);
         }
+        let beta_release_manifest_url = std::env::var("SLATE_LAUNCHER_BETA_RELEASE_MANIFEST_URL")
+            .ok()
+            .map(|value| Url::parse(&value))
+            .transpose()
+            .map_err(ConfigError::InvalidBetaReleaseManifestUrl)?;
+        if beta_release_manifest_url.as_ref().is_some_and(|url| {
+            url.scheme() != "https"
+                || url.host_str().is_none()
+                || !url.username().is_empty()
+                || url.password().is_some()
+        }) {
+            return Err(ConfigError::UnsafeBetaReleaseManifestUrl);
+        }
+        let stable_release_rollout = rollout_percentage("SLATE_LAUNCHER_STABLE_ROLLOUT_PERCENT")?;
+        let beta_release_rollout = rollout_percentage("SLATE_LAUNCHER_BETA_ROLLOUT_PERCENT")?;
         let posthog_host = Url::parse(
             &std::env::var("SLATE_POSTHOG_HOST")
                 .unwrap_or_else(|_| DEFAULT_POSTHOG_HOST.to_owned()),
@@ -97,6 +115,9 @@ impl Config {
             upstream_url,
             upstream_user_agent,
             release_manifest_url,
+            beta_release_manifest_url,
+            stable_release_rollout,
+            beta_release_rollout,
             posthog_host,
             posthog_project_token,
             observability,
@@ -104,6 +125,17 @@ impl Config {
             support_reports,
         })
     }
+}
+
+fn rollout_percentage(variable: &'static str) -> Result<u8, ConfigError> {
+    let value = std::env::var(variable).unwrap_or_else(|_| "100".to_owned());
+    let parsed = value
+        .parse::<u8>()
+        .map_err(|source| ConfigError::InvalidRolloutPercentage { variable, source })?;
+    if parsed > 100 {
+        return Err(ConfigError::RolloutPercentageOutOfRange { variable });
+    }
+    Ok(parsed)
 }
 
 impl SupportReportStorageConfig {
@@ -232,6 +264,17 @@ pub enum ConfigError {
     InvalidReleaseManifestUrl(url::ParseError),
     #[error("SLATE_LAUNCHER_RELEASE_MANIFEST_URL must be a public HTTPS URL")]
     UnsafeReleaseManifestUrl,
+    #[error("SLATE_LAUNCHER_BETA_RELEASE_MANIFEST_URL is not a valid URL")]
+    InvalidBetaReleaseManifestUrl(url::ParseError),
+    #[error("SLATE_LAUNCHER_BETA_RELEASE_MANIFEST_URL must be a public HTTPS URL")]
+    UnsafeBetaReleaseManifestUrl,
+    #[error("{variable} must be an integer from 0 through 100")]
+    InvalidRolloutPercentage {
+        variable: &'static str,
+        source: std::num::ParseIntError,
+    },
+    #[error("{variable} must be from 0 through 100")]
+    RolloutPercentageOutOfRange { variable: &'static str },
     #[error("SLATE_POSTHOG_HOST is not a valid URL")]
     InvalidPostHogHost(url::ParseError),
     #[error("SLATE_POSTHOG_HOST must be a public HTTPS URL")]

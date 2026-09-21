@@ -13,6 +13,7 @@ async function openPreview(page: Page, theme: Theme) {
         downloadBandwidthLimitMib: 0,
         telemetryEnabled: false,
         crashReportingEnabled: false,
+        updateChannel: "stable",
         reduceMotion: "on",
         trashRetentionDays: 30,
       }),

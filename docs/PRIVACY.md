@@ -33,6 +33,13 @@ latency, response status, upstream health, cache outcomes, and server errors. Ro
 used instead of user-supplied project/version values. Credentials and request bodies are not added
 to telemetry.
 
+## Update delivery
+
+slate sends the selected update channel, current launcher version, operating-system target, and a
+random update cohort ID when checking for launcher updates. The cohort ID is stored locally and is
+not linked to a Minecraft account. It keeps staged release assignment consistent and is required
+for safe update delivery, independent of the optional usage-sharing setting.
+
 ## Support reports
 
 Support reports are created only when requested by the user. The preview shows what will be

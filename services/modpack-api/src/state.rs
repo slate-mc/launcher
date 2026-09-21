@@ -24,15 +24,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(
-        upstream_url: url::Url,
-        upstream_user_agent: &str,
-        release_manifest_url: url::Url,
-        posthog_host: url::Url,
-        posthog_project_token: Option<String>,
-        support_reports: &crate::config::SupportReportStorageConfig,
-    ) -> Result<Self, StateError> {
-        let upstream = UpstreamClient::new(upstream_url, upstream_user_agent)?;
+    pub fn new(config: &crate::config::Config) -> Result<Self, StateError> {
+        let upstream =
+            UpstreamClient::new(config.upstream_url.clone(), &config.upstream_user_agent)?;
         let providers = ProviderRegistry::new(vec![
             Arc::new(CurseForgeProvider::new(upstream.clone())),
             Arc::new(ModrinthProvider::new(upstream.clone())),
@@ -44,9 +38,19 @@ impl AppState {
             upstream,
             minecraft: MinecraftCatalog::new()?,
             rate_limiter: RateLimiter::default(),
-            releases: ReleaseCatalog::new(release_manifest_url, upstream_user_agent)?,
-            telemetry: PostHogRelay::new(posthog_host, posthog_project_token, upstream_user_agent)?,
-            support_reports: SupportReportStore::new(support_reports)?,
+            releases: ReleaseCatalog::new(
+                config.release_manifest_url.clone(),
+                config.beta_release_manifest_url.clone(),
+                config.stable_release_rollout,
+                config.beta_release_rollout,
+                &config.upstream_user_agent,
+            )?,
+            telemetry: PostHogRelay::new(
+                config.posthog_host.clone(),
+                config.posthog_project_token.clone(),
+                &config.upstream_user_agent,
+            )?,
+            support_reports: SupportReportStore::new(&config.support_reports)?,
         })
     }
 }

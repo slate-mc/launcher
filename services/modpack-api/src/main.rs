@@ -6,14 +6,7 @@ async fn main() -> anyhow::Result<()> {
     let _sentry =
         error_reporting::init(config.sentry_dsn.clone(), &config.observability.environment);
     let observability = observability::init(&config.observability)?;
-    let state = AppState::new(
-        config.upstream_url.clone(),
-        &config.upstream_user_agent,
-        config.release_manifest_url.clone(),
-        config.posthog_host.clone(),
-        config.posthog_project_token.clone(),
-        &config.support_reports,
-    )?;
+    let state = AppState::new(&config)?;
     let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
     tracing::info!(address = %config.bind_address, "slate modpack API listening");
     axum::serve(

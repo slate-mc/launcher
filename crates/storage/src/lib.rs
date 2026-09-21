@@ -39,6 +39,6 @@ pub use instances::{
 pub use onboarding::OnboardingStateRecord;
 pub use servers::{NewSavedServer, SavedServerRecord};
 pub use sessions::{SessionRecord, SessionState};
-pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference};
+pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference, UpdateChannel};
 pub use snapshots::InstanceSnapshotRecord;
 pub use telemetry::QueuedProductEvent;
