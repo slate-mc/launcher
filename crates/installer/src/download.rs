@@ -440,6 +440,31 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn aborting_an_active_download_scope_removes_its_partial_file()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let partial = directory.path().join(".library.jar.partial-abort");
+        let partial_for_task = partial.clone();
+        let (created, created_receiver) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _cleanup = PartialDownloadCleanup(partial_for_task.clone());
+            tokio::fs::write(&partial_for_task, b"incomplete download").await?;
+            let _ = created.send(());
+            std::future::pending::<()>().await;
+            Ok::<(), std::io::Error>(())
+        });
+
+        created_receiver.await?;
+        assert!(partial.is_file());
+        task.abort();
+        let result = task.await;
+
+        assert!(result.is_err());
+        assert!(!partial.exists());
+        Ok(())
+    }
+
     #[test]
     fn retries_use_bounded_exponential_backoff() {
         let first = retry_delay(1);

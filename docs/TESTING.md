@@ -17,8 +17,9 @@ installation boundaries:
 - dark/light home visual snapshots and minimum-window navigation
 - automated WCAG A/AA scans across primary routes and keyboard/focus behavior for the shared
   destructive confirmation dialog
-- installer interruption cleanup, recovery, content transactions, provider normalization, API
-  envelopes, rate limits, and compatibility validation
+- installer interruption cleanup (including an aborted active download scope), startup recovery,
+  content transactions, provider normalization, API envelopes, rate limits, and compatibility
+  validation
 
 Run:
 

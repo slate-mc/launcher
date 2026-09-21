@@ -91,7 +91,7 @@ Verified on Windows on September 20, 2026:
   confirmation dialogs.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 173 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 174 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
