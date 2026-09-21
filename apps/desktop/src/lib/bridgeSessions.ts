@@ -2,10 +2,14 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   gameSessionListSchema,
   gameSessionSchema,
+  sessionHistoryListSchema,
   sessionLogEventSchema,
+  sessionLogSnapshotSchema,
   sessionLogSubscriptionSchema,
   type GameSession,
+  type SessionHistory,
   type SessionLogEvent,
+  type SessionLogSnapshot,
 } from "../types/launcher";
 import { bridgeMode } from "./bridgeRuntime";
 
@@ -31,6 +35,28 @@ export async function listGameSessions(): Promise<GameSession[]> {
     return gameSessionListSchema.parse(await invoke("sessions_list"));
   }
   return [];
+}
+
+export async function listInstanceSessions(
+  instanceId: string,
+): Promise<SessionHistory[]> {
+  if (bridgeMode === "native") {
+    return sessionHistoryListSchema.parse(
+      await invoke("instance_sessions_list", { request: { instanceId } }),
+    );
+  }
+  return [];
+}
+
+export async function readSessionLog(
+  sessionId: string,
+): Promise<SessionLogSnapshot> {
+  if (bridgeMode === "native") {
+    return sessionLogSnapshotSchema.parse(
+      await invoke("session_log_read", { request: { sessionId } }),
+    );
+  }
+  throw new Error("Saved game output is available only in the desktop app.");
 }
 
 export async function forceStopGameSession(id: string): Promise<GameSession> {

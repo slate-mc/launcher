@@ -27,13 +27,18 @@ import {
   launchInstance,
   listAccounts,
   listGameSessions,
+  listInstanceSessions,
   listInstallJobs,
   renameInstance,
   setInstanceFavorite,
   trashInstance,
 } from "../../lib/bridge";
 import { formatDate, loaderLabel } from "../../lib/format";
-import type { GameSession, LauncherInstance } from "../../types/launcher";
+import type {
+  GameSession,
+  LauncherInstance,
+  SessionHistory,
+} from "../../types/launcher";
 
 export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
   const queryClient = useQueryClient();
@@ -45,6 +50,7 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
   const [trackedLogSession, setTrackedLogSession] = useState<
     GameSession | undefined
   >();
+  const [selectedStoredSessionId, setSelectedStoredSessionId] = useState("");
   const accountsQuery = useQuery({
     queryKey: ["minecraft-accounts"],
     queryFn: listAccounts,
@@ -58,6 +64,12 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
     queryKey: ["game-sessions"],
     queryFn: listGameSessions,
     refetchInterval: 750,
+  });
+  const sessionHistoryQuery = useQuery({
+    queryKey: ["instance-sessions", instance.id],
+    queryFn: () => listInstanceSessions(instance.id),
+    enabled: bridgeMode === "native",
+    refetchInterval: 2_000,
   });
   const installJob = jobsQuery.data?.find(
     (job) => job.instanceId === instance.id,
@@ -115,6 +127,9 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["game-sessions"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-sessions", instance.id],
+        }),
         queryClient.invalidateQueries({ queryKey: ["instance", instance.id] }),
         queryClient.invalidateQueries({ queryKey: ["instances"] }),
       ]);
@@ -153,7 +168,14 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
     trackedLogSession?.instanceId === instance.id
       ? trackedLogSession
       : undefined;
-  const logSession = activeSession ?? retainedLogSession;
+  const storedSessions = (sessionHistoryQuery.data ?? []).filter(
+    (session) => session.logAvailable,
+  );
+  const storedLogSession =
+    storedSessions.find((session) => session.id === selectedStoredSessionId) ??
+    storedSessions[0];
+  const logSession: GameSession | SessionHistory | undefined =
+    activeSession ?? retainedLogSession ?? storedLogSession;
   useEffect(() => {
     if (installJob?.state === "succeeded" || installJob?.state === "failed") {
       void queryClient.invalidateQueries({
@@ -367,12 +389,32 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
         </section>
 
         {logSession ? (
-          <SessionLogPanel
-            key={logSession.id}
-            session={logSession}
-            active={activeSession?.id === logSession.id}
-            onAttached={setTrackedLogSession}
-          />
+          <div className="grid gap-2">
+            {!activeSession && storedSessions.length > 1 ? (
+              <label className="ml-auto flex items-center gap-2 text-[10px] font-bold text-app-secondary">
+                Recent output
+                <select
+                  className="h-8 rounded-compact border border-app-separator bg-app-surface px-2.5 text-[10px] text-app-text focus:border-app-accent focus:outline-none"
+                  value={storedLogSession?.id ?? ""}
+                  onChange={(event) =>
+                    setSelectedStoredSessionId(event.target.value)
+                  }
+                >
+                  {storedSessions.map((session) => (
+                    <option value={session.id} key={session.id}>
+                      {sessionLabel(session)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <SessionLogPanel
+              key={logSession.id}
+              session={logSession}
+              active={activeSession?.id === logSession.id}
+              onAttached={activeSession ? setTrackedLogSession : undefined}
+            />
+          </div>
         ) : null}
 
         <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
@@ -676,4 +718,14 @@ function Detail({
       </dd>
     </div>
   );
+}
+
+function sessionLabel(session: SessionHistory) {
+  const state = {
+    exited: "Ended",
+    failed: "Did not start",
+    crashed: "Crashed",
+    cancelled: "Force stopped",
+  }[session.state];
+  return `${state}, ${formatDate(session.startedAt)}`;
 }

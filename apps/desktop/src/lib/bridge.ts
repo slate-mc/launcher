@@ -64,6 +64,8 @@ export {
   forceStopGameSession,
   launchInstance,
   listGameSessions,
+  listInstanceSessions,
+  readSessionLog,
   subscribeSessionLog,
 } from "./bridgeSessions";
 export {

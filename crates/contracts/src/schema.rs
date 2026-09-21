@@ -11,17 +11,18 @@ use crate::{
     InstanceContentFileSummary, InstanceContentFilesRequest, InstanceContentHistoryRequest,
     InstanceContentHistorySummary, InstanceContentVersionsRequest, InstanceGameOptionsSummary,
     InstanceModHistoryRequest, InstanceModHistorySummary, InstanceModResolution,
-    InstanceModSummary, InstanceModVersionsRequest, InstanceModsRequest, InstanceSnapshotSummary,
-    InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest, LaunchInstanceRequest,
-    LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary, MinecraftVersionCatalog,
-    ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest, ModpackSearchRequest,
-    ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest, MoveInstallJobRequest,
-    MoveInstanceResourcePackRequest, MoveInstanceStorageRequest, OnboardingStateSummary,
-    OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary, RedactedLaunchPlan,
-    RemoveInstanceContentFileRequest, RemoveInstanceModRequest, RemoveSavedServerRequest,
-    ResolveInstanceModRelationshipsRequest, RestoreInstanceSnapshotRequest,
-    RestoreTrashedInstanceRequest, RetryInstallJobRequest, SavedServerSummary,
-    SelectInstanceArtworkRequest, SelectInstanceJavaRequest, ServerStatusSummary, SessionLogEvent,
+    InstanceModSummary, InstanceModVersionsRequest, InstanceModsRequest, InstanceSessionsRequest,
+    InstanceSnapshotSummary, InstanceSnapshotsRequest, InstanceSummary, InstanceWorldsRequest,
+    LaunchInstanceRequest, LoaderVersionCatalog, LoaderVersionsRequest, MinecraftAccountSummary,
+    MinecraftVersionCatalog, ModSearchRequest, ModpackInstallStarted, ModpackProjectRequest,
+    ModpackSearchRequest, ModpackUpdateSummary, ModpackVersionRequest, ModpackVersionsRequest,
+    MoveInstallJobRequest, MoveInstanceResourcePackRequest, MoveInstanceStorageRequest,
+    OnboardingStateSummary, OpenInstanceDirectoryRequest, PingServerRequest, PreflightSummary,
+    ReadSessionLogRequest, RedactedLaunchPlan, RemoveInstanceContentFileRequest,
+    RemoveInstanceModRequest, RemoveSavedServerRequest, ResolveInstanceModRelationshipsRequest,
+    RestoreInstanceSnapshotRequest, RestoreTrashedInstanceRequest, RetryInstallJobRequest,
+    SavedServerSummary, SelectInstanceArtworkRequest, SelectInstanceJavaRequest,
+    ServerStatusSummary, SessionHistorySummary, SessionLogEvent, SessionLogSnapshot,
     SessionLogSubscription, SetInstallJobPausedRequest, SetInstanceContentFileEnabledRequest,
     SetInstanceContentPinnedRequest, SetInstanceModEnabledRequest, SetInstanceModPinnedRequest,
     SetInstanceResourcePackActiveRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
@@ -204,6 +205,23 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(SessionLogSubscription),
         ),
         ("session-log-event", schema_for!(SessionLogEvent)),
+        (
+            "instance-sessions-request",
+            schema_for!(InstanceSessionsRequest),
+        ),
+        (
+            "session-history-summary",
+            schema_for!(SessionHistorySummary),
+        ),
+        (
+            "session-history-list",
+            schema_for!(Vec<SessionHistorySummary>),
+        ),
+        (
+            "read-session-log-request",
+            schema_for!(ReadSessionLogRequest),
+        ),
+        ("session-log-snapshot", schema_for!(SessionLogSnapshot)),
         ("saved-server-summary", schema_for!(SavedServerSummary)),
         ("saved-server-list", schema_for!(Vec<SavedServerSummary>)),
         (
@@ -408,7 +426,7 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 109);
+        assert_eq!(schemas.len(), 114);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
     }

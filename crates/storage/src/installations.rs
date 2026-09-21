@@ -3,7 +3,7 @@ use crate::instance_content::insert_provider_content;
 use crate::{
     Database, NewInstanceMod, NewInstanceModDependencySet, NewInstanceProviderContent, StorageError,
 };
-use slate_domain::{AccountId, InstanceId, JobId, LoaderFamily, RequestId, RevisionId, SessionId};
+use slate_domain::{InstanceId, JobId, LoaderFamily, RequestId, RevisionId};
 use sqlx::Row;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -553,78 +553,6 @@ impl Database {
                 value: major.to_string(),
             })?,
         })
-    }
-
-    pub async fn create_session_starting(
-        &self,
-        instance_id: InstanceId,
-        revision_id: RevisionId,
-        session_id: SessionId,
-        account_id: AccountId,
-    ) -> Result<(), StorageError> {
-        sqlx::query(
-            "INSERT INTO sessions \
-             (id, instance_id, revision_id, account_id, started_at, state, readiness) \
-             VALUES (?, ?, ?, ?, ?, 'starting', 'unknown')",
-        )
-        .bind(session_id.to_string())
-        .bind(instance_id.to_string())
-        .bind(revision_id.to_string())
-        .bind(account_id.to_string())
-        .bind(now_rfc3339()?)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    pub async fn mark_session_running(
-        &self,
-        session_id: SessionId,
-        pid: u32,
-    ) -> Result<(), StorageError> {
-        sqlx::query(
-            "UPDATE sessions SET pid = ?, state = 'running', readiness = 'process_started' \
-             WHERE id = ? AND state = 'starting'",
-        )
-        .bind(i64::from(pid))
-        .bind(session_id.to_string())
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    pub async fn finish_session(
-        &self,
-        session_id: SessionId,
-        exit_code: Option<i32>,
-        force_stopped: bool,
-    ) -> Result<(), StorageError> {
-        let state = if force_stopped {
-            "cancelled"
-        } else if exit_code == Some(0) {
-            "exited"
-        } else {
-            "crashed"
-        };
-        sqlx::query("UPDATE sessions SET ended_at = ?, state = ?, exit_code = ? WHERE id = ?")
-            .bind(now_rfc3339()?)
-            .bind(state)
-            .bind(exit_code)
-            .bind(session_id.to_string())
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
-    pub async fn fail_session_start(&self, session_id: SessionId) -> Result<(), StorageError> {
-        sqlx::query(
-            "UPDATE sessions SET ended_at = ?, state = 'failed' WHERE id = ? AND state = 'starting'",
-        )
-        .bind(now_rfc3339()?)
-        .bind(session_id.to_string())
-        .execute(&self.pool)
-        .await?;
-        Ok(())
     }
 
     async fn revision_error_for_install<T>(

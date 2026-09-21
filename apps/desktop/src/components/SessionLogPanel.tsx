@@ -1,9 +1,13 @@
 import { AlertTriangle, ArrowDownToLine, Eraser, Terminal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { subscribeSessionLog } from "../lib/bridge";
+import { readSessionLog, subscribeSessionLog } from "../lib/bridge";
 import { analyzeMinecraftLog } from "../lib/crashDiagnostics";
 import { formatMinecraftSessionLog } from "../lib/sessionLog";
-import type { GameSession, SessionLogEvent } from "../types/launcher";
+import type {
+  GameSession,
+  SessionHistory,
+  SessionLogEvent,
+} from "../types/launcher";
 
 const MAX_RENDERED_LOG_CHARACTERS = 250_000;
 
@@ -21,9 +25,9 @@ export function SessionLogPanel({
   active,
   onAttached,
 }: {
-  session: GameSession;
+  session: GameSession | SessionHistory;
   active: boolean;
-  onAttached: (session: GameSession) => void;
+  onAttached?: (session: GameSession) => void;
 }) {
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<StreamStatus>("connecting");
@@ -31,7 +35,7 @@ export function SessionLogPanel({
   const [historyTruncated, setHistoryTruncated] = useState(false);
   const [follow, setFollow] = useState(true);
   const outputElement = useRef<HTMLPreElement>(null);
-  const { id, instanceId, logName, mode, pid } = session;
+  const { id } = session;
   const displayOutput = useMemo(
     () => formatMinecraftSessionLog(output),
     [output],
@@ -44,6 +48,24 @@ export function SessionLogPanel({
   useEffect(() => {
     let disposed = false;
     let unsubscribe: (() => Promise<void>) | undefined;
+
+    if (!active) {
+      void readSessionLog(id)
+        .then((snapshot) => {
+          if (disposed) return;
+          setOutput(boundSessionLogText(snapshot.text));
+          setHistoryTruncated(snapshot.truncated);
+          setStatus("closed");
+        })
+        .catch(() => {
+          if (disposed) return;
+          setStatus("error");
+          setStatusMessage("This saved game output is no longer available.");
+        });
+      return () => {
+        disposed = true;
+      };
+    }
 
     const receive = (event: SessionLogEvent) => {
       if (disposed || event.sessionId !== id) return;
@@ -72,7 +94,9 @@ export function SessionLogPanel({
           void stop();
         } else {
           unsubscribe = stop;
-          onAttached({ id, instanceId, logName, mode, pid, state: "running" });
+          if ("pid" in session) {
+            onAttached?.({ ...session, state: "running" });
+          }
         }
       })
       .catch(() => {
@@ -88,7 +112,7 @@ export function SessionLogPanel({
       disposed = true;
       if (unsubscribe) void unsubscribe();
     };
-  }, [id, instanceId, logName, mode, onAttached, pid]);
+  }, [active, id, onAttached, session]);
 
   useEffect(() => {
     if (!follow || !outputElement.current) return;
@@ -116,7 +140,7 @@ export function SessionLogPanel({
               Game output
             </h2>
             <p className="mt-0.5 mb-0 overflow-hidden font-mono text-[10px] text-app-muted text-ellipsis whitespace-nowrap">
-              Live Minecraft output
+              {active ? "Live Minecraft output" : "Saved Minecraft output"}
             </p>
           </div>
           <span

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Array_of_SessionHistorySummary",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/SessionHistorySummary"
+  },
+  "$defs": {
+    "SessionHistoryStateDto": {
+      "type": "string",
+      "enum": [
+        "exited",
+        "failed",
+        "crashed",
+        "cancelled"
+      ]
+    },
+    "SessionHistorySummary": {
+      "type": "object",
+      "properties": {
+        "endedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exitCode": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "instanceId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "logAvailable": {
+          "type": "boolean"
+        },
+        "logName": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/SessionHistoryStateDto"
+        }
+      },
+      "required": [
+        "id",
+        "instanceId",
+        "state",
+        "startedAt",
+        "logName",
+        "logAvailable"
+      ]
+    }
+  }
+}

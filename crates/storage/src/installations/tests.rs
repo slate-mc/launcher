@@ -1,7 +1,7 @@
 use super::{
     CompletedInstall, CompletedModpackUpdate, InstalledRuntime, JobState, valid_install_operation,
 };
-use crate::{AuthenticatedAccount, Database, NewInstance, NewModpackSource};
+use crate::{AuthenticatedAccount, Database, NewInstance, NewModpackSource, SessionState};
 use slate_domain::{
     InstanceMode, InstanceName, LoaderFamily, ManagementMode, RequestId, SessionId,
 };
@@ -373,6 +373,12 @@ async fn instance_last_played_tracks_sessions_that_reached_running()
         database.list_instances(10).await?[0].last_played.as_deref(),
         Some(played.as_str())
     );
+    database.finish_session(session_id, Some(1), false).await?;
+    let recent = database.list_recent_sessions(instance.id, 10).await?;
+    assert_eq!(recent.len(), 1);
+    assert_eq!(recent[0].id, session_id);
+    assert_eq!(recent[0].state, SessionState::Crashed);
+    assert_eq!(database.get_session(session_id).await?, recent[0]);
     database.close().await;
     Ok(())
 }

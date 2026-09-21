@@ -46,9 +46,10 @@ pub use instance::{
     UpdateInstanceGameOptionsRequest, UpdateInstanceSettingsRequest,
 };
 pub use launch::{
-    GameSessionStateDto, GameSessionSummary, LaunchInstanceRequest, RedactedLaunchPlan,
-    SessionLogEvent, SessionLogEventKindDto, SessionLogSubscription, StopGameSessionRequest,
-    SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
+    GameSessionStateDto, GameSessionSummary, InstanceSessionsRequest, LaunchInstanceRequest,
+    ReadSessionLogRequest, RedactedLaunchPlan, SessionHistoryStateDto, SessionHistorySummary,
+    SessionLogEvent, SessionLogEventKindDto, SessionLogSnapshot, SessionLogSubscription,
+    StopGameSessionRequest, SubscribeSessionLogRequest, UnsubscribeSessionLogRequest,
 };
 pub use modpack::{
     ApplyModpackUpdateRequest, CheckModpackUpdateRequest, ContentSearchRequest,

@@ -42,6 +42,18 @@ pub struct UnsubscribeSessionLogRequest {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InstanceSessionsRequest {
+    pub instance_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSessionLogRequest {
+    pub session_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionLogSubscription {
     pub id: Uuid,
     pub session_id: Uuid,
@@ -67,6 +79,38 @@ pub struct SessionLogEvent {
     pub offset: String,
     pub truncated: bool,
     pub text: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLogSnapshot {
+    pub session_id: Uuid,
+    pub truncated: bool,
+    pub text: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SessionHistoryStateDto {
+    Exited,
+    Failed,
+    Crashed,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionHistorySummary {
+    pub id: Uuid,
+    pub instance_id: Uuid,
+    pub state: SessionHistoryStateDto,
+    pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub log_name: String,
+    pub log_available: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

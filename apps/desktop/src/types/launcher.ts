@@ -403,6 +403,25 @@ export const gameSessionSchema = z.object({
 
 export const gameSessionListSchema = z.array(gameSessionSchema);
 
+export const sessionHistorySchema = z.object({
+  id: z.string().uuid(),
+  instanceId: z.string().uuid(),
+  state: z.enum(["exited", "failed", "crashed", "cancelled"]),
+  startedAt: z.string(),
+  endedAt: z.string().optional(),
+  exitCode: z.number().int().optional(),
+  logName: z.string(),
+  logAvailable: z.boolean(),
+});
+
+export const sessionHistoryListSchema = z.array(sessionHistorySchema);
+
+export const sessionLogSnapshotSchema = z.object({
+  sessionId: z.string().uuid(),
+  truncated: z.boolean(),
+  text: z.string(),
+});
+
 export const sessionLogSubscriptionSchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().uuid(),
@@ -716,6 +735,8 @@ export type MinecraftVersionCatalog = z.infer<
 export type LoaderVersionCatalog = z.infer<typeof loaderVersionCatalogSchema>;
 export type InstallJob = z.infer<typeof installJobSchema>;
 export type GameSession = z.infer<typeof gameSessionSchema>;
+export type SessionHistory = z.infer<typeof sessionHistorySchema>;
+export type SessionLogSnapshot = z.infer<typeof sessionLogSnapshotSchema>;
 export type SessionLogSubscription = z.infer<
   typeof sessionLogSubscriptionSchema
 >;
