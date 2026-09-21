@@ -1,3 +1,4 @@
+use crate::crash_diagnostics::{CrashDiagnosticSummary, analyze_minecraft_log};
 use crate::diagnostics::LOG_PREFIX;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -5,7 +6,7 @@ use slate_contracts::{CreateSupportReportRequest, SupportReportPreview};
 use slate_platform::AppPaths;
 use slate_storage::{InstallJobRecord, InstanceRecord};
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
@@ -97,10 +98,17 @@ struct SupportManifest<'a> {
     instances: Option<Vec<SupportInstance<'a>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     installation_activity: Option<Vec<SupportInstallActivity<'a>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recent_crash_findings: Option<Vec<SupportCrashDiagnostic<'a>>>,
 }
 
 impl<'a> SupportManifest<'a> {
     fn new(input: &'a SupportReportInput<'a>) -> Self {
+        let crash_findings = input
+            .request
+            .include_launcher_logs
+            .then(|| recent_crash_findings(input.paths, input.instances))
+            .filter(|findings| !findings.is_empty());
         Self {
             schema: 1,
             report_id: input.report_id,
@@ -114,6 +122,7 @@ impl<'a> SupportManifest<'a> {
                 launcher_logs: input.request.include_launcher_logs,
                 install_activity: input.request.include_install_activity,
                 instance_summary: input.request.include_instance_summary,
+                recent_crash_findings: crash_findings.is_some(),
             },
             privacy: "Account credentials, player identity, absolute paths, worlds, screenshots, and Minecraft chat are not included.",
             instances: input
@@ -127,6 +136,7 @@ impl<'a> SupportManifest<'a> {
                     .map(SupportInstallActivity::from)
                     .collect()
             }),
+            recent_crash_findings: crash_findings,
         }
     }
 }
@@ -144,6 +154,17 @@ struct SupportInclusions {
     launcher_logs: bool,
     install_activity: bool,
     instance_summary: bool,
+    recent_crash_findings: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupportCrashDiagnostic<'a> {
+    minecraft_version: &'a str,
+    loader: &'static str,
+    code: &'static str,
+    title: &'static str,
+    confidence: &'static str,
 }
 
 #[derive(Serialize)]
@@ -190,6 +211,75 @@ impl<'a> From<&'a InstallJobRecord> for SupportInstallActivity<'a> {
             updated_at: &job.updated_at,
         }
     }
+}
+
+fn recent_crash_findings<'a>(
+    paths: &AppPaths,
+    instances: &'a [InstanceRecord],
+) -> Vec<SupportCrashDiagnostic<'a>> {
+    let mut findings = Vec::new();
+    for instance in instances.iter().take(25) {
+        let log_directory = paths.instance(instance.id).join("logs");
+        let Some(log_path) = latest_session_log(&log_directory) else {
+            continue;
+        };
+        let Ok(log) = read_log_tail(&log_path) else {
+            continue;
+        };
+        findings.extend(
+            analyze_minecraft_log(&log)
+                .into_iter()
+                .map(|finding| support_crash_diagnostic(instance, finding)),
+        );
+        if findings.len() >= 20 {
+            findings.truncate(20);
+            break;
+        }
+    }
+    findings
+}
+
+fn support_crash_diagnostic<'a>(
+    instance: &'a InstanceRecord,
+    finding: CrashDiagnosticSummary,
+) -> SupportCrashDiagnostic<'a> {
+    SupportCrashDiagnostic {
+        minecraft_version: &instance.minecraft_version,
+        loader: instance.loader_kind.as_storage_value(),
+        code: finding.code,
+        title: finding.title,
+        confidence: finding.confidence,
+    }
+}
+
+fn latest_session_log(directory: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(directory).ok()?;
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            if !file_type.is_file()
+                || entry.path().extension().and_then(|value| value.to_str()) != Some("log")
+            {
+                return None;
+            }
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some((modified, entry.path()))
+        })
+        .max_by_key(|(modified, _)| *modified)
+        .map(|(_, path)| path)
+}
+
+fn read_log_tail(path: &Path) -> Result<String, std::io::Error> {
+    const MAX_CRASH_LOG_BYTES: u64 = 512 * 1024;
+    let mut file = File::open(path)?;
+    let length = file.metadata()?.len();
+    file.seek(SeekFrom::Start(length.saturating_sub(MAX_CRASH_LOG_BYTES)))?;
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(length.min(MAX_CRASH_LOG_BYTES)).unwrap_or(MAX_CRASH_LOG_BYTES as usize),
+    );
+    file.read_to_end(&mut bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn write_sanitized_log(

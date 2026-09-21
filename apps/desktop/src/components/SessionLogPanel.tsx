@@ -1,4 +1,5 @@
-import { AlertTriangle, ArrowDownToLine, Eraser, Terminal } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, ArrowDownToLine, ArrowRight, Eraser, Terminal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { readSessionLog, subscribeSessionLog } from "../lib/bridge";
 import { analyzeMinecraftLog } from "../lib/crashDiagnostics";
@@ -233,6 +234,32 @@ export function SessionLogPanel({
                       <li key={action}>{action}</li>
                     ))}
                   </ol>
+                  {diagnostic.destinations.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {diagnostic.destinations.map((destination) =>
+                        destination.route === "accounts" ? (
+                          <Link
+                            key={destination.label}
+                            to="/accounts"
+                            className="inline-flex h-7 items-center gap-1.5 rounded-compact border border-app-warning/35 bg-app-bg px-2.5 text-[10px] font-bold text-app-text no-underline hover:border-app-warning/60"
+                          >
+                            {destination.label}
+                            <ArrowRight size={12} aria-hidden="true" />
+                          </Link>
+                        ) : (
+                          <Link
+                            key={destination.label}
+                            to={`/instances/$instanceId/${destination.route}`}
+                            params={{ instanceId: session.instanceId }}
+                            className="inline-flex h-7 items-center gap-1.5 rounded-compact border border-app-warning/35 bg-app-bg px-2.5 text-[10px] font-bold text-app-text no-underline hover:border-app-warning/60"
+                          >
+                            {destination.label}
+                            <ArrowRight size={12} aria-hidden="true" />
+                          </Link>
+                        ),
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

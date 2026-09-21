@@ -9,6 +9,7 @@ describe("analyzeMinecraftLog", () => {
 
     expect(findings[0]?.id).toBe("duplicate-java-package");
     expect(findings[0]?.confidence).toBe("high");
+    expect(findings[0]?.destinations[0]?.route).toBe("content");
   });
 
   it("turns class file versions into an actionable Java requirement", () => {
@@ -29,5 +30,23 @@ Caused by: java.lang.NoClassDefFoundError: example/Dependency`);
 
   it("does not diagnose ordinary output", () => {
     expect(analyzeMinecraftLog("[main/INFO]: Game started")).toEqual([]);
+  });
+
+  it("recognizes loader dependency failures", () => {
+    const findings = analyzeMinecraftLog(
+      "Incompatible mods found! Mod 'Mouse Tweaks' requires fabric-api version 1.2.0, which is missing!",
+    );
+
+    expect(findings.some((finding) => finding.id === "dependency-mismatch")).toBe(true);
+  });
+
+  it("recognizes damaged jars and graphics startup failures", () => {
+    const findings = analyzeMinecraftLog(`java.util.zip.ZipException: zip END header not found
+GLFW error 65542: WGL: The driver does not appear to support OpenGL`);
+
+    expect(findings.map((finding) => finding.id)).toEqual([
+      "damaged-archive",
+      "graphics-driver",
+    ]);
   });
 });

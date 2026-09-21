@@ -5,6 +5,7 @@ mod artwork_support;
 mod auth_support;
 mod catalog_commands;
 mod content_commands;
+mod crash_diagnostics;
 mod crash_reporting;
 mod diagnostics;
 mod external_instance_import;

@@ -53,11 +53,11 @@ export function SupportReportPanel() {
         <div className="grid content-start gap-2">
           <ReportOption
             checked={options.includeLauncherLogs}
-            title="Launcher diagnostics"
+            title="Launcher diagnostics and crash findings"
             description={
               previewQuery.isPending
                 ? "Checking available diagnostics…"
-                : `${formatCount(previewQuery.data?.diagnosticFileCount ?? 0, "log file")} · ${formatBytes(previewQuery.data?.diagnosticBytes ?? 0)} before compression`
+                : `${formatCount(previewQuery.data?.diagnosticFileCount ?? 0, "launcher log file")} · ${formatBytes(previewQuery.data?.diagnosticBytes ?? 0)} before compression · recent crash findings without game log text`
             }
             onChange={(checked) =>
               setOptions((current) => ({

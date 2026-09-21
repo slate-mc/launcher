@@ -46,4 +46,6 @@ Support reports are created only when requested by the user. The preview shows w
 included. Reports sanitize credentials, player identity, absolute paths, and other private values
 before writing the archive. The user may save a local copy or explicitly send it to private support
 storage. A successful submission returns a report ID. slate does not place failed support uploads
-in an offline queue, avoiding an additional long-lived copy of the diagnostic archive.
+in an offline queue, avoiding an additional long-lived copy of the diagnostic archive. When
+launcher diagnostics are selected, slate may include bounded crash finding codes and the relevant
+Minecraft/loader version, but not the underlying Minecraft log text.

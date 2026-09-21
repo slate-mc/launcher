@@ -90,7 +90,7 @@ Verified on Windows on September 20, 2026:
   snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 171 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 172 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -135,8 +135,10 @@ Verified on Windows on September 20, 2026:
   visual behavior; complete keyboard and screen-reader testing.
 - Add localization/message catalogs before user-facing copy grows further.
 - Add virtualization for very large mod, activity, and log views.
-- Finish rule-based diagnostics and repair explanations, then include their sanitized results in
-  the support-report pipeline above.
+- Continue extending rule-based diagnostics as new crash signatures appear. The current assistant
+  covers common Java, memory, dependency, duplicate-mod/package, mixin, damaged-archive, graphics,
+  disk, and authentication failures; it links to relevant instance controls and includes bounded
+  finding codes in support reports without attaching Minecraft log text.
 - Required specification documents still missing: `ROUTES.md`, `GAME_PROTOCOL.md`, `MANIFESTS.md`,
   `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `COMPATIBILITY.md`, and
   `RELEASING.md`. Existing architecture, IPC, testing, security, and dependency docs also need a
