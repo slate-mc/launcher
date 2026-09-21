@@ -3,7 +3,6 @@ import {
   ArchiveRestore,
   Boxes,
   Coffee,
-  Eraser,
   FileClock,
   HardDrive,
   LoaderCircle,
@@ -11,9 +10,9 @@ import {
   RotateCcw,
   ScrollText,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ContentArtwork } from "../../components/ContentArtwork";
 import { EmptyState, InlineNotice, PageHeader, StatusPill } from "../../components/PageScaffold";
 import {
@@ -262,35 +261,31 @@ export function StorageSettingsPage() {
                     </select>
                   </label>
                   {trash.length > 0 ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-9 items-center gap-2 rounded-control border border-app-danger/35 bg-app-danger/5 px-3 text-xs font-bold text-app-danger hover:bg-app-danger/10"
-                      onClick={() => setConfirmEmpty(true)}
-                    >
-                      <Trash2 size={14} />Empty trash
-                    </button>
+                    <ConfirmDialog
+                      open={confirmEmpty}
+                      onOpenChange={(open) => {
+                        setConfirmEmpty(open);
+                        if (open) setMessage(undefined);
+                      }}
+                      trigger={(
+                        <button
+                          type="button"
+                          className="inline-flex h-9 items-center gap-2 rounded-control border border-app-danger/35 bg-app-danger/5 px-3 text-xs font-bold text-app-danger hover:bg-app-danger/10"
+                        >
+                          <Trash2 size={14} />Empty trash
+                        </button>
+                      )}
+                      title="Permanently delete all trashed instances?"
+                      description={`This will delete ${formatCount(trash.length, "instance")} and reclaim approximately ${formatBytes(trashSize)}. Worlds and personal files cannot be recovered.`}
+                      confirmLabel="Permanently delete"
+                      pendingLabel="Deleting…"
+                      pending={emptyMutation.isPending}
+                      destructive
+                      onConfirm={() => emptyMutation.mutate(trash.length)}
+                    />
                   ) : null}
                 </div>
               </div>
-
-              {confirmEmpty ? (
-                <div className="mb-3 flex items-center gap-4 rounded-control border border-app-danger/40 bg-app-danger/5 px-4 py-3">
-                  <TriangleAlert size={18} className="shrink-0 text-app-danger" />
-                  <p className="m-0 min-w-0 flex-1 text-xs text-app-secondary">
-                    Permanently delete all {formatCount(trash.length, "instance")} and reclaim approximately {formatBytes(trashSize)}? Worlds and personal files cannot be recovered.
-                  </p>
-                  <button type="button" className="h-8 px-3 text-xs font-bold text-app-secondary" onClick={() => setConfirmEmpty(false)}>Cancel</button>
-                  <button
-                    type="button"
-                    className="inline-flex h-8 items-center gap-2 rounded-control bg-app-danger px-3 text-xs font-bold text-app-bg disabled:opacity-50"
-                    disabled={emptyMutation.isPending}
-                    onClick={() => emptyMutation.mutate(trash.length)}
-                  >
-                    {emptyMutation.isPending ? <LoaderCircle size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                    Permanently delete
-                  </button>
-                </div>
-              ) : null}
 
               {trash.length === 0 ? (
                 <div className="border-y border-app-separator/55 py-10 text-center">
@@ -356,31 +351,36 @@ function StorageCategoryRow({
         </span>
         <span className="flex justify-end">
           {details.action ? (
-            <button
-              type="button"
-              className={`h-8 rounded-control border px-3 text-[11px] font-bold disabled:opacity-40 ${details.managed ? "border-app-warning/35 text-app-warning hover:bg-app-warning/5" : "border-app-separator text-app-secondary hover:border-app-accent/45 hover:text-app-text"}`}
-              disabled={category.sizeBytes === 0 || pending}
-              onClick={onRequest}
-            >
-              {pending ? "Clearing…" : details.action}
-            </button>
+            <ConfirmDialog
+              open={confirming}
+              onOpenChange={(open) => {
+                if (open) onRequest();
+                else onCancel();
+              }}
+              trigger={(
+                <button
+                  type="button"
+                  className={`h-8 rounded-control border px-3 text-[11px] font-bold disabled:opacity-40 ${details.managed ? "border-app-warning/35 text-app-warning hover:bg-app-warning/5" : "border-app-separator text-app-secondary hover:border-app-accent/45 hover:text-app-text"}`}
+                  disabled={category.sizeBytes === 0 || pending}
+                >
+                  {pending ? "Clearing…" : details.action}
+                </button>
+              )}
+              title={`${details.action}?`}
+              description={details.managed
+                ? `This will remove ${formatCount(category.fileCount, "file")} and reclaim ${formatBytes(category.sizeBytes)}. Affected instances will be repaired before their next launch. Worlds and personal content are not removed.`
+                : `This will permanently remove ${formatCount(category.fileCount, "file")} and reclaim ${formatBytes(category.sizeBytes)}.`}
+              confirmLabel={details.action}
+              pendingLabel="Clearing…"
+              pending={pending}
+              destructive={!details.managed}
+              onConfirm={onConfirm}
+            />
           ) : (
             <StatusPill tone="neutral">Clear from Library</StatusPill>
           )}
         </span>
       </div>
-      {confirming ? (
-        <div className={`flex items-center gap-4 border-t px-5 py-3 ${details.managed ? "border-app-warning/30 bg-app-warning/5" : "border-app-separator/55 bg-app-bg/35"}`}>
-          {details.managed ? <TriangleAlert size={17} className="shrink-0 text-app-warning" /> : <Eraser size={17} className="shrink-0 text-app-secondary" />}
-          <p className="m-0 min-w-0 flex-1 text-[11px]/[17px] text-app-secondary">
-            {details.managed
-              ? "Every affected instance will be marked for repair. slate will download these files again before the next launch. Personal worlds and instance content are not removed."
-              : `Permanently remove ${formatCount(category.fileCount, "file")} and reclaim ${formatBytes(category.sizeBytes)}?`}
-          </p>
-          <button type="button" className="h-8 px-3 text-[11px] font-bold text-app-secondary" onClick={onCancel}>Cancel</button>
-          <button type="button" className={`h-8 rounded-control px-3 text-[11px] font-bold ${details.managed ? "bg-app-warning text-app-bg" : "bg-app-accent text-app-on-accent"}`} onClick={onConfirm}>Confirm</button>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -432,29 +432,41 @@ function TrashedInstanceRow({
           <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-control border border-app-separator px-3 text-[11px] font-bold text-app-secondary hover:border-app-accent/45 hover:text-app-text disabled:opacity-45" disabled={busy} onClick={onRestore}>
             {restoring ? <LoaderCircle size={13} className="animate-spin" /> : <RotateCcw size={13} />}Restore
           </button>
-          <button type="button" className="inline-flex size-8 items-center justify-center rounded-control border border-app-danger/30 text-app-danger hover:bg-app-danger/10 disabled:opacity-45" disabled={busy} aria-label={`Permanently delete ${instance.name}`} onClick={onRequestDelete}>
-            <Trash2 size={14} />
-          </button>
+          <ConfirmDialog
+            open={confirming}
+            onOpenChange={(open) => {
+              if (open) onRequestDelete();
+              else onCancelDelete();
+            }}
+            trigger={(
+              <button type="button" className="inline-flex size-8 items-center justify-center rounded-control border border-app-danger/30 text-app-danger hover:bg-app-danger/10 disabled:opacity-45" disabled={busy} aria-label={`Permanently delete ${instance.name}`}>
+                <Trash2 size={14} />
+              </button>
+            )}
+            title={`Permanently delete ${instance.name}?`}
+            description={(
+              <>
+                <p className="m-0">This will permanently delete its worlds, settings, and files. This cannot be undone.</p>
+                <label className="mt-4 block text-[11px] font-semibold text-app-text">
+                  Type <strong>{instance.name}</strong> to confirm
+                  <input
+                    autoComplete="off"
+                    className="mt-2 h-9 w-full rounded-control border border-app-separator bg-app-bg px-3 text-xs text-app-text focus:border-app-danger focus:outline-none"
+                    value={confirmationName}
+                    onChange={(event) => onConfirmationName(event.target.value)}
+                  />
+                </label>
+              </>
+            )}
+            confirmLabel="Delete permanently"
+            pendingLabel="Deleting…"
+            pending={deleting}
+            confirmDisabled={confirmationName !== instance.name}
+            destructive
+            onConfirm={onDelete}
+          />
         </span>
       </div>
-      {confirming ? (
-        <div className="flex items-center gap-4 border-t border-app-danger/30 bg-app-danger/5 px-5 py-3">
-          <TriangleAlert size={17} className="shrink-0 text-app-danger" />
-          <label className="min-w-0 flex-1 text-[10px] text-app-secondary">
-            Enter <strong className="text-app-text">{instance.name}</strong> to permanently delete its worlds and files.
-            <input
-              autoFocus
-              className="mt-2 h-9 w-full max-w-[420px] rounded-control border border-app-separator bg-app-bg px-3 text-xs text-app-text focus:border-app-danger focus:outline-none"
-              value={confirmationName}
-              onChange={(event) => onConfirmationName(event.target.value)}
-            />
-          </label>
-          <button type="button" className="h-8 px-3 text-[11px] font-bold text-app-secondary" disabled={deleting} onClick={onCancelDelete}>Cancel</button>
-          <button type="button" className="inline-flex h-8 items-center gap-2 rounded-control bg-app-danger px-3 text-[11px] font-bold text-app-bg disabled:opacity-40" disabled={deleting || confirmationName !== instance.name} onClick={onDelete}>
-            {deleting ? <LoaderCircle size={13} className="animate-spin" /> : <Trash2 size={13} />}Delete permanently
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

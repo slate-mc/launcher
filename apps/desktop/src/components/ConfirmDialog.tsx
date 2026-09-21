@@ -12,6 +12,7 @@ type ConfirmDialogProps = {
   pendingLabel?: string;
   cancelLabel?: string;
   pending?: boolean;
+  confirmDisabled?: boolean;
   error?: ReactNode;
   destructive?: boolean;
   onConfirm: () => void;
@@ -27,6 +28,7 @@ export function ConfirmDialog({
   pendingLabel = confirmLabel,
   cancelLabel = "Cancel",
   pending = false,
+  confirmDisabled = false,
   error,
   destructive = false,
   onConfirm,
@@ -45,8 +47,10 @@ export function ConfirmDialog({
           <AlertDialog.Title className="m-0 text-lg font-bold tracking-[-.015em]">
             {title}
           </AlertDialog.Title>
-          <AlertDialog.Description className="mt-2 mb-0 text-xs/[19px] text-app-secondary">
-            {description}
+          <AlertDialog.Description asChild>
+            <div className="mt-2 mb-0 text-xs/[19px] text-app-secondary">
+              {description}
+            </div>
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
@@ -66,7 +70,7 @@ export function ConfirmDialog({
                   ? "bg-app-danger text-app-bg"
                   : "bg-app-accent text-app-on-accent",
               )}
-              disabled={pending}
+              disabled={pending || confirmDisabled}
               onClick={onConfirm}
             >
               {pending ? pendingLabel : confirmLabel}

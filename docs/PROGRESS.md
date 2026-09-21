@@ -77,7 +77,7 @@ Last updated: September 20, 2026
 - Separate Downloads and Activity destinations. Normal product copy no longer exposes internal IDs,
   paths, backend terminology, or raw Rust/HTTP errors; technical output remains in the Minecraft log
   view where it is useful.
-- Route-level loading keeps the initial desktop JavaScript entry near 293 KB; larger Discover and
+- Route-level loading keeps the initial desktop JavaScript entry near 311 KB; larger Discover and
   instance-management features load only when opened.
 
 ## Verification evidence
@@ -132,9 +132,10 @@ Verified on Windows on September 20, 2026:
 
 - Extend Playwright from route-level accessibility and destructive-dialog coverage into full native
   install, launch, content-management, storage, and recovery workflows.
-- Continue moving appropriate destructive confirmations and layered controls onto accessible
-  Radix-backed primitives. The shared alert dialog now traps/restores focus and handles Escape;
-  remaining popovers/tooltips and screen-reader interaction tests still need coverage.
+- Destructive instance and storage actions now use the shared Radix-backed alert dialog with
+  trapped/restored focus, Escape handling, pending-state protection, and typed-name validation for
+  permanent instance deletion. Remaining popovers/tooltips and screen-reader interaction tests
+  still need coverage.
 - Add localization/message catalogs before user-facing copy grows further.
 - Live and retained Minecraft logs now virtualize rendered rows while preserving the bounded text
   snapshot. Installed mods use filtering plus 25/50/100-row pagination, and active game activity is
