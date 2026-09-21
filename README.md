@@ -10,12 +10,18 @@ Tailwind CSS v4. Local instance data crosses a small typed Tauri command facade 
 ## Workspace
 
 - apps/desktop — React launcher and Tauri composition root
+- services/modpack-api — normalized provider, install-plan, release, telemetry, and support API
 - crates/domain — stable IDs and pure business/state policies
 - crates/contracts — versioned renderer-safe IPC DTOs and schema registry
+- crates/modpack-api-contracts — versioned public HTTP contract shared by API and launcher
 - crates/platform — application paths and managed relative-path validation
 - crates/storage — SQLite connection policy, migrations, and repositories
+- crates/auth — Microsoft PKCE, Minecraft identity, and operating-system credential vault
 - crates/minecraft — Mojang metadata, inheritance, artifacts, and shell-free launch planning
 - crates/loaders — Fabric profile and NeoForge installer metadata adapters
+- crates/installer — verified downloads, Java runtimes, loader installation, and recovery
+- crates/process — game-process ownership, stop state, and bounded log streaming
+- crates/modpack-client — typed launcher client for the public content API
 - tools/xtask — deterministic contract schema generation and checks
 - schemas/ipc — generated JSON Schemas checked into source control
 - docs — architecture, design, security, data, testing, decisions, and progress
@@ -32,7 +38,7 @@ Rust 1.95.0 and Yarn 4.18.0 are pinned. Corepack selects the repository's Yarn v
     corepack yarn tauri dev
 
 Development uses an always-visible preview-data label and cannot claim to execute game actions.
-Set VITE_DATA_ADAPTER=native to exercise the real Tauri facade during development. Packaged Tauri
+Set `VITE_DATA_ADAPTER=native` to exercise the real Tauri facade during development. Packaged Tauri
 builds read the real local instance database.
 
 Run all checks:

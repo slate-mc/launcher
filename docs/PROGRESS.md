@@ -145,9 +145,9 @@ Verified on Windows on September 20, 2026:
   covers common Java, memory, dependency, duplicate-mod/package, mixin, damaged-archive, graphics,
   disk, and authentication failures; it links to relevant instance controls and includes bounded
   finding codes in support reports without attaching Minecraft log text.
-- Route, game-process, manifest, recovery, companion-module, public API, compatibility, and release
-  contracts are now recorded in dedicated specifications. Existing architecture, IPC, data-model,
-  testing, security, and dependency summaries still need a post-F1 implementation refresh.
+- Route, game-process, manifest, recovery, companion-module, public API, compatibility, release,
+  architecture, IPC, data-model, security, dependency, and testing contracts now describe the
+  implemented F1 system. Keep them current as command or persistence contracts change.
 
 ## Later phases
 
