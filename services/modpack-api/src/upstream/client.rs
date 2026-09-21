@@ -1,4 +1,5 @@
 use crate::cache::{CachePolicy, ResponseCaches};
+use crate::observability;
 use futures_util::StreamExt;
 use moka::sync::Cache;
 use reqwest::StatusCode;
@@ -6,7 +7,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use sha2::{Digest, Sha256, Sha512};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use url::{Host, Url};
 use uuid::Uuid;
 
@@ -198,6 +199,17 @@ impl UpstreamClient {
     }
 
     async fn fetch_json(&self, url: Url, manifest: bool) -> Result<Value, UpstreamError> {
+        let started_at = Instant::now();
+        let result = self.fetch_json_inner(url, manifest).await;
+        observability::record_provider_request(
+            "api.modpacks.ch",
+            result.is_ok(),
+            started_at.elapsed().as_secs_f64() * 1_000.0,
+        );
+        result
+    }
+
+    async fn fetch_json_inner(&self, url: Url, manifest: bool) -> Result<Value, UpstreamError> {
         let request_id = Uuid::new_v4();
         let timeout = if manifest {
             Duration::from_secs(30)
@@ -254,6 +266,20 @@ impl UpstreamClient {
     }
 
     async fn fetch_artifact_metadata(&self, url: Url) -> Result<ArtifactMetadata, UpstreamError> {
+        let started_at = Instant::now();
+        let result = self.fetch_artifact_metadata_inner(url).await;
+        observability::record_provider_request(
+            "provider-cdn",
+            result.is_ok(),
+            started_at.elapsed().as_secs_f64() * 1_000.0,
+        );
+        result
+    }
+
+    async fn fetch_artifact_metadata_inner(
+        &self,
+        url: Url,
+    ) -> Result<ArtifactMetadata, UpstreamError> {
         let request_id = Uuid::new_v4();
         for attempt in 0_u32..=2 {
             let response = self.artifact_client.get(url.clone()).send().await;
@@ -340,6 +366,20 @@ impl UpstreamClient {
 }
 
 async fn fetch_json_with_client(
+    client: &reqwest::Client,
+    url: Url,
+) -> Result<Value, UpstreamError> {
+    let started_at = Instant::now();
+    let result = fetch_json_with_client_inner(client, url).await;
+    observability::record_provider_request(
+        "api.modrinth.com",
+        result.is_ok(),
+        started_at.elapsed().as_secs_f64() * 1_000.0,
+    );
+    result
+}
+
+async fn fetch_json_with_client_inner(
     client: &reqwest::Client,
     url: Url,
 ) -> Result<Value, UpstreamError> {

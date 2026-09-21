@@ -1,5 +1,6 @@
+use crate::observability;
 use axum::Json;
-use axum::extract::Request;
+use axum::extract::{MatchedPath, Request};
 use axum::http::header::{CACHE_CONTROL, HeaderName};
 use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
@@ -80,7 +81,12 @@ impl RequestContext {
 
 pub async fn request_context(mut request: Request, next: Next) -> Response {
     let method = request.method().clone();
-    let route = request.uri().path().to_owned();
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(MatchedPath::as_str)
+        .unwrap_or("unmatched")
+        .to_owned();
     let context = RequestContext::from_request(&request);
     let span = tracing::info_span!(
         "http.request",
@@ -99,10 +105,17 @@ pub async fn request_context(mut request: Request, next: Next) -> Response {
         response.headers_mut().insert(TRACEPARENT_HEADER, value);
     }
     span.in_scope(|| {
+        let duration_ms = context.started_at.elapsed().as_secs_f64() * 1_000.0;
         tracing::info!(
             status = response.status().as_u16(),
-            duration_ms = context.started_at.elapsed().as_secs_f64() * 1_000.0,
+            duration_ms,
             "request completed"
+        );
+        observability::record_http_request(
+            method.as_str(),
+            &route,
+            response.status().as_u16(),
+            duration_ms,
         );
     });
     response

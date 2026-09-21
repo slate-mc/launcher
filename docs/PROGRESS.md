@@ -90,7 +90,7 @@ Verified on Windows on September 20, 2026:
   snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 162 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 164 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -109,10 +109,10 @@ Verified on Windows on September 20, 2026:
    Authenticated game-process launch still needs recorded release evidence. Interruption safety now
    has deterministic coverage for partial-download cleanup, startup recovery, and content rollback,
    while an injected mid-download native run remains useful release hardening.
-3. **Operational readiness:** structured local tracing and local support-report export are active.
-   Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
-   telemetry, offline delivery, and private support-report submission still need production
-   implementations.
+3. **Operational readiness:** structured local tracing, privacy-aware product analytics, remote
+   feature controls, signed updates, local support-report export, and environment-gated backend
+   telemetry are active. Crash reporting and private support-report submission still need
+   production implementations.
 
 ## Observability, rollout, and support plan
 
@@ -122,7 +122,7 @@ Verified on Windows on September 20, 2026:
 | Feature flags and remote configuration | PostHog | Allowlisted emergency switches, local percentage rollouts, bounded caching, periodic refresh, and failure-safe defaults are implemented. Configure and exercise production flags, then add ownership and stale-flag cleanup policy. |
 | Product analytics | PostHog | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation. |
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
-| Backend observability | OpenTelemetry to Grafana Cloud | Export API traces, latency, dependency failures, logs, and resource metrics with production sampling and retention policies. |
+| Backend observability | OpenTelemetry to Grafana Cloud | Environment-gated OTLP export now covers API traces, structured logs, HTTP latency, provider failures/latency, cache outcomes, install plans, and service resources while retaining local JSON output. Configure production credentials, dashboards, alerts, sampling, and retention. |
 | Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash/support delivery still needs its own consented queue. |
 | Updates | Tauri updater plus the slate release API | Signed release builds, update UI, multi-platform artifact workflow, and the release endpoint are implemented. Add controlled channels, staged rollout, rollback protection, and recorded recovery evidence. |
 | Support reports | In-app report flow plus private object storage | Local review/export and report IDs are implemented. Add authenticated short-lived uploads to private object storage without exposing storage details. |
@@ -138,8 +138,8 @@ Verified on Windows on September 20, 2026:
 - Finish rule-based diagnostics and repair explanations, then include their sanitized results in
   the support-report pipeline above.
 - Required specification documents still missing: `ROUTES.md`, `GAME_PROTOCOL.md`, `MANIFESTS.md`,
-  `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `PRIVACY.md`, `COMPATIBILITY.md`, `RELEASING.md`, and
-  `OPERATIONS.md`. Existing architecture, IPC, testing, security, and dependency docs also need a
+  `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `PRIVACY.md`, `COMPATIBILITY.md`, and
+  `RELEASING.md`. Existing architecture, IPC, testing, security, and dependency docs also need a
   post-F1 implementation refresh.
 
 ## Later phases

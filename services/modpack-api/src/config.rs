@@ -16,6 +16,14 @@ pub struct Config {
     pub release_manifest_url: Url,
     pub posthog_host: Url,
     pub posthog_project_token: Option<String>,
+    pub observability: ObservabilityConfig,
+}
+
+#[derive(Clone, Debug)]
+pub struct ObservabilityConfig {
+    pub enabled: bool,
+    pub sample_ratio: f64,
+    pub environment: String,
 }
 
 impl Config {
@@ -68,6 +76,7 @@ impl Config {
         {
             return Err(ConfigError::InvalidPostHogProjectToken);
         }
+        let observability = ObservabilityConfig::from_env()?;
         Ok(Self {
             bind_address,
             upstream_url,
@@ -75,8 +84,73 @@ impl Config {
             release_manifest_url,
             posthog_host,
             posthog_project_token,
+            observability,
         })
     }
+}
+
+impl ObservabilityConfig {
+    fn from_env() -> Result<Self, ConfigError> {
+        let enabled = std::env::var("SLATE_OTEL_ENABLED")
+            .ok()
+            .map(|value| parse_enabled(&value))
+            .transpose()?
+            .unwrap_or(false);
+        let sample_ratio = std::env::var("SLATE_OTEL_SAMPLE_RATIO")
+            .ok()
+            .map(|value| value.parse::<f64>())
+            .transpose()
+            .map_err(ConfigError::InvalidOtelSampleRatio)?
+            .unwrap_or(0.1);
+        if !sample_ratio.is_finite() || !(0.0..=1.0).contains(&sample_ratio) {
+            return Err(ConfigError::OtelSampleRatioOutOfRange);
+        }
+        let environment = std::env::var("SLATE_DEPLOYMENT_ENVIRONMENT")
+            .unwrap_or_else(|_| "development".to_owned());
+        if environment.is_empty()
+            || environment.len() > 64
+            || !environment
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        {
+            return Err(ConfigError::InvalidDeploymentEnvironment);
+        }
+        if enabled {
+            let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+                .map_err(|_| ConfigError::MissingOtelEndpoint)?;
+            validate_otel_endpoint(&endpoint)?;
+        }
+        Ok(Self {
+            enabled,
+            sample_ratio,
+            environment,
+        })
+    }
+}
+
+fn parse_enabled(value: &str) -> Result<bool, ConfigError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(ConfigError::InvalidOtelEnabled),
+    }
+}
+
+fn validate_otel_endpoint(value: &str) -> Result<(), ConfigError> {
+    let endpoint = Url::parse(value).map_err(ConfigError::InvalidOtelEndpoint)?;
+    if !endpoint.username().is_empty() || endpoint.password().is_some() || endpoint.host().is_none()
+    {
+        return Err(ConfigError::UnsafeOtelEndpoint);
+    }
+    let secure = endpoint.scheme() == "https";
+    let local_http = endpoint.scheme() == "http"
+        && endpoint
+            .host_str()
+            .is_some_and(|host| matches!(host, "localhost" | "127.0.0.1" | "::1"));
+    if !secure && !local_http {
+        return Err(ConfigError::UnsafeOtelEndpoint);
+    }
+    Ok(())
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -97,4 +171,38 @@ pub enum ConfigError {
     InvalidPostHogProjectToken,
     #[error("SLATE_UPSTREAM_USER_AGENT must contain between 1 and 256 characters")]
     InvalidUserAgent,
+    #[error("SLATE_OTEL_ENABLED must be true or false")]
+    InvalidOtelEnabled,
+    #[error("SLATE_OTEL_SAMPLE_RATIO is not a number")]
+    InvalidOtelSampleRatio(std::num::ParseFloatError),
+    #[error("SLATE_OTEL_SAMPLE_RATIO must be between 0 and 1")]
+    OtelSampleRatioOutOfRange,
+    #[error("SLATE_DEPLOYMENT_ENVIRONMENT is invalid")]
+    InvalidDeploymentEnvironment,
+    #[error("OTEL_EXPORTER_OTLP_ENDPOINT is required when telemetry export is enabled")]
+    MissingOtelEndpoint,
+    #[error("OTEL_EXPORTER_OTLP_ENDPOINT is not a valid URL")]
+    InvalidOtelEndpoint(url::ParseError),
+    #[error("OTEL_EXPORTER_OTLP_ENDPOINT must use HTTPS, except for a local collector")]
+    UnsafeOtelEndpoint,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_enabled, validate_otel_endpoint};
+
+    #[test]
+    fn otel_switch_accepts_explicit_boolean_values() {
+        assert!(parse_enabled("true").is_ok_and(|value| value));
+        assert!(parse_enabled("0").is_ok_and(|value| !value));
+        assert!(parse_enabled("sometimes").is_err());
+    }
+
+    #[test]
+    fn otel_endpoint_requires_https_except_for_local_collectors() {
+        assert!(validate_otel_endpoint("https://otlp-gateway.example.com").is_ok());
+        assert!(validate_otel_endpoint("http://127.0.0.1:4318").is_ok());
+        assert!(validate_otel_endpoint("http://collector.internal:4318").is_err());
+        assert!(validate_otel_endpoint("https://user:secret@example.com").is_err());
+    }
 }

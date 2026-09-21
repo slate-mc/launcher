@@ -2,6 +2,7 @@ pub mod api;
 pub mod cache;
 pub mod config;
 pub mod domain;
+pub mod observability;
 pub mod providers;
 pub mod rate_limit;
 pub mod release;

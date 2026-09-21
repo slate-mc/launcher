@@ -1,3 +1,4 @@
+use crate::observability;
 use moka::sync::Cache;
 use serde_json::Value;
 use std::sync::Arc;
@@ -32,7 +33,9 @@ impl Default for ResponseCaches {
 impl ResponseCaches {
     #[must_use]
     pub fn get(&self, policy: CachePolicy, key: &str) -> Option<Arc<Value>> {
-        self.cache(policy).get(key)
+        let value = self.cache(policy).get(key);
+        observability::record_cache_lookup(policy.metric_label(), value.is_some());
+        value
     }
 
     pub fn insert(&self, policy: CachePolicy, key: String, value: Arc<Value>) {
@@ -66,6 +69,18 @@ pub enum CachePolicy {
     Versions,
     Version,
     Categories,
+}
+
+impl CachePolicy {
+    const fn metric_label(self) -> &'static str {
+        match self {
+            Self::Search => "search",
+            Self::Project => "project",
+            Self::Versions => "versions",
+            Self::Version => "version",
+            Self::Categories => "categories",
+        }
+    }
 }
 
 fn json_cache(seconds: u64, capacity: u64) -> Cache<String, Arc<Value>> {
