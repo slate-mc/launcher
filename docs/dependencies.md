@@ -30,6 +30,7 @@ workspace manifests. `Cargo.lock` and `yarn.lock` are the authoritative transiti
 | tempfile | 3.27.0 | Isolated filesystem/database tests | MIT OR Apache-2.0 |
 | Tauri | 2.11.4 | Desktop window, lifecycle, and command composition | Apache-2.0 OR MIT |
 | tauri-build | 2.6.3 | Tauri build-time configuration | Apache-2.0 OR MIT |
+| Tauri single-instance plugin | 2.4.5 | Prevent concurrent launcher processes over one data root | Apache-2.0 OR MIT |
 | React / React DOM | 19.3.0 | Desktop application composition | MIT |
 | Vite | 8.3.0 | Desktop SPA development and build | MIT |
 | TypeScript | 6.0.3 | Strict frontend type checking; compatible with the selected lint toolchain | Apache-2.0 |

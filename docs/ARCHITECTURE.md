@@ -73,6 +73,10 @@ creates a starting session record, and hands the command to the process supervis
 prevents a second process for the same instance, streams stdout/stderr into a retained session log,
 and records exit or forced-stop state.
 
+The desktop is single-instance. A second operating-system launch restores and focuses the existing
+window instead of opening another process against the same database, install scheduler, and game
+process registry.
+
 Content changes use instance revision guards and content transactions. Modpack-managed and
 user-added files remain distinguishable; dependency edges and history support updates, rollback,
 and duplicate-dependency suppression.
@@ -83,4 +87,3 @@ Routes are lazy-loaded into Home, Library, Discover, Servers, system pages, sett
 and instance pages. Features call small bridge modules grouped by concern. Runtime validation with
 Zod happens at the bridge boundary. Shared primitives own artwork fallback, markdown sanitization,
 comboboxes, install progress, virtualized logs, notices, and destructive confirmation behavior.
-
