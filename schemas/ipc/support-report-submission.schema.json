@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SupportReportSubmission",
+  "type": "object",
+  "properties": {
+    "bytes": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "reportId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "reportId",
+    "bytes"
+  ]
+}

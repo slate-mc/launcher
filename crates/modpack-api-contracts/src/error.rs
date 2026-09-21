@@ -11,6 +11,7 @@ pub enum ApiErrorCode {
     ProviderUnavailable,
     UpstreamRateLimited,
     RateLimited,
+    SupportReportUnavailable,
     DownloadUnavailable,
     InvalidInstallPath,
     UnsupportedLoader,

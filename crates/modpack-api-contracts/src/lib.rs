@@ -9,6 +9,7 @@ mod install;
 mod metadata;
 mod modpack;
 mod provider;
+mod support;
 mod telemetry;
 mod version;
 
@@ -34,6 +35,7 @@ pub use modpack::{
     VersionReference,
 };
 pub use provider::{Provider, ProviderMetadata, ProviderStatus, ProvidersResponse};
+pub use support::SupportReportReceipt;
 pub use telemetry::{
     CaptureProductEventRequest, CaptureProductEventResponse, ProductEvent, ProductPlatform,
 };

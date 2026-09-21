@@ -9,11 +9,13 @@ pub mod rate_limit;
 pub mod release;
 pub mod response;
 pub mod state;
+pub mod support_reports;
 pub mod telemetry;
 pub mod upstream;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
+use axum::http::HeaderName;
 use axum::http::Method;
 use axum::http::header::CONTENT_TYPE;
 use axum::middleware;
@@ -30,7 +32,7 @@ pub fn router(state: state::AppState) -> Router {
             CorsLayer::new()
                 .allow_origin(Any)
                 .allow_methods([Method::GET, Method::POST])
-                .allow_headers([CONTENT_TYPE]),
+                .allow_headers([CONTENT_TYPE, HeaderName::from_static("x-slate-report-id")]),
         )
         .layer(middleware::from_fn_with_state(
             middleware_state,

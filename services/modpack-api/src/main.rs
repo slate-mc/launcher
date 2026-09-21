@@ -12,6 +12,7 @@ async fn main() -> anyhow::Result<()> {
         config.release_manifest_url.clone(),
         config.posthog_host.clone(),
         config.posthog_project_token.clone(),
+        &config.support_reports,
     )?;
     let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
     tracing::info!(address = %config.bind_address, "slate modpack API listening");

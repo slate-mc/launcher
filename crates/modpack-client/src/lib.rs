@@ -6,15 +6,17 @@ use slate_modpack_api_contracts::{
     CategoriesResponse, ContentInstallPlanRequest, ContentKind, ImportPackPlanRequest,
     ImportedPackPlan, InstallPlan, InstallPlanRequest, LauncherFeatureConfig, LoaderKind,
     ModInstallPlanRequest, ModVersionList, Modpack, ModpackVersion, Provider, ProvidersResponse,
-    ReleaseType, ResolveModsRequest, ResolveModsResponse, SearchResponse, UpdateResponse,
-    VersionPage,
+    ReleaseType, ResolveModsRequest, ResolveModsResponse, SearchResponse, SupportReportReceipt,
+    UpdateResponse, VersionPage,
 };
 use std::time::Duration;
 use url::Url;
+use uuid::Uuid;
 
 pub const DEVELOPMENT_API_URL: &str = "http://127.0.0.1:8080";
 pub const PRODUCTION_API_URL: &str = "https://api.slatelauncher.org";
 const MAX_RESPONSE_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_SUPPORT_REPORT_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct ModpackApiClient {
@@ -73,6 +75,25 @@ impl ModpackApiClient {
     pub async fn launcher_feature_config(&self) -> Result<LauncherFeatureConfig, ClientError> {
         self.get(self.endpoint(&["v1", "launcher", "config"])?)
             .await
+    }
+
+    pub async fn upload_support_report(
+        &self,
+        report_id: Uuid,
+        archive: Vec<u8>,
+    ) -> Result<SupportReportReceipt, ClientError> {
+        if archive.len() > MAX_SUPPORT_REPORT_BYTES {
+            return Err(ClientError::SupportReportTooLarge);
+        }
+        let response = self
+            .client
+            .post(self.endpoint(&["v1", "support", "reports"])?)
+            .header(reqwest::header::CONTENT_TYPE, "application/zip")
+            .header("x-slate-report-id", report_id.to_string())
+            .body(archive)
+            .send()
+            .await?;
+        Self::read_response(response).await
     }
 
     pub async fn import_plan(
@@ -407,6 +428,12 @@ impl ModpackApiClient {
                 .body(body);
         }
         let response = request.send().await?;
+        Self::read_response(response).await
+    }
+
+    async fn read_response<T: serde::de::DeserializeOwned>(
+        response: reqwest::Response,
+    ) -> Result<T, ClientError> {
         let status = response.status();
         if response
             .content_length()
@@ -613,6 +640,8 @@ pub enum ClientError {
     MissingContentTarget,
     #[error("the Slate modpack API response exceeded its size limit")]
     ResponseTooLarge,
+    #[error("the support report exceeds the upload limit")]
+    SupportReportTooLarge,
     #[error("the Slate modpack API returned an invalid response envelope")]
     InvalidEnvelope,
     #[error("the Slate modpack API returned {code:?} for request {request_id}: {message}")]

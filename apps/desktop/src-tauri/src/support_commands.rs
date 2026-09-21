@@ -19,24 +19,15 @@ pub(super) async fn support_report_export(
     request: CreateSupportReportRequest,
 ) -> Result<Option<SupportReportExport>, AppError> {
     state.features.require(FeatureAccess::SupportReport)?;
-    if !request.include_launcher_logs
-        && !request.include_install_activity
-        && !request.include_instance_summary
-    {
-        return Err(AppError::new(
-            "support.empty_report",
-            "Choose at least one item to include in the report.",
-        ));
-    }
-
-    let report_id = Uuid::new_v4();
+    validate_report_request(&request)?;
+    let prepared = prepare_support_report(&state, request).await?;
     let today = OffsetDateTime::now_utc().date();
     let suggested_name = format!(
         "slate-support-{:04}{:02}{:02}-{}.zip",
         today.year(),
         u8::from(today.month()),
         today.day(),
-        &report_id.to_string()[..8]
+        &prepared.report_id.to_string()[..8]
     );
     let picked = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
@@ -51,7 +42,71 @@ pub(super) async fn support_report_export(
     let Some(destination) = picked.and_then(|path| path.into_path().ok()) else {
         return Ok(None);
     };
+    let destination_for_export = destination.clone();
+    let paths = state.paths.clone();
+    let report_id = prepared.report_id;
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        write_prepared_report(&destination_for_export, &paths, prepared)
+    })
+    .await
+    .map_err(|_| support_report_error())??;
+    let file_name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("slate-support-report.zip")
+        .to_owned();
+    tracing::info!(report_id = %report_id, bytes, "support report exported");
+    Ok(Some(SupportReportExport {
+        report_id,
+        file_name,
+        bytes,
+    }))
+}
 
+#[tauri::command]
+pub(super) async fn support_report_submit(
+    state: tauri::State<'_, DesktopState>,
+    request: CreateSupportReportRequest,
+) -> Result<SupportReportSubmission, AppError> {
+    state.features.require(FeatureAccess::SupportReport)?;
+    validate_report_request(&request)?;
+    let prepared = prepare_support_report(&state, request).await?;
+    let report_id = prepared.report_id;
+    let paths = state.paths.clone();
+    let (_, archive) = tauri::async_runtime::spawn_blocking(move || {
+        let temporary = tempfile::tempdir().map_err(|_| support_report_error())?;
+        let destination = temporary.path().join("report.zip");
+        let bytes = write_prepared_report(&destination, &paths, prepared)?;
+        let archive = std::fs::read(destination).map_err(|_| support_report_error())?;
+        Ok::<_, AppError>((bytes, archive))
+    })
+    .await
+    .map_err(|_| support_report_error())??;
+    let receipt = state
+        .modpacks
+        .upload_support_report(report_id, archive)
+        .await
+        .map_err(support_upload_error)?;
+    tracing::info!(report_id = %receipt.report_id, bytes = receipt.bytes, "support report submitted");
+    Ok(SupportReportSubmission {
+        report_id: receipt.report_id,
+        bytes: receipt.bytes,
+    })
+}
+
+struct PreparedSupportReport {
+    report_id: Uuid,
+    created_at: String,
+    request: CreateSupportReportRequest,
+    instances: Vec<slate_storage::InstanceRecord>,
+    jobs: Vec<slate_storage::InstallJobRecord>,
+    private_values: Vec<String>,
+}
+
+async fn prepare_support_report(
+    state: &DesktopState,
+    request: CreateSupportReportRequest,
+) -> Result<PreparedSupportReport, AppError> {
     let instances = state
         .database
         .list_instances(1_000)
@@ -85,46 +140,67 @@ pub(super) async fn support_report_export(
             .into_iter()
             .flatten()
         })
-        .collect::<Vec<_>>();
+        .collect();
     let created_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|_| support_report_error())?;
-    let paths = state.paths.clone();
-    let destination_for_export = destination.clone();
-    let bytes = tauri::async_runtime::spawn_blocking(move || {
-        export_support_report(
-            &destination_for_export,
-            SupportReportInput {
-                report_id,
-                created_at: &created_at,
-                request,
-                paths: &paths,
-                instances: &instances,
-                jobs: &jobs,
-                private_values: &private_values,
-            },
-        )
+    Ok(PreparedSupportReport {
+        report_id: Uuid::new_v4(),
+        created_at,
+        request,
+        instances,
+        jobs,
+        private_values,
     })
-    .await
-    .map_err(|_| support_report_error())?
-    .map_err(|_| support_report_error())?;
-    let file_name = destination
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("slate-support-report.zip")
-        .to_owned();
-    tracing::info!(report_id = %report_id, bytes, "support report exported");
-    Ok(Some(SupportReportExport {
-        report_id,
-        file_name,
-        bytes,
-    }))
+}
+
+fn write_prepared_report(
+    destination: &std::path::Path,
+    paths: &AppPaths,
+    prepared: PreparedSupportReport,
+) -> Result<u64, AppError> {
+    export_support_report(
+        destination,
+        SupportReportInput {
+            report_id: prepared.report_id,
+            created_at: &prepared.created_at,
+            request: prepared.request,
+            paths,
+            instances: &prepared.instances,
+            jobs: &prepared.jobs,
+            private_values: &prepared.private_values,
+        },
+    )
+    .map_err(|_| support_report_error())
+}
+
+fn validate_report_request(request: &CreateSupportReportRequest) -> Result<(), AppError> {
+    if request.include_launcher_logs
+        || request.include_install_activity
+        || request.include_instance_summary
+    {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "support.empty_report",
+            "Choose at least one item to include in the report.",
+        ))
+    }
 }
 
 fn support_report_error() -> AppError {
     AppError::new(
         "support.report_unavailable",
-        "slate could not create the support report. Choose another location and try again.",
+        "slate could not create the support report. Try again.",
+    )
+    .retryable(true)
+}
+
+fn support_upload_error(error: slate_modpack_client::ClientError) -> AppError {
+    tracing::warn!(error = %error, "support report submission failed");
+    AppError::new(
+        "support.delivery_unavailable",
+        "slate could not send the support report. Check your connection and try again.",
     )
     .retryable(true)
 }

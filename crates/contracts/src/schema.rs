@@ -27,9 +27,10 @@ use crate::{
     SetInstanceContentPinnedRequest, SetInstanceModEnabledRequest, SetInstanceModPinnedRequest,
     SetInstanceResourcePackActiveRequest, SetInstanceSnapshotPinnedRequest, StopGameSessionRequest,
     StorageCleanupResult, StorageOverview, SubscribeSessionLogRequest, SupportReportExport,
-    SupportReportPreview, UnsubscribeSessionLogRequest, UpdateInstanceConfigurationRequest,
-    UpdateInstanceContentRequest, UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest,
-    UpdateInstanceSettingsRequest, UpdateSavedServerRequest,
+    SupportReportPreview, SupportReportSubmission, UnsubscribeSessionLogRequest,
+    UpdateInstanceConfigurationRequest, UpdateInstanceContentRequest,
+    UpdateInstanceGameOptionsRequest, UpdateInstanceModRequest, UpdateInstanceSettingsRequest,
+    UpdateSavedServerRequest,
 };
 use schemars::{Schema, schema_for};
 use std::collections::BTreeMap;
@@ -132,6 +133,10 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
             schema_for!(CreateSupportReportRequest),
         ),
         ("support-report-export", schema_for!(SupportReportExport)),
+        (
+            "support-report-submission",
+            schema_for!(SupportReportSubmission),
+        ),
         ("preflight-summary", schema_for!(PreflightSummary)),
         ("storage-overview", schema_for!(StorageOverview)),
         (
@@ -426,8 +431,9 @@ mod tests {
     fn schema_registry_has_stable_names() {
         let schemas = schema_documents();
 
-        assert_eq!(schemas.len(), 114);
+        assert_eq!(schemas.len(), 115);
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
+        assert!(schemas.contains_key("support-report-submission"));
     }
 }

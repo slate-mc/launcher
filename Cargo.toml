@@ -104,6 +104,7 @@ tauri = "=2.11.4"
 tauri-build = "=2.6.3"
 tauri-plugin-dialog = "=2.7.3"
 moka = { version = "=0.12.16", features = ["sync"] }
+object_store = { version = "=0.14.2", features = ["aws"] }
 opentelemetry = { version = "=0.32.0", features = ["logs", "metrics", "trace"] }
 opentelemetry-appender-tracing = "=0.32.0"
 opentelemetry_sdk = { version = "=0.32.0", features = ["logs", "metrics", "trace"] }

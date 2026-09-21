@@ -7,7 +7,7 @@ describe("support reports", () => {
     window.history.replaceState({}, "", "/help");
   });
 
-  it("explains the report contents before anything is exported", async () => {
+  it("explains the report contents before anything is shared", async () => {
     render(<App />);
 
     expect(
@@ -18,7 +18,10 @@ describe("support reports", () => {
       screen.getByText("Account credentials or player identity"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Save support report" }),
+      screen.getByRole("button", { name: "Send report" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Save a copy" }),
     ).toBeDisabled();
   });
 });

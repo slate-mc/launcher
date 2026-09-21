@@ -79,3 +79,30 @@ turns on Share crash reports in Privacy settings. The native and renderer filter
 data, account identity, absolute paths, breadcrumb fields, local variables, instance metadata, and
 secret-shaped values. A random installation ID is attached only after consent so Sentry can count
 affected installations without receiving a Minecraft identity.
+
+## Private support report storage
+
+The API accepts sanitized ZIP reports at `POST /v1/support/reports`. Uploads are limited to 20 MiB
+and 10 requests per minute per IP. The desktop sends a user-generated report ID with the archive;
+the API stores it under a date-partitioned, collision-safe key and returns the same ID for support.
+
+Set the bucket name in the server environment:
+
+```text
+SLATE_SUPPORT_REPORTS_BUCKET=slate-private-support
+SLATE_SUPPORT_REPORTS_PREFIX=support-reports
+AWS_DEFAULT_REGION=us-east-1
+AWS_ACCESS_KEY_ID=from-the-deployment-secret-store
+AWS_SECRET_ACCESS_KEY=from-the-deployment-secret-store
+```
+
+For an S3-compatible provider, also set `AWS_ENDPOINT_URL_S3` to its HTTPS endpoint. Storage
+credentials belong only in the API deployment secret store and must never be passed to desktop
+builds. Keep public access blocked, limit the API service identity to creating objects under the
+configured prefix, give support operators a separate read role, enable encryption at rest, and
+configure a bucket lifecycle rule that deletes reports after the support retention period.
+Production readiness requires an upload, retrieval, expiry, and access-control drill against the
+actual bucket.
+
+Local S3 emulators may use a loopback HTTP endpoint with `AWS_ALLOW_HTTP=true`. The API rejects
+non-loopback HTTP storage endpoints, and production deployments must not enable that override.

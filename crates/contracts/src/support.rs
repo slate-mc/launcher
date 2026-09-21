@@ -24,3 +24,10 @@ pub struct SupportReportExport {
     pub file_name: String,
     pub bytes: u64,
 }
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupportReportSubmission {
+    pub report_id: Uuid,
+    pub bytes: u64,
+}

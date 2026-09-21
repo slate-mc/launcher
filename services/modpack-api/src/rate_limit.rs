@@ -111,12 +111,15 @@ enum RateCategory {
     Search,
     Metadata,
     InstallPlan,
+    SupportReport,
 }
 
 impl RateCategory {
     fn for_request(request: &Request) -> Option<Self> {
         let path = request.uri().path();
-        if path == "/v1/modpacks" || path == "/v1/mods" {
+        if path == "/v1/support/reports" {
+            Some(Self::SupportReport)
+        } else if path == "/v1/modpacks" || path == "/v1/mods" {
             Some(Self::Search)
         } else if path.ends_with("/install-plan") {
             Some(Self::InstallPlan)
@@ -132,6 +135,7 @@ impl RateCategory {
             Self::Search => 60,
             Self::Metadata => 120,
             Self::InstallPlan => 30,
+            Self::SupportReport => 10,
         }
     }
 }

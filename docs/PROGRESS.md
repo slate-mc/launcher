@@ -90,7 +90,7 @@ Verified on Windows on September 20, 2026:
   snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 166 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 169 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -110,9 +110,9 @@ Verified on Windows on September 20, 2026:
    has deterministic coverage for partial-download cleanup, startup recovery, and content rollback,
    while an injected mid-download native run remains useful release hardening.
 3. **Operational readiness:** structured local tracing, privacy-aware product analytics, remote
-   feature controls, signed updates, local support-report export, and environment-gated backend
-   telemetry are active. Crash reporting and private support-report submission still need
-   production implementations.
+   feature controls, signed updates, consented crash reporting, private support-report submission,
+   and environment-gated backend telemetry are active. Production service configuration and
+   validation remain.
 
 ## Observability, rollout, and support plan
 
@@ -123,9 +123,9 @@ Verified on Windows on September 20, 2026:
 | Product analytics | PostHog | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation. |
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
 | Backend observability | OpenTelemetry to Grafana Cloud | Environment-gated OTLP export now covers API traces, structured logs, HTTP latency, provider failures/latency, cache outcomes, install plans, and service resources while retaining local JSON output. Configure production credentials, dashboards, alerts, sampling, and retention. |
-| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash/support delivery still needs its own consented queue. |
+| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash reports avoid local queuing, and failed support uploads deliberately leave no extra archive behind. |
 | Updates | Tauri updater plus the slate release API | Signed release builds, update UI, multi-platform artifact workflow, and the release endpoint are implemented. Add controlled channels, staged rollout, rollback protection, and recorded recovery evidence. |
-| Support reports | In-app report flow plus private object storage | Local review/export and report IDs are implemented. Add authenticated short-lived uploads to private object storage without exposing storage details. |
+| Support reports | In-app report flow plus private object storage | User-reviewed local export, explicit bounded submission, private S3-compatible storage, server-only credentials, report IDs, rate limiting, and user-safe failures are implemented. Configure the production bucket lifecycle and validate access controls and expiry. |
 
 ## Quality and documentation gaps
 

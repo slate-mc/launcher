@@ -6,6 +6,7 @@ mod modpacks;
 mod mods;
 mod providers;
 mod releases;
+mod support;
 mod telemetry;
 
 use crate::providers::{MissingResource, ProviderError};
@@ -25,6 +26,7 @@ pub fn router() -> Router<AppState> {
             .merge(imports::routes())
             .merge(providers::routes())
             .merge(releases::routes())
+            .merge(support::routes())
             .merge(telemetry::routes())
             .merge(mods::routes())
             .merge(modpacks::routes()),

@@ -3,6 +3,7 @@ use crate::providers::{
 };
 use crate::rate_limit::RateLimiter;
 use crate::release::ReleaseCatalog;
+use crate::support_reports::SupportReportStore;
 use crate::telemetry::PostHogRelay;
 use crate::upstream::{UpstreamClient, UpstreamError};
 use moka::sync::Cache;
@@ -19,6 +20,7 @@ pub struct AppState {
     pub rate_limiter: RateLimiter,
     pub releases: ReleaseCatalog,
     pub telemetry: PostHogRelay,
+    pub support_reports: SupportReportStore,
 }
 
 impl AppState {
@@ -28,6 +30,7 @@ impl AppState {
         release_manifest_url: url::Url,
         posthog_host: url::Url,
         posthog_project_token: Option<String>,
+        support_reports: &crate::config::SupportReportStorageConfig,
     ) -> Result<Self, StateError> {
         let upstream = UpstreamClient::new(upstream_url, upstream_user_agent)?;
         let providers = ProviderRegistry::new(vec![
@@ -43,6 +46,7 @@ impl AppState {
             rate_limiter: RateLimiter::default(),
             releases: ReleaseCatalog::new(release_manifest_url, upstream_user_agent)?,
             telemetry: PostHogRelay::new(posthog_host, posthog_project_token, upstream_user_agent)?,
+            support_reports: SupportReportStore::new(support_reports)?,
         })
     }
 }
@@ -84,4 +88,6 @@ pub enum StateError {
     Release(#[from] crate::release::ReleaseError),
     #[error("could not initialize anonymous usage reporting")]
     Telemetry(#[from] crate::telemetry::TelemetryError),
+    #[error("could not initialize private support report storage")]
+    SupportReports(#[from] crate::support_reports::SupportReportStoreError),
 }

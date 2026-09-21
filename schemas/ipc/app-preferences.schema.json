@@ -3,6 +3,9 @@
   "title": "AppPreferencesDto",
   "type": "object",
   "properties": {
+    "crashReportingEnabled": {
+      "type": "boolean"
+    },
     "downloadBandwidthLimitMib": {
       "type": "integer",
       "format": "uint32",
@@ -35,6 +38,7 @@
     "downloadConcurrency",
     "downloadBandwidthLimitMib",
     "telemetryEnabled",
+    "crashReportingEnabled",
     "reduceMotion",
     "trashRetentionDays"
   ],

@@ -4,6 +4,7 @@ import {
   Download,
   FileArchive,
   LoaderCircle,
+  Send,
   ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
@@ -12,6 +13,7 @@ import {
   bridgeMode,
   exportSupportReport,
   getSupportReportPreview,
+  submitSupportReport,
 } from "../../lib/bridge";
 import { getUserFacingError } from "../../lib/userFacingError";
 
@@ -26,6 +28,7 @@ export function SupportReportPanel() {
     queryFn: getSupportReportPreview,
   });
   const exportMutation = useMutation({ mutationFn: exportSupportReport });
+  const submitMutation = useMutation({ mutationFn: submitSupportReport });
   const selected = Object.values(options).filter(Boolean).length;
 
   return (
@@ -107,29 +110,44 @@ export function SupportReportPanel() {
               </li>
             ))}
           </ul>
-          <button
-            type="button"
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:opacity-45"
-            disabled={
-              bridgeMode !== "native" ||
-              selected === 0 ||
-              exportMutation.isPending
-            }
-            onClick={() => exportMutation.mutate(options)}
-          >
-            {exportMutation.isPending ? (
-              <LoaderCircle
-                className="animate-spin"
-                size={15}
-                aria-hidden="true"
-              />
-            ) : (
-              <Download size={15} aria-hidden="true" />
-            )}
-            {exportMutation.isPending
-              ? "Preparing report…"
-              : "Save support report"}
-          </button>
+          <div className="grid gap-2">
+            <button
+              type="button"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-control bg-app-accent px-4 text-xs font-bold text-app-on-accent disabled:opacity-45"
+              disabled={
+                bridgeMode !== "native" ||
+                selected === 0 ||
+                submitMutation.isPending ||
+                exportMutation.isPending
+              }
+              onClick={() => submitMutation.mutate(options)}
+            >
+              {submitMutation.isPending ? (
+                <LoaderCircle className="animate-spin" size={15} aria-hidden="true" />
+              ) : (
+                <Send size={15} aria-hidden="true" />
+              )}
+              {submitMutation.isPending ? "Sending report…" : "Send report"}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-control border border-app-separator bg-app-raised px-4 text-xs font-bold text-app-text disabled:opacity-45"
+              disabled={
+                bridgeMode !== "native" ||
+                selected === 0 ||
+                submitMutation.isPending ||
+                exportMutation.isPending
+              }
+              onClick={() => exportMutation.mutate(options)}
+            >
+              {exportMutation.isPending ? (
+                <LoaderCircle className="animate-spin" size={15} aria-hidden="true" />
+              ) : (
+                <Download size={15} aria-hidden="true" />
+              )}
+              {exportMutation.isPending ? "Preparing copy…" : "Save a copy"}
+            </button>
+          </div>
           {bridgeMode !== "native" ? (
             <p className="mt-2 mb-0 text-center text-[10px] text-app-muted">
               Available in the desktop app
@@ -138,13 +156,20 @@ export function SupportReportPanel() {
         </aside>
       </div>
 
-      {exportMutation.isError ? (
+      {submitMutation.isError || exportMutation.isError ? (
         <div className="px-6 pb-6">
-          <InlineNotice tone="danger" title="Report was not saved">
+          <InlineNotice tone="danger" title="Report could not be completed">
             {getUserFacingError(
-              exportMutation.error,
-              "Choose another location and try again.",
+              submitMutation.error ?? exportMutation.error,
+              "Try again in a moment.",
             )}
+          </InlineNotice>
+        </div>
+      ) : null}
+      {submitMutation.data ? (
+        <div className="px-6 pb-6">
+          <InlineNotice tone="positive" title="Support report sent">
+            Report ID {submitMutation.data.reportId} · {formatBytes(submitMutation.data.bytes)}
           </InlineNotice>
         </div>
       ) : null}

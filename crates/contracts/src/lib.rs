@@ -77,7 +77,9 @@ pub use server::{
 pub use settings::{
     AppPreferencesDto, ReduceMotionPreferenceDto, ThemePreferenceDto, UpdateAppPreferencesRequest,
 };
-pub use support::{CreateSupportReportRequest, SupportReportExport, SupportReportPreview};
+pub use support::{
+    CreateSupportReportRequest, SupportReportExport, SupportReportPreview, SupportReportSubmission,
+};
 pub use system::{
     ClearStorageCategoryRequest, DeleteTrashedInstanceRequest, EmptyInstanceTrashRequest,
     JavaRuntimeSummary, PreflightSummary, RestoreTrashedInstanceRequest, StorageCategoryDto,

@@ -15,6 +15,7 @@ import {
   preflightSchema,
   supportReportExportSchema,
   supportReportPreviewSchema,
+  supportReportSubmissionSchema,
   defaultInstanceSettings,
   type AppPreferences,
   type Bootstrap,
@@ -31,6 +32,7 @@ import {
   type Preflight,
   type SupportReportExport,
   type SupportReportPreview,
+  type SupportReportSubmission,
 } from "../types/launcher";
 
 import {
@@ -280,6 +282,17 @@ export async function exportSupportReport(input: {
   const result = await invoke("support_report_export", { request: input });
   if (result === null) return undefined;
   return supportReportExportSchema.parse(result);
+}
+
+export async function submitSupportReport(input: {
+  includeLauncherLogs: boolean;
+  includeInstallActivity: boolean;
+  includeInstanceSummary: boolean;
+}): Promise<SupportReportSubmission> {
+  requireNativeContent();
+  return supportReportSubmissionSchema.parse(
+    await invoke("support_report_submit", { request: input }),
+  );
 }
 
 export async function listInstances(): Promise<LauncherInstance[]> {

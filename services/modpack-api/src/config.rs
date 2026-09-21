@@ -7,6 +7,7 @@ const DEFAULT_USER_AGENT: &str = "slate-api/0.1 (+https://slate.gg)";
 const DEFAULT_RELEASE_MANIFEST_URL: &str =
     "https://github.com/slate-mc/launcher/releases/latest/download/latest.json";
 const DEFAULT_POSTHOG_HOST: &str = "https://us.i.posthog.com";
+const DEFAULT_SUPPORT_REPORT_PREFIX: &str = "support-reports";
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -18,6 +19,7 @@ pub struct Config {
     pub posthog_project_token: Option<String>,
     pub observability: ObservabilityConfig,
     pub sentry_dsn: Option<sentry::types::Dsn>,
+    pub support_reports: SupportReportStorageConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -25,6 +27,12 @@ pub struct ObservabilityConfig {
     pub enabled: bool,
     pub sample_ratio: f64,
     pub environment: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct SupportReportStorageConfig {
+    pub bucket: Option<String>,
+    pub prefix: String,
 }
 
 impl Config {
@@ -83,6 +91,7 @@ impl Config {
             .map(|value| value.parse())
             .transpose()
             .map_err(ConfigError::InvalidSentryDsn)?;
+        let support_reports = SupportReportStorageConfig::from_env()?;
         Ok(Self {
             bind_address,
             upstream_url,
@@ -92,7 +101,60 @@ impl Config {
             posthog_project_token,
             observability,
             sentry_dsn,
+            support_reports,
         })
+    }
+}
+
+impl SupportReportStorageConfig {
+    fn from_env() -> Result<Self, ConfigError> {
+        if let Ok(endpoint) = std::env::var("AWS_ENDPOINT_URL_S3") {
+            validate_support_endpoint(&endpoint)?;
+        }
+        let bucket = std::env::var("SLATE_SUPPORT_REPORTS_BUCKET")
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        if bucket.as_ref().is_some_and(|value| {
+            value.len() > 255
+                || !value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+        }) {
+            return Err(ConfigError::InvalidSupportReportsBucket);
+        }
+        let prefix = std::env::var("SLATE_SUPPORT_REPORTS_PREFIX")
+            .unwrap_or_else(|_| DEFAULT_SUPPORT_REPORT_PREFIX.to_owned())
+            .trim_matches('/')
+            .to_owned();
+        if prefix.is_empty()
+            || prefix.len() > 128
+            || !prefix
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'_'))
+            || prefix.split('/').any(|segment| segment.is_empty())
+        {
+            return Err(ConfigError::InvalidSupportReportsPrefix);
+        }
+        Ok(Self { bucket, prefix })
+    }
+}
+
+fn validate_support_endpoint(value: &str) -> Result<(), ConfigError> {
+    let endpoint = Url::parse(value).map_err(ConfigError::InvalidSupportReportsEndpoint)?;
+    if !endpoint.username().is_empty() || endpoint.password().is_some() || endpoint.host().is_none()
+    {
+        return Err(ConfigError::UnsafeSupportReportsEndpoint);
+    }
+    let secure = endpoint.scheme() == "https";
+    let local_http = endpoint.scheme() == "http"
+        && endpoint
+            .host_str()
+            .is_some_and(|host| matches!(host, "localhost" | "127.0.0.1" | "::1"));
+    if secure || local_http {
+        Ok(())
+    } else {
+        Err(ConfigError::UnsafeSupportReportsEndpoint)
     }
 }
 
@@ -194,11 +256,19 @@ pub enum ConfigError {
     UnsafeOtelEndpoint,
     #[error("SLATE_SENTRY_DSN is not a valid Sentry DSN")]
     InvalidSentryDsn(sentry::types::ParseDsnError),
+    #[error("SLATE_SUPPORT_REPORTS_BUCKET is invalid")]
+    InvalidSupportReportsBucket,
+    #[error("SLATE_SUPPORT_REPORTS_PREFIX is invalid")]
+    InvalidSupportReportsPrefix,
+    #[error("AWS_ENDPOINT_URL_S3 is not a valid URL")]
+    InvalidSupportReportsEndpoint(url::ParseError),
+    #[error("AWS_ENDPOINT_URL_S3 must use HTTPS, except for a local development endpoint")]
+    UnsafeSupportReportsEndpoint,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_enabled, validate_otel_endpoint};
+    use super::{parse_enabled, validate_otel_endpoint, validate_support_endpoint};
 
     #[test]
     fn otel_switch_accepts_explicit_boolean_values() {
@@ -213,5 +283,13 @@ mod tests {
         assert!(validate_otel_endpoint("http://127.0.0.1:4318").is_ok());
         assert!(validate_otel_endpoint("http://collector.internal:4318").is_err());
         assert!(validate_otel_endpoint("https://user:secret@example.com").is_err());
+    }
+
+    #[test]
+    fn support_storage_requires_https_except_for_local_development() {
+        assert!(validate_support_endpoint("https://account.r2.cloudflarestorage.com").is_ok());
+        assert!(validate_support_endpoint("http://127.0.0.1:9000").is_ok());
+        assert!(validate_support_endpoint("http://object-storage.example.com").is_err());
+        assert!(validate_support_endpoint("https://user:secret@example.com").is_err());
     }
 }

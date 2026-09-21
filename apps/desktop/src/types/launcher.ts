@@ -29,6 +29,11 @@ export const supportReportExportSchema = z.object({
   bytes: z.number().int().nonnegative(),
 });
 
+export const supportReportSubmissionSchema = z.object({
+  reportId: z.string().uuid(),
+  bytes: z.number().int().nonnegative(),
+});
+
 export const loaderKindSchema = z.enum(["vanilla", "fabric", "neoForge"]);
 export const instanceModeSchema = z.enum(["vanilla", "modded", "pvp"]);
 export const setupStateSchema = z.enum([
@@ -711,6 +716,7 @@ export type Bootstrap = z.infer<typeof bootstrapSchema>;
 export type OnboardingState = z.infer<typeof onboardingStateSchema>;
 export type SupportReportPreview = z.infer<typeof supportReportPreviewSchema>;
 export type SupportReportExport = z.infer<typeof supportReportExportSchema>;
+export type SupportReportSubmission = z.infer<typeof supportReportSubmissionSchema>;
 export type LauncherInstance = z.infer<typeof instanceSummarySchema>;
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 export type InstanceArtworkKind = "icon" | "banner";

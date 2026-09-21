@@ -12,6 +12,7 @@ axum.workspace = true
 base64.workspace = true
 futures-util.workspace = true
 moka.workspace = true
+object_store.workspace = true
 opentelemetry.workspace = true
 opentelemetry-appender-tracing.workspace = true
 opentelemetry_sdk.workspace = true
