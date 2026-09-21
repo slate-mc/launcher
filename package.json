@@ -11,6 +11,7 @@
     "dev": "yarn workspace @slate/desktop dev",
     "lint": "yarn workspace @slate/desktop lint",
     "test": "yarn workspace @slate/desktop test",
+    "test:e2e": "yarn workspace @slate/desktop test:e2e",
     "tauri": "yarn workspace @slate/desktop tauri"
   }
 }
