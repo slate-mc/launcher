@@ -15,6 +15,7 @@ mod instance_content;
 mod instance_files;
 mod instance_lifecycle_commands;
 mod instance_lifecycle_support;
+mod instance_pack_commands;
 mod launch_commands;
 mod launch_support;
 mod local_content_import;
@@ -67,6 +68,7 @@ use instance_files::{
 };
 use instance_lifecycle_commands::*;
 use instance_lifecycle_support::*;
+use instance_pack_commands::*;
 use launch_commands::*;
 use launch_support::*;
 use local_content_import::{
