@@ -39,18 +39,12 @@ import { contentErrorMessage } from "./instanceContentFormat";
 import {
   ContentNavigation,
   ContentSelect,
-  InstalledModSkeletons,
   ModResultSkeletons,
   ModSearchResult,
 } from "./ContentBrowserComponents";
 import { InstanceFileContent } from "./InstanceContentComponents";
-import { InstalledModRow, InstalledModTableHeader } from "./InstalledModRow";
-import {
-  compareInstalledMods,
-  modProviderName,
-  normalizedModPath,
-  type InstalledModSort,
-} from "./instanceContentModel";
+import { InstalledModsTable } from "./InstalledModsTable";
+import { modProviderName, normalizedModPath } from "./instanceContentModel";
 
 export function InstanceContent({ instance }: { instance: LauncherInstance }) {
   const queryClient = useQueryClient();
@@ -58,19 +52,6 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
     "mods",
   );
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [installedFilter, setInstalledFilter] = useState("");
-  const [installedStatus, setInstalledStatus] = useState<
-    "all" | "enabled" | "disabled"
-  >("all");
-  const [installedOrigin, setInstalledOrigin] = useState<
-    "all" | InstanceMod["origin"]
-  >("all");
-  const [installedSort, setInstalledSort] = useState<InstalledModSort>({
-    key: "name",
-    direction: "ascending",
-  });
-  const [installedPage, setInstalledPage] = useState(1);
-  const [installedPageSize, setInstalledPageSize] = useState(25);
   const [draftQuery, setDraftQuery] = useState("");
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState<"all" | "curseforge" | "modrinth">(
@@ -84,7 +65,6 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
     Record<string, ModpackSummary>
   >({});
   const [installJobId, setInstallJobId] = useState<string>();
-  const [removeTargetPath, setRemoveTargetPath] = useState<string>();
   const [notice, setNotice] = useState<{
     tone: "positive" | "danger";
     title: string;
@@ -265,7 +245,6 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
       }),
     onMutate: () => setNotice(undefined),
     onSuccess: (updated, item) => {
-      setRemoveTargetPath(undefined);
       return refreshContentAfterMutation(
         updated,
         "Mod moved to trash",
@@ -431,24 +410,6 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
           requiredBy: resolveReferenceNames(item.requiredBy),
         };
   });
-  const normalizedInstalledFilter = installedFilter.trim().toLocaleLowerCase();
-  const visibleInstalled = installed
-    .filter(
-      (item) =>
-        !normalizedInstalledFilter ||
-        `${item.displayName} ${item.filePath} ${item.provider ?? ""} ${item.versionId ?? ""}`
-          .toLocaleLowerCase()
-          .includes(normalizedInstalledFilter),
-    )
-    .filter(
-      (item) =>
-        installedStatus === "all" ||
-        (installedStatus === "enabled" ? item.enabled : !item.enabled),
-    )
-    .filter(
-      (item) => installedOrigin === "all" || item.origin === installedOrigin,
-    )
-    .sort((left, right) => compareInstalledMods(left, right, installedSort));
   const installedIds = new Set(
     installed.flatMap((item) =>
       item.provider && item.projectId
@@ -477,21 +438,6 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
   const installedIdentityPending =
     installedQuery.isPending ||
     (Boolean(installedQuery.data?.length) && resolutionQuery.isFetching);
-  const enabledModCount = installed.filter((item) => item.enabled).length;
-  const installedPageCount = Math.max(
-    1,
-    Math.ceil(visibleInstalled.length / installedPageSize),
-  );
-  const activeInstalledPage = Math.min(installedPage, installedPageCount);
-  const installedPageStart = (activeInstalledPage - 1) * installedPageSize;
-  const pagedInstalled = visibleInstalled.slice(
-    installedPageStart,
-    installedPageStart + installedPageSize,
-  );
-  const updateInstalledSort = (next: InstalledModSort) => {
-    setInstalledSort(next);
-    setInstalledPage(1);
-  };
 
   if (contentKind !== "mods") {
     return (
@@ -797,249 +743,48 @@ export function InstanceContent({ instance }: { instance: LauncherInstance }) {
           </div>
         ) : null}
 
-        {installedQuery.isPending ? (
-          <InstalledModSkeletons />
-        ) : installedQuery.isError ? (
-          <div className="p-5">
-            <InlineNotice
-              tone="danger"
-              title="Installed mods could not be loaded"
-            >
-              Reload this page to try again.
-            </InlineNotice>
-          </div>
-        ) : installed.length ? (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-app-separator/45 bg-app-bg/20 px-5 py-3">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <label className="relative block min-w-52 flex-1 max-w-sm">
-                  <span className="sr-only">Filter installed mods</span>
-                  <Search
-                    size={14}
-                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-app-muted"
-                    aria-hidden="true"
-                  />
-                  <input
-                    value={installedFilter}
-                    onChange={(event) => {
-                      setInstalledFilter(event.target.value);
-                      setInstalledPage(1);
-                    }}
-                    placeholder="Filter by name, file, provider, or version"
-                    className="h-8 w-full rounded-control border border-app-separator bg-app-bg pr-3 pl-9 text-[11px] text-app-text outline-none placeholder:text-app-muted focus:border-app-accent"
-                  />
-                </label>
-                <div className="w-32">
-                  <ContentSelect
-                    label="Mod status"
-                    value={installedStatus}
-                    options={[
-                      ["all", "All statuses"],
-                      ["enabled", "Enabled"],
-                      ["disabled", "Disabled"],
-                    ]}
-                    onChange={(value) => {
-                      setInstalledStatus(value as typeof installedStatus);
-                      setInstalledPage(1);
-                    }}
-                    compact
-                  />
-                </div>
-                <div className="w-32">
-                  <ContentSelect
-                    label="Mod origin"
-                    value={installedOrigin}
-                    options={[
-                      ["all", "All origins"],
-                      ["modpack", "Modpack"],
-                      ["added", "Added"],
-                      ["local", "Local file"],
-                    ]}
-                    onChange={(value) => {
-                      setInstalledOrigin(value as typeof installedOrigin);
-                      setInstalledPage(1);
-                    }}
-                    compact
-                  />
-                </div>
-              </div>
-              <span className="shrink-0 font-mono text-[10px] text-app-muted">
-                {resolutionQuery.isFetching ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <LoaderCircle
-                      size={11}
-                      className="animate-spin motion-reduce:animate-none"
-                      aria-hidden="true"
-                    />
-                    Checking installed mods
-                  </span>
-                ) : (
-                  `${visibleInstalled.length} shown · ${enabledModCount} enabled · ${installed.length} total`
-                )}
-              </span>
-            </div>
-            {visibleInstalled.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
-                  <caption className="sr-only">
-                    Installed mods for {instance.name}
-                  </caption>
-                  <colgroup>
-                    <col className="w-[29%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[12%]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[8%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[12%]" />
-                  </colgroup>
-                  <InstalledModTableHeader
-                    sort={installedSort}
-                    onSort={updateInstalledSort}
-                  />
-                  <tbody>
-                    {pagedInstalled.map((item) => (
-                      <InstalledModRow
-                        key={item.filePath}
-                        item={item}
-                        disabled={installing || contentMutationPending}
-                        confirmingRemove={removeTargetPath === item.filePath}
-                        pendingAction={
-                          updateModMutation.isPending &&
-                          updateModMutation.variables?.item.filePath ===
-                            item.filePath
-                            ? "update"
-                            : relationshipMutation.isPending &&
-                                relationshipMutation.variables?.filePath ===
-                                  item.filePath
-                              ? "relationships"
-                              : toggleMutation.isPending &&
-                                  toggleMutation.variables?.item.filePath ===
-                                    item.filePath
-                                ? "toggle"
-                                : pinModMutation.isPending &&
-                                    pinModMutation.variables?.item.filePath ===
-                                      item.filePath
-                                  ? "pin"
-                                  : removeMutation.isPending &&
-                                      removeMutation.variables?.filePath ===
-                                        item.filePath
-                                    ? "remove"
-                                    : undefined
-                        }
-                        instanceId={instance.id}
-                        onUpdate={(versionId) =>
-                          updateModMutation.mutate({ item, versionId })
-                        }
-                        onResolveRelationships={() =>
-                          relationshipMutation
-                            .mutateAsync(item)
-                            .then(() => undefined)
-                        }
-                        onToggle={() =>
-                          toggleMutation.mutate({
-                            item,
-                            enabled: !item.enabled,
-                          })
-                        }
-                        onPin={() =>
-                          pinModMutation.mutate({ item, pinned: !item.pinned })
-                        }
-                        onRequestRemove={() =>
-                          setRemoveTargetPath(item.filePath)
-                        }
-                        onCancelRemove={() => setRemoveTargetPath(undefined)}
-                        onConfirmRemove={() => removeMutation.mutate(item)}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-                <div className="flex min-w-[900px] items-center justify-between border-t border-app-separator/45 bg-app-bg/20 px-4 py-2.5">
-                  <span className="font-mono text-[9px] text-app-muted">
-                    Rows {installedPageStart + 1}–
-                    {Math.min(
-                      installedPageStart + installedPageSize,
-                      visibleInstalled.length,
-                    )}{" "}
-                    of {visibleInstalled.length}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-app-muted">Rows</span>
-                    <div className="w-20">
-                      <ContentSelect
-                        label="Rows per page"
-                        value={String(installedPageSize)}
-                        options={[
-                          ["25", "25"],
-                          ["50", "50"],
-                          ["100", "100"],
-                        ]}
-                        onChange={(value) => {
-                          setInstalledPageSize(Number(value));
-                          setInstalledPage(1);
-                        }}
-                        compact
-                      />
-                    </div>
-                    <span className="min-w-20 text-center font-mono text-[9px] text-app-muted">
-                      Page {activeInstalledPage} of {installedPageCount}
-                    </span>
-                    <button
-                      type="button"
-                      className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary disabled:opacity-35"
-                      disabled={activeInstalledPage === 1}
-                      onClick={() =>
-                        setInstalledPage((current) => Math.max(1, current - 1))
-                      }
-                      aria-label="Previous installed mod page"
-                    >
-                      <ChevronLeft size={14} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex size-8 items-center justify-center rounded-control border border-app-separator bg-app-bg text-app-secondary disabled:opacity-35"
-                      disabled={activeInstalledPage === installedPageCount}
-                      onClick={() =>
-                        setInstalledPage((current) =>
-                          Math.min(installedPageCount, current + 1),
-                        )
-                      }
-                      aria-label="Next installed mod page"
-                    >
-                      <ArrowRight size={14} aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="px-5 py-14 text-center">
-                <p className="m-0 text-sm font-bold text-app-text">
-                  No installed mods match
-                </p>
-                <p className="mt-1 mb-0 text-[11px] text-app-secondary">
-                  Clear the search or filters to show the complete table.
-                </p>
-                <button
-                  type="button"
-                  className="mt-3 h-8 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary hover:text-app-text"
-                  onClick={() => {
-                    setInstalledFilter("");
-                    setInstalledStatus("all");
-                    setInstalledOrigin("all");
-                    setInstalledPage(1);
-                  }}
-                >
-                  Clear filters
-                </button>
-              </div>
-            )}
-          </>
-        ) : !browserOpen && !isVanilla ? (
-          <EmptyState
-            title="No mod JARs detected"
-            description="Add a compatible mod from CurseForge or Modrinth, import a local JAR, or install a modpack from Discover."
-          />
-        ) : null}
+        <InstalledModsTable
+          instanceId={instance.id}
+          instanceName={instance.name}
+          installed={installed}
+          loading={installedQuery.isPending}
+          failed={installedQuery.isError}
+          resolutionFetching={resolutionQuery.isFetching}
+          disabled={installing || contentMutationPending}
+          pendingAction={(item) =>
+            updateModMutation.isPending &&
+            updateModMutation.variables?.item.filePath === item.filePath
+              ? "update"
+              : relationshipMutation.isPending &&
+                  relationshipMutation.variables?.filePath === item.filePath
+                ? "relationships"
+                : toggleMutation.isPending &&
+                    toggleMutation.variables?.item.filePath === item.filePath
+                  ? "toggle"
+                  : pinModMutation.isPending &&
+                      pinModMutation.variables?.item.filePath === item.filePath
+                    ? "pin"
+                    : removeMutation.isPending &&
+                        removeMutation.variables?.filePath === item.filePath
+                      ? "remove"
+                      : undefined
+          }
+          onUpdate={(item, versionId) =>
+            updateModMutation.mutate({ item, versionId })
+          }
+          onResolveRelationships={(item) =>
+            relationshipMutation.mutateAsync(item).then(() => undefined)
+          }
+          onToggle={(item) =>
+            toggleMutation.mutate({ item, enabled: !item.enabled })
+          }
+          onPin={(item) =>
+            pinModMutation.mutate({ item, pinned: !item.pinned })
+          }
+          onRemove={(item) => removeMutation.mutate(item)}
+          browserOpen={browserOpen}
+          isVanilla={isVanilla}
+        />
       </section>
     </div>
   );
