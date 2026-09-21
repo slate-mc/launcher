@@ -177,7 +177,7 @@ export function HomePage() {
           slate could not load your instances.
         </h1>
         <p className="mt-3 mb-6 max-w-[560px] text-app-secondary">
-          Your files were not changed. Retry the local connection.
+          Your files were not changed. Restart slate and try again.
         </p>
         <button
           type="button"
