@@ -18,7 +18,9 @@ Last updated: September 20, 2026
   parallel file downloads, verified shared artifacts, restart recovery for interrupted jobs,
   pause/resume, safe user cancellation, operation-aware retry from Downloads, an aggregate
   download-speed limit covering base-game and content files, and sanitized user-facing failure
-  messages.
+  messages. Partial downloads are removed when interrupted, and applied content remains a pending
+  transaction until the installation record commits; cancellation or commit failure restores the
+  previous files.
 - Instance library, favorites, profile text/tags/notes, icon/banner selection and positioning,
   per-instance account/window/language/quick-play/performance/Java settings, common Minecraft game
   options, folder shortcuts, relocation, duplication, portable slate import/export, CurseForge ZIP
@@ -71,7 +73,7 @@ Verified on Windows on September 20, 2026:
 - 15 Vitest/Testing Library tests pass.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 152 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 154 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -87,8 +89,9 @@ Verified on Windows on September 20, 2026:
    proven end to end.
 2. **Native acceptance:** the clean-root install harness and a representative ATM10 run cover fresh
    Vanilla, Fabric, NeoForge, and exact large-modpack installation through verified launch planning.
-   Authenticated game-process launch and automated interruption/recovery scenarios still need
-   recorded release evidence.
+   Authenticated game-process launch still needs recorded release evidence. Interruption safety now
+   has deterministic coverage for partial-download cleanup, startup recovery, and content rollback,
+   while an injected mid-download native run remains useful release hardening.
 3. **Operational readiness:** structured local tracing and local support-report export are active.
    Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
    telemetry, offline delivery, and private support-report submission still need production
@@ -133,5 +136,5 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add an authenticated Windows process-launch acceptance path and interruption/recovery fault
-injection to the clean-root native harness.
+Add an authenticated Windows process-launch acceptance path, then extend the clean-root harness with
+an injected mid-download process interruption for end-to-end recovery evidence.

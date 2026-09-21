@@ -147,7 +147,7 @@ async fn verify_install(
     let revision_id = RevisionId::new();
     println!("installing {label} for Minecraft {minecraft_version}");
     let expected_content_files = modpack_plan.as_ref().map_or(0, |plan| plan.downloads.len());
-    let outcome = install(InstallRequest {
+    let mut outcome = install(InstallRequest {
         instance_id,
         revision_id,
         minecraft_version: minecraft_version.to_owned(),
@@ -209,6 +209,9 @@ async fn verify_install(
     .await?;
     if expected_content_files > 0 && outcome.installed_content_files == 0 {
         return Err("modpack plan contained downloads but installed no content files".into());
+    }
+    if let Some(transaction) = outcome.content_transaction.take() {
+        transaction.commit()?;
     }
     println!(
         "verified {label}: {} downloaded, {} reused, {} content files, Java {}, {} launch artifacts",

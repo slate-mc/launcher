@@ -8,7 +8,7 @@ mod runtime;
 use natives::extract_natives;
 
 pub use download::{DownloadError, DownloadProgress, DownloadSummary, Downloader};
-pub use modpack::ContentInstallError;
+pub use modpack::{ContentInstallError, PendingContentCommit};
 pub use runtime::{ManagedJavaRuntime, RuntimeInstallError, ensure_managed_java};
 
 use serde::{Deserialize, Serialize};
@@ -62,7 +62,7 @@ pub struct ContentUpdateRequest {
     pub paths: AppPaths,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct InstallOutcome {
     pub manifest_digest: String,
     pub manifest_path: PathBuf,
@@ -71,6 +71,7 @@ pub struct InstallOutcome {
     pub downloaded_artifacts: usize,
     pub reused_artifacts: usize,
     pub installed_content_files: usize,
+    pub content_transaction: Option<PendingContentCommit>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -327,27 +328,33 @@ where
         "Extracting native libraries",
     ));
     extract_natives(full_install.native_extractions).await?;
-    let content_artifacts = if let Some(plan) = &request.modpack_plan {
-        modpack::install_plan_content(
-            plan,
-            &layout.game_directory,
-            &revision_directory,
-            request.paths.storage_root(),
-            request.download_concurrency,
-            request.download_bandwidth_limit_mib,
-            |completed, total, message| {
-                on_progress(InstallProgress {
-                    phase: InstallPhase::Content,
-                    message,
-                    completed_items: Some(completed),
-                    total_items: Some(total),
-                });
-            },
+    let installed_content = if let Some(plan) = &request.modpack_plan {
+        Some(
+            modpack::install_plan_content(
+                plan,
+                &layout.game_directory,
+                &revision_directory,
+                request.paths.storage_root(),
+                request.download_concurrency,
+                request.download_bandwidth_limit_mib,
+                |completed, total, message| {
+                    on_progress(InstallProgress {
+                        phase: InstallPhase::Content,
+                        message,
+                        completed_items: Some(completed),
+                        total_items: Some(total),
+                    });
+                },
+            )
+            .await?,
         )
-        .await?
     } else {
-        Vec::new()
+        None
     };
+    let (content_artifacts, content_transaction) = installed_content.map_or_else(
+        || (Vec::new(), None),
+        |installed| (installed.artifacts, Some(installed.transaction)),
+    );
     on_progress(InstallProgress::indeterminate(
         InstallPhase::Verification,
         "Creating the verified launch-file index",
@@ -385,6 +392,7 @@ where
         downloaded_artifacts: summary.downloaded,
         reused_artifacts: summary.reused,
         installed_content_files,
+        content_transaction,
     })
 }
 
@@ -443,7 +451,7 @@ where
     let revision_natives = revision_directory.join("natives");
     tokio::task::spawn_blocking(move || clone_directory_tree(&parent_natives, &revision_natives))
         .await??;
-    let added_content = modpack::install_plan_content(
+    let installed_content = modpack::install_plan_content(
         &request.plan,
         &game_directory,
         &revision_directory,
@@ -460,6 +468,8 @@ where
         },
     )
     .await?;
+    let added_content = installed_content.artifacts;
+    let content_transaction = installed_content.transaction;
 
     on_progress(InstallProgress::indeterminate(
         InstallPhase::Commit,
@@ -506,6 +516,7 @@ where
         downloaded_artifacts: installed_content_files,
         reused_artifacts: 0,
         installed_content_files,
+        content_transaction: Some(content_transaction),
     })
 }
 

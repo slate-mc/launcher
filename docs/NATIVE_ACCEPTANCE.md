@@ -59,3 +59,8 @@ and NeoForge verified 109 on managed Java 21.
 The same harness then passed CurseForge project `925200`, exact version `8764211` (All the Mods 10
 8.1): the API resolved NeoForge `21.1.249`, 492 downloads totaling 1,607,320,308 bytes, two extract
 actions, and the installer committed 3,935 content files before verifying all 109 launch artifacts.
+
+Installer tests also force pending content transactions through both rollback and commit paths.
+Interrupted downloads remove their partial file on task cancellation, and content applied to the
+game directory automatically restores the previous files unless the desktop database commit
+succeeds.

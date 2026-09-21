@@ -189,6 +189,7 @@ impl Downloader {
         })?;
         tokio::fs::create_dir_all(parent).await?;
         let partial = partial_path(requirement.target_path())?;
+        let _partial_cleanup = PartialDownloadCleanup(partial.clone());
         let mut attempt = 1;
         loop {
             match self.download_to_partial(&requirement, &partial).await {
@@ -353,6 +354,14 @@ enum DownloadDisposition {
     Reused,
 }
 
+struct PartialDownloadCleanup(PathBuf);
+
+impl Drop for PartialDownloadCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum DownloadError {
     #[error("download concurrency must be between 1 and 8, got {0}")]
@@ -386,8 +395,8 @@ pub enum DownloadError {
 #[cfg(test)]
 mod tests {
     use super::{
-        BandwidthThrottle, DownloadError, partial_path, retry_delay, should_report_progress,
-        validate_artifact_url,
+        BandwidthThrottle, DownloadError, PartialDownloadCleanup, partial_path, retry_delay,
+        should_report_progress, validate_artifact_url,
     };
     use std::path::Path;
     use url::Url;
@@ -416,6 +425,18 @@ mod tests {
                 .file_name()
                 .is_some_and(|name| name.to_string_lossy().contains("partial"))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn interrupted_download_cleanup_removes_partial_file() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let directory = tempfile::tempdir()?;
+        let partial = directory.path().join(".library.jar.partial-test");
+        std::fs::write(&partial, b"incomplete")?;
+        let cleanup = PartialDownloadCleanup(partial.clone());
+        drop(cleanup);
+        assert!(!partial.exists());
         Ok(())
     }
 

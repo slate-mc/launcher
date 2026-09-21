@@ -287,6 +287,7 @@ fn is_residue_name(name: &str) -> bool {
         || name.contains(".tmp-")
         || name.contains(".bak-")
         || name == "content-staging"
+        || name == "content-backup"
 }
 
 fn clear_directory_contents(root: &Path) -> Result<DiskUsage, io::Error> {
@@ -370,10 +371,15 @@ mod tests {
         paths.ensure_base_directories()?;
         std::fs::write(paths.artifacts().join("keep.jar"), [1_u8])?;
         std::fs::write(paths.artifacts().join("index.json.corrupt-test"), [2_u8, 3])?;
-        let cleared = clear_temporary_files(&paths, &[])?;
-        assert_eq!(cleared.bytes, 2);
+        let instance = temporary.path().join("instance");
+        let content_backup = instance.join("revisions/revision/content-backup");
+        std::fs::create_dir_all(&content_backup)?;
+        std::fs::write(content_backup.join("old.jar"), [4_u8, 5, 6, 7])?;
+        let cleared = clear_temporary_files(&paths, &[instance])?;
+        assert_eq!(cleared.bytes, 6);
         assert!(paths.artifacts().join("keep.jar").is_file());
         assert!(!paths.artifacts().join("index.json.corrupt-test").exists());
+        assert!(!content_backup.exists());
         Ok(())
     }
 

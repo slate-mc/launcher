@@ -389,7 +389,7 @@ pub(super) async fn queue_instance_install(
                     .await;
                 tracing::info!(job_id = %pending.job.id, instance_id = %instance_id, "installation cancelled");
             }
-            Some(Ok(outcome)) => {
+            Some(Ok(mut outcome)) => {
                 if let Some(imported_overrides) = imported_overrides {
                     let _ = task_state
                         .database
@@ -428,6 +428,7 @@ pub(super) async fn queue_instance_install(
                         return;
                     }
                 }
+                let content_transaction = outcome.content_transaction.take();
                 let runtime = InstalledRuntime {
                     vendor: outcome.runtime.vendor,
                     release_name: outcome.runtime.release_name.clone(),
@@ -578,12 +579,30 @@ pub(super) async fn queue_instance_install(
                         .await
                 };
                 if let Err(error) = completion {
+                    drop(content_transaction);
                     tracing::error!(
                         job_id = %pending.job.id,
                         error = %error,
                         "could not commit a completed instance installation"
                     );
+                    let _ = task_state
+                        .database
+                        .fail_instance_install(
+                            pending.job.id,
+                            pending.revision_id,
+                            "The installation finished but could not be saved. Retry the installation.",
+                        )
+                        .await;
                 } else {
+                    if let Some(transaction) = content_transaction
+                        && let Err(error) = transaction.commit()
+                    {
+                        tracing::warn!(
+                            job_id = %pending.job.id,
+                            error = %error,
+                            "could not remove completed content transaction files"
+                        );
+                    }
                     tracing::info!(
                         job_id = %pending.job.id,
                         instance_id = %instance_id,

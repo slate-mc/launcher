@@ -24,6 +24,69 @@ const MAX_ARCHIVE_ENTRIES: usize = 200_000;
 const MAX_EXTRACTED_BYTES: u64 = 32 * 1024 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 5;
 
+#[derive(Debug)]
+pub struct PendingContentCommit {
+    staging: PathBuf,
+    backup: PathBuf,
+    written: Vec<PathBuf>,
+    backed_up: Vec<(PathBuf, PathBuf)>,
+    finished: bool,
+}
+
+impl PendingContentCommit {
+    #[must_use]
+    pub fn installed_paths(&self) -> &[PathBuf] {
+        &self.written
+    }
+
+    pub fn commit(mut self) -> Result<(), std::io::Error> {
+        self.finished = true;
+        remove_path_if_present(&self.staging)?;
+        remove_path_if_present(&self.backup)
+    }
+
+    pub fn rollback(mut self) -> Result<(), std::io::Error> {
+        let result = self.rollback_inner();
+        if result.is_ok() {
+            self.finished = true;
+        }
+        result
+    }
+
+    fn rollback_inner(&mut self) -> Result<(), std::io::Error> {
+        for target in self.written.iter().rev() {
+            remove_path_if_present(target)?;
+        }
+        for (target, backup_target) in self.backed_up.iter().rev() {
+            if target.exists() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "content target was recreated before rollback",
+                ));
+            }
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::rename(backup_target, target)?;
+        }
+        remove_path_if_present(&self.staging)?;
+        remove_path_if_present(&self.backup)
+    }
+}
+
+impl Drop for PendingContentCommit {
+    fn drop(&mut self) {
+        if !self.finished {
+            let _ = self.rollback_inner();
+        }
+    }
+}
+
+pub(super) struct InstalledContent {
+    pub artifacts: Vec<InstalledArtifactDigest>,
+    pub transaction: PendingContentCommit,
+}
+
 pub(super) fn validate_plan_compatibility(
     request: &InstallRequest,
     plan: &InstallPlan,
@@ -87,7 +150,7 @@ pub(super) async fn install_plan_content<F>(
     download_concurrency: u8,
     download_bandwidth_limit_mib: u32,
     on_progress: F,
-) -> Result<Vec<InstalledArtifactDigest>, ContentInstallError>
+) -> Result<InstalledContent, ContentInstallError>
 where
     F: Fn(u64, u64, String) + Send + Sync,
 {
@@ -180,7 +243,7 @@ where
     let game_for_commit = game_directory.to_path_buf();
     let backup_for_commit = backup.clone();
     let deletes = plan.delete.clone();
-    let installed_paths = tokio::task::spawn_blocking(move || {
+    let transaction = tokio::task::spawn_blocking(move || {
         commit_staged_content(
             &staging_for_commit,
             &game_for_commit,
@@ -192,6 +255,7 @@ where
 
     on_progress(total, total, "Indexing installed pack content".to_owned());
     let storage_root = storage_root.to_path_buf();
+    let installed_paths = transaction.installed_paths().to_vec();
     let artifacts = tokio::task::spawn_blocking(move || {
         let mut artifacts = Vec::with_capacity(installed_paths.len());
         for path in installed_paths {
@@ -210,9 +274,10 @@ where
         total,
         format!("Installed and indexed {} pack files", artifacts.len()),
     );
-    remove_managed_path(&staging).await?;
-    remove_managed_path(&backup).await?;
-    Ok(artifacts)
+    Ok(InstalledContent {
+        artifacts,
+        transaction,
+    })
 }
 
 fn content_download_label(download: &InstallPlanDownload) -> String {
@@ -318,6 +383,7 @@ async fn download_verified(
     throttle: Option<&BandwidthThrottle>,
 ) -> Result<(), ContentInstallError> {
     let partial = destination.with_extension(format!("partial-{}", Uuid::new_v4()));
+    let _partial_cleanup = PartialContentDownloadCleanup(partial.clone());
     let mut last_error = None;
     for source in &download.sources {
         for attempt in 0..3_u32 {
@@ -347,6 +413,14 @@ async fn download_verified(
     }
     let _ = tokio::fs::remove_file(&partial).await;
     Err(last_error.unwrap_or(ContentInstallError::DownloadUnavailable))
+}
+
+struct PartialContentDownloadCleanup(PathBuf);
+
+impl Drop for PartialContentDownloadCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 async fn download_once(
@@ -537,7 +611,7 @@ fn commit_staged_content(
     game_directory: &Path,
     backup: &Path,
     deletes: &[String],
-) -> Result<Vec<PathBuf>, ContentInstallError> {
+) -> Result<PendingContentCommit, ContentInstallError> {
     let mut staged_files = Vec::new();
     collect_files(staging, staging, &mut staged_files)?;
     staged_files.retain(|relative| {
@@ -593,7 +667,26 @@ fn commit_staged_content(
         }
         return Err(ContentInstallError::Io(error));
     }
-    Ok(written)
+    Ok(PendingContentCommit {
+        staging: staging.to_path_buf(),
+        backup: backup.to_path_buf(),
+        written,
+        backed_up,
+        finished: false,
+    })
+}
+
+fn remove_path_if_present(path: &Path) -> Result<(), std::io::Error> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    }
 }
 
 fn collect_files(
@@ -759,8 +852,8 @@ pub enum ContentInstallError {
 #[cfg(test)]
 mod tests {
     use super::{
-        ContentInstallError, content_download_label, format_download_size, validate_archive_prefix,
-        validate_download_url, validate_relative_path,
+        ContentInstallError, commit_staged_content, content_download_label, format_download_size,
+        validate_archive_prefix, validate_download_url, validate_relative_path,
     };
     use slate_modpack_api_contracts::{DownloadSource, Hashes, InstallPlanDownload};
 
@@ -815,5 +908,39 @@ mod tests {
             "architectury-13.0.11-neoforge.jar"
         );
         assert_eq!(format_download_size(download.size), "571.0 KB");
+    }
+
+    #[test]
+    fn pending_content_commit_rolls_back_until_explicitly_committed()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = tempfile::tempdir()?;
+        let game = temporary.path().join("game");
+        let staging = temporary.path().join("staging");
+        let backup = temporary.path().join("backup");
+        std::fs::create_dir_all(game.join("mods"))?;
+        std::fs::create_dir_all(staging.join("mods"))?;
+        std::fs::write(game.join("mods/existing.jar"), b"old")?;
+        std::fs::write(staging.join("mods/existing.jar"), b"new")?;
+        std::fs::write(staging.join("mods/added.jar"), b"added")?;
+
+        let transaction = commit_staged_content(&staging, &game, &backup, &[])?;
+        assert_eq!(std::fs::read(game.join("mods/existing.jar"))?, b"new");
+        assert!(game.join("mods/added.jar").is_file());
+        drop(transaction);
+
+        assert_eq!(std::fs::read(game.join("mods/existing.jar"))?, b"old");
+        assert!(!game.join("mods/added.jar").exists());
+        assert!(!staging.exists());
+        assert!(!backup.exists());
+
+        std::fs::create_dir_all(staging.join("mods"))?;
+        std::fs::write(staging.join("mods/existing.jar"), b"committed")?;
+        let transaction = commit_staged_content(&staging, &game, &backup, &[])?;
+        transaction.commit()?;
+
+        assert_eq!(std::fs::read(game.join("mods/existing.jar"))?, b"committed");
+        assert!(!staging.exists());
+        assert!(!backup.exists());
+        Ok(())
     }
 }
