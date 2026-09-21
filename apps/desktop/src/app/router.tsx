@@ -52,6 +52,10 @@ const StorageSettingsPage = lazyRouteComponent(
   () => import("../features/settings/StorageSettingsPage"),
   "StorageSettingsPage",
 );
+const PrivacySettingsPage = lazyRouteComponent(
+  () => import("../features/settings/PrivacySettingsPage"),
+  "PrivacySettingsPage",
+);
 const ServersPage = lazyRouteComponent(
   () => import("../features/servers/ServersPage"),
   "ServersPage",
@@ -167,6 +171,11 @@ const storageSettingsRoute = createRoute({
   path: "/settings/storage",
   component: StorageSettingsPage,
 });
+const privacySettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/privacy",
+  component: PrivacySettingsPage,
+});
 const helpRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/help",
@@ -190,6 +199,7 @@ const routeTree = rootRoute.addChildren([
   accountsRoute,
   settingsRoute,
   storageSettingsRoute,
+  privacySettingsRoute,
   helpRoute,
 ]);
 

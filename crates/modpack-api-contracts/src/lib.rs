@@ -8,6 +8,7 @@ mod install;
 mod metadata;
 mod modpack;
 mod provider;
+mod telemetry;
 mod version;
 
 pub use content::{ContentInstallPlanRequest, ContentKind};
@@ -31,6 +32,9 @@ pub use modpack::{
     VersionReference,
 };
 pub use provider::{Provider, ProviderMetadata, ProviderStatus, ProvidersResponse};
+pub use telemetry::{
+    CaptureProductEventRequest, CaptureProductEventResponse, ProductEvent, ProductPlatform,
+};
 pub use version::{
     Loader, LoaderKind, MemoryRecommendation, MinecraftTarget, ModpackVersion,
     ModpackVersionSummary, ReleaseType, VersionPage,

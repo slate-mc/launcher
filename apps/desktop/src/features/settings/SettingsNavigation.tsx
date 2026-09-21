@@ -1,11 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { HardDrive, SlidersHorizontal } from "lucide-react";
+import { HardDrive, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
 export function SettingsNavigation() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const items = [
     { to: "/settings/general" as const, label: "General", icon: SlidersHorizontal },
     { to: "/settings/storage" as const, label: "Storage", icon: HardDrive },
+    { to: "/settings/privacy" as const, label: "Privacy", icon: ShieldCheck },
   ];
   return (
     <nav

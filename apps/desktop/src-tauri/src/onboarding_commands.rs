@@ -87,12 +87,21 @@ pub(super) async fn onboarding_complete(
             "Create your first instance to finish setup.",
         ));
     }
-    state
+    let completed = state
         .database
         .complete_onboarding()
         .await
         .map(onboarding_summary)
-        .map_err(|error| map_storage_error(error, "slate could not finish setup."))
+        .map_err(|error| map_storage_error(error, "slate could not finish setup."))?;
+    let _ = state
+        .telemetry
+        .capture(
+            slate_modpack_api_contracts::ProductEvent::OnboardingCompleted,
+            None,
+            None,
+        )
+        .await;
+    Ok(completed)
 }
 
 fn storage_selection_error() -> AppError {

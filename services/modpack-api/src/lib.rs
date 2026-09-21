@@ -7,6 +7,7 @@ pub mod rate_limit;
 pub mod release;
 pub mod response;
 pub mod state;
+pub mod telemetry;
 pub mod upstream;
 
 use axum::Router;

@@ -3,6 +3,7 @@ use crate::providers::{
 };
 use crate::rate_limit::RateLimiter;
 use crate::release::ReleaseCatalog;
+use crate::telemetry::PostHogRelay;
 use crate::upstream::{UpstreamClient, UpstreamError};
 use moka::sync::Cache;
 use slate_minecraft::{MetadataFetchError, MojangMetadataClient, VersionManifest};
@@ -17,6 +18,7 @@ pub struct AppState {
     pub minecraft: MinecraftCatalog,
     pub rate_limiter: RateLimiter,
     pub releases: ReleaseCatalog,
+    pub telemetry: PostHogRelay,
 }
 
 impl AppState {
@@ -24,6 +26,8 @@ impl AppState {
         upstream_url: url::Url,
         upstream_user_agent: &str,
         release_manifest_url: url::Url,
+        posthog_host: url::Url,
+        posthog_project_token: Option<String>,
     ) -> Result<Self, StateError> {
         let upstream = UpstreamClient::new(upstream_url, upstream_user_agent)?;
         let providers = ProviderRegistry::new(vec![
@@ -38,6 +42,7 @@ impl AppState {
             minecraft: MinecraftCatalog::new()?,
             rate_limiter: RateLimiter::default(),
             releases: ReleaseCatalog::new(release_manifest_url, upstream_user_agent)?,
+            telemetry: PostHogRelay::new(posthog_host, posthog_project_token, upstream_user_agent)?,
         })
     }
 }
@@ -77,4 +82,6 @@ pub enum StateError {
     Minecraft(#[from] MetadataFetchError),
     #[error("could not initialize the launcher release catalog")]
     Release(#[from] crate::release::ReleaseError),
+    #[error("could not initialize anonymous usage reporting")]
+    Telemetry(#[from] crate::telemetry::TelemetryError),
 }

@@ -241,6 +241,12 @@ pub(super) async fn refresh_exited_sessions(state: &DesktopState) {
             .database
             .finish_session(process.session_id, process.exit_code, process.force_stopped)
             .await;
+        let event = if process.exit_code == Some(0) && !process.force_stopped {
+            slate_modpack_api_contracts::ProductEvent::LaunchCompleted
+        } else {
+            slate_modpack_api_contracts::ProductEvent::LaunchFailed
+        };
+        let _ = state.telemetry.capture(event, None, None).await;
     }
 }
 

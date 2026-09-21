@@ -62,6 +62,11 @@ Last updated: September 20, 2026
 - User-reviewed support reports can package selected launcher diagnostics, installation activity,
   and anonymous compatibility details into a local archive. The exporter removes credentials,
   player identity, and absolute paths and never includes worlds, screenshots, or Minecraft chat.
+- Anonymous product analytics are explicit opt-in and use a dedicated Privacy page. Only a fixed
+  event schema for setup, installation, content, and launch outcomes is accepted. Events use a
+  random installation ID, remain bounded in an offline queue, and are removed when sharing is
+  disabled. The API relays configured events to PostHog without placing provider configuration in
+  the desktop app.
 - First-run onboarding guides new players through Minecraft account connection, storage choice,
   managed Java readiness, and first-instance creation. Existing libraries bypass it automatically,
   and a chosen storage location becomes the default for future instances.
@@ -81,7 +86,7 @@ Verified on Windows on September 20, 2026:
   snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 154 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 159 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -111,10 +116,10 @@ Verified on Windows on September 20, 2026:
 | --- | --- | --- |
 | Errors and crashes | Sentry | Integrate desktop and API releases, preserve useful stack traces, sanitize context, and group failures by affected version and user impact. |
 | Feature flags and remote configuration | PostHog | Add gradual rollouts, experiments, emergency switches, safe defaults, local caching, and failure-safe behavior when PostHog is unavailable. |
-| Product analytics | PostHog | Instrument onboarding, installation, content management, and launch funnels with explicit privacy controls and no secrets or raw diagnostic payloads. |
+| Product analytics | PostHog | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation. |
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
 | Backend observability | OpenTelemetry to Grafana Cloud | Export API traces, latency, dependency failures, logs, and resource metrics with production sampling and retention policies. |
-| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, and sanitized user-reviewed report export are implemented. Add a durable offline delivery queue. |
+| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash/support delivery still needs its own consented queue. |
 | Updates | Tauri updater plus the slate release API | Signed release builds, update UI, multi-platform artifact workflow, and the release endpoint are implemented. Add controlled channels, staged rollout, rollback protection, and recorded recovery evidence. |
 | Support reports | In-app report flow plus private object storage | Local review/export and report IDs are implemented. Add authenticated short-lived uploads to private object storage without exposing storage details. |
 

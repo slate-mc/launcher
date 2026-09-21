@@ -307,6 +307,14 @@ pub(super) async fn instance_launch(
         quick_play = quick_play_requested,
         "minecraft session started"
     );
+    let _ = state
+        .telemetry
+        .capture(
+            slate_modpack_api_contracts::ProductEvent::LaunchStarted,
+            Some(instance.loader_kind.as_storage_value()),
+            None,
+        )
+        .await;
     Ok(GameSessionSummary {
         id: session_id.as_uuid(),
         instance_id: instance_id.as_uuid(),

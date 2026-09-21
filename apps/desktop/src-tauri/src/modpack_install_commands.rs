@@ -536,6 +536,18 @@ pub(super) async fn modpack_install(
             "slate could not finish creating the instance. The incomplete instance was moved to trash.",
         ));
     }
+    let provider = record
+        .modpack_source
+        .as_ref()
+        .map(|source| source.provider.as_str());
+    let _ = state
+        .telemetry
+        .capture(
+            slate_modpack_api_contracts::ProductEvent::InstanceCreated,
+            Some(record.loader_kind.as_storage_value()),
+            provider,
+        )
+        .await;
     let job = match queue_instance_install(
         state.inner(),
         record.clone(),

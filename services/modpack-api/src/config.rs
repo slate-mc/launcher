@@ -6,6 +6,7 @@ const DEFAULT_UPSTREAM_URL: &str = "https://api.modpacks.ch";
 const DEFAULT_USER_AGENT: &str = "slate-api/0.1 (+https://slate.gg)";
 const DEFAULT_RELEASE_MANIFEST_URL: &str =
     "https://github.com/slate-mc/launcher/releases/latest/download/latest.json";
+const DEFAULT_POSTHOG_HOST: &str = "https://us.i.posthog.com";
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -13,6 +14,8 @@ pub struct Config {
     pub upstream_url: Url,
     pub upstream_user_agent: String,
     pub release_manifest_url: Url,
+    pub posthog_host: Url,
+    pub posthog_project_token: Option<String>,
 }
 
 impl Config {
@@ -43,11 +46,35 @@ impl Config {
         {
             return Err(ConfigError::UnsafeReleaseManifestUrl);
         }
+        let posthog_host = Url::parse(
+            &std::env::var("SLATE_POSTHOG_HOST")
+                .unwrap_or_else(|_| DEFAULT_POSTHOG_HOST.to_owned()),
+        )
+        .map_err(ConfigError::InvalidPostHogHost)?;
+        if posthog_host.scheme() != "https"
+            || posthog_host.host_str().is_none()
+            || !posthog_host.username().is_empty()
+            || posthog_host.password().is_some()
+        {
+            return Err(ConfigError::UnsafePostHogHost);
+        }
+        let posthog_project_token = std::env::var("SLATE_POSTHOG_PROJECT_TOKEN")
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        if posthog_project_token
+            .as_ref()
+            .is_some_and(|value| value.len() > 256)
+        {
+            return Err(ConfigError::InvalidPostHogProjectToken);
+        }
         Ok(Self {
             bind_address,
             upstream_url,
             upstream_user_agent,
             release_manifest_url,
+            posthog_host,
+            posthog_project_token,
         })
     }
 }
@@ -62,6 +89,12 @@ pub enum ConfigError {
     InvalidReleaseManifestUrl(url::ParseError),
     #[error("SLATE_LAUNCHER_RELEASE_MANIFEST_URL must be a public HTTPS URL")]
     UnsafeReleaseManifestUrl,
+    #[error("SLATE_POSTHOG_HOST is not a valid URL")]
+    InvalidPostHogHost(url::ParseError),
+    #[error("SLATE_POSTHOG_HOST must be a public HTTPS URL")]
+    UnsafePostHogHost,
+    #[error("SLATE_POSTHOG_PROJECT_TOKEN is too long")]
+    InvalidPostHogProjectToken,
     #[error("SLATE_UPSTREAM_USER_AGENT must contain between 1 and 256 characters")]
     InvalidUserAgent,
 }

@@ -12,6 +12,7 @@ mod servers;
 mod sessions;
 mod settings;
 mod snapshots;
+mod telemetry;
 
 pub use accounts::{AccountRecord, AccountStatus, AuthenticatedAccount, LaunchAccount};
 pub use database::{Database, StorageError};
@@ -39,3 +40,4 @@ pub use servers::{NewSavedServer, SavedServerRecord};
 pub use sessions::{SessionRecord, SessionState};
 pub use settings::{AppPreferences, ReduceMotionPreference, ThemePreference};
 pub use snapshots::InstanceSnapshotRecord;
+pub use telemetry::QueuedProductEvent;

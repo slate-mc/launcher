@@ -256,6 +256,15 @@ pub(super) async fn queue_instance_install(
         operation = operation.storage_name(),
         "installation queued"
     );
+    let telemetry_loader = instance.loader_kind.as_storage_value().to_owned();
+    let _ = state
+        .telemetry
+        .capture(
+            slate_modpack_api_contracts::ProductEvent::InstallStarted,
+            Some(&telemetry_loader),
+            None,
+        )
+        .await;
     let response = supervised_install_job_summary(state, pending.job.clone());
     let install_paths = paths_for_instance(state, &instance);
     let target_loader_version = modpack_update.as_ref().map_or_else(
@@ -388,6 +397,14 @@ pub(super) async fn queue_instance_install(
                     )
                     .await;
                 tracing::info!(job_id = %pending.job.id, instance_id = %instance_id, "installation cancelled");
+                let _ = task_state
+                    .telemetry
+                    .capture(
+                        slate_modpack_api_contracts::ProductEvent::InstallCancelled,
+                        Some(&telemetry_loader),
+                        None,
+                    )
+                    .await;
             }
             Some(Ok(mut outcome)) => {
                 if let Some(imported_overrides) = imported_overrides {
@@ -424,6 +441,14 @@ pub(super) async fn queue_instance_install(
                             instance_id = %instance_id,
                             "imported pack overrides could not be applied"
                         );
+                        let _ = task_state
+                            .telemetry
+                            .capture(
+                                slate_modpack_api_contracts::ProductEvent::InstallFailed,
+                                Some(&telemetry_loader),
+                                None,
+                            )
+                            .await;
                         task_state.installs.finish(pending.job.id);
                         return;
                     }
@@ -593,6 +618,14 @@ pub(super) async fn queue_instance_install(
                             "The installation finished but could not be saved. Retry the installation.",
                         )
                         .await;
+                    let _ = task_state
+                        .telemetry
+                        .capture(
+                            slate_modpack_api_contracts::ProductEvent::InstallFailed,
+                            Some(&telemetry_loader),
+                            None,
+                        )
+                        .await;
                 } else {
                     if let Some(transaction) = content_transaction
                         && let Err(error) = transaction.commit()
@@ -611,6 +644,14 @@ pub(super) async fn queue_instance_install(
                         content_files = outcome.installed_content_files,
                         "installation completed"
                     );
+                    let _ = task_state
+                        .telemetry
+                        .capture(
+                            slate_modpack_api_contracts::ProductEvent::InstallCompleted,
+                            Some(&telemetry_loader),
+                            None,
+                        )
+                        .await;
                 }
             }
             Some(Err(error)) => {
@@ -624,6 +665,14 @@ pub(super) async fn queue_instance_install(
                 let _ = task_state
                     .database
                     .fail_instance_install(pending.job.id, pending.revision_id, message)
+                    .await;
+                let _ = task_state
+                    .telemetry
+                    .capture(
+                        slate_modpack_api_contracts::ProductEvent::InstallFailed,
+                        Some(&telemetry_loader),
+                        None,
+                    )
                     .await;
             }
         }

@@ -67,11 +67,6 @@ export function SettingsPage() {
         <aside className="grid content-start gap-5">
           <UpdatePanel bootstrap={bootstrapQuery.data} />
           <PreflightPanel query={preflightQuery} />
-          <InlineNotice title="Privacy default">
-            Optional telemetry stays off unless you explicitly enable it.
-            Account and launch capabilities are independent from local library
-            management.
-          </InlineNotice>
         </aside>
       </div>
     </div>
@@ -195,12 +190,9 @@ function UpdatePanel({
 
 function PreferencesForm({ initial }: { initial: AppPreferences }) {
   const queryClient = useQueryClient();
-  const [values, setValues] = useState({
-    ...initial,
-    telemetryEnabled: false,
-  });
+  const [values, setValues] = useState(initial);
   const [saved, setSaved] = useState(false);
-  const baseline = { ...initial, telemetryEnabled: false };
+  const baseline = initial;
   const dirty = !samePreferences(values, baseline);
   const mutation = useMutation({
     mutationFn: updatePreferences,

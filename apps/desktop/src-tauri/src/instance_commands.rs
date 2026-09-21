@@ -73,6 +73,15 @@ pub(super) async fn instance_create(
         ));
     }
 
+    let _ = state
+        .telemetry
+        .capture(
+            slate_modpack_api_contracts::ProductEvent::InstanceCreated,
+            Some(record.loader_kind.as_storage_value()),
+            None,
+        )
+        .await;
+
     Ok(instance_summary(record))
 }
 

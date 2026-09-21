@@ -26,6 +26,7 @@ mod modpack_install_commands;
 mod onboarding_commands;
 mod pack_import;
 mod portable_instance;
+mod product_telemetry;
 mod provider_content_commands;
 mod server_commands;
 mod server_support;
@@ -84,6 +85,7 @@ use pack_import::{
     DetectedImportArchive, detect_import_archive, extract_import_overrides, stage_import_archive,
 };
 use portable_instance::*;
+use product_telemetry::ProductTelemetry;
 use provider_content_commands::*;
 use serde::{Deserialize, Serialize};
 use server_commands::*;
@@ -214,6 +216,7 @@ struct DesktopState {
     log_streams: SessionLogCoordinator,
     installs: InstallSupervisor,
     modpacks: ModpackApiClient,
+    telemetry: ProductTelemetry,
 }
 
 async fn preferred_storage_root_id(state: &DesktopState) -> Result<StorageRootId, AppError> {
@@ -719,6 +722,10 @@ fn main() {
                 MICROSOFT_CONSUMER_TENANT,
             )?)?;
             let modpacks = ModpackApiClient::for_current_build()?;
+            let telemetry = tauri::async_runtime::block_on(ProductTelemetry::new(
+                database.clone(),
+                modpacks.clone(),
+            ))?;
             let state = DesktopState {
                 database,
                 paths,
@@ -730,9 +737,16 @@ fn main() {
                 log_streams: SessionLogCoordinator::default(),
                 installs: InstallSupervisor::default(),
                 modpacks,
+                telemetry: telemetry.clone(),
             };
             app.manage(state.clone());
             tauri::async_runtime::spawn(purge_expired_instance_trash(state));
+            tauri::async_runtime::spawn(telemetry.clone().run());
+            tauri::async_runtime::block_on(telemetry.capture(
+                slate_modpack_api_contracts::ProductEvent::LauncherStarted,
+                None,
+                None,
+            ))?;
             tracing::info!("desktop ready");
             Ok(())
         })

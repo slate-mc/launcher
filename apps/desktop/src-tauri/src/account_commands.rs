@@ -107,9 +107,19 @@ pub(super) async fn auth_start(
             })
             .await;
         match account {
-            Ok(account) => task_state
-                .auth_flows
-                .succeed(flow_id, account_summary(account)),
+            Ok(account) => {
+                let _ = task_state
+                    .telemetry
+                    .capture(
+                        slate_modpack_api_contracts::ProductEvent::AccountConnected,
+                        None,
+                        None,
+                    )
+                    .await;
+                task_state
+                    .auth_flows
+                    .succeed(flow_id, account_summary(account));
+            }
             Err(_) => {
                 let vault = task_state.credential_vault.clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || vault.remove(&credential_ref))

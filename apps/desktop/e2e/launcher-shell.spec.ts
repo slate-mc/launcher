@@ -57,4 +57,11 @@ test("primary navigation remains usable at the minimum window size", async ({
   await expect(
     page.getByRole("button", { name: "Check for updates" }),
   ).toBeDisabled();
+
+  await page.getByRole("link", { name: "Privacy" }).click();
+  await expect(page).toHaveURL(/\/settings\/privacy$/);
+  await expect(
+    page.getByRole("heading", { name: "Help improve slate" }),
+  ).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Share usage" })).not.toBeChecked();
 });

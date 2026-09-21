@@ -66,6 +66,7 @@ pub(super) async fn preferences_update(
         .await
         .map_err(|error| map_storage_error(error, "slate could not save your preferences."))?;
     let response = preferences_dto(preferences);
+    state.telemetry.set_enabled(request.telemetry_enabled).await;
     tauri::async_runtime::spawn(purge_expired_instance_trash(state.inner().clone()));
     Ok(response)
 }
