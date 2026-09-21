@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import {
   createInstanceSnapshot,
   deleteInstanceSnapshot,
@@ -343,77 +344,56 @@ export function InstanceLifecycleActions({
               >
                 {snapshot.pinned ? <PinOff size={14} /> : <Pin size={14} />}
               </button>
-              {restoreTarget === snapshot.id ? (
-                <span className="flex items-center gap-2 rounded-control border border-app-warning/45 bg-app-warning/5 px-2 py-1">
-                  <span className="text-[10px] text-app-secondary">
-                    Replace current files?
-                  </span>
+              <ConfirmDialog
+                open={restoreTarget === snapshot.id}
+                onOpenChange={(open) => {
+                  setDeleteTarget(undefined);
+                  setRestoreTarget(open ? snapshot.id : undefined);
+                }}
+                trigger={(
                   <button
                     type="button"
-                    className="text-[10px] font-bold text-app-warning"
+                    className="text-[11px] font-bold text-app-accent"
                     disabled={restoreMutation.isPending}
-                    onClick={() => restoreMutation.mutate(snapshot.id)}
                   >
-                    Confirm
+                    Restore
                   </button>
+                )}
+                title="Restore this snapshot?"
+                description="Current worlds, settings, and personal game files will be replaced with this restore point."
+                confirmLabel="Restore snapshot"
+                pendingLabel="Restoring…"
+                pending={restoreMutation.isPending}
+                error={restoreMutation.isError ? contentErrorMessage(restoreMutation.error) : undefined}
+                destructive
+                onConfirm={() => restoreMutation.mutate(snapshot.id)}
+              />
+              <ConfirmDialog
+                open={deleteTarget === snapshot.id}
+                onOpenChange={(open) => {
+                  setRestoreTarget(undefined);
+                  setDeleteTarget(open ? snapshot.id : undefined);
+                }}
+                trigger={(
                   <button
                     type="button"
-                    className="text-[10px] font-bold text-app-secondary"
-                    disabled={restoreMutation.isPending}
-                    onClick={() => setRestoreTarget(undefined)}
-                  >
-                    Cancel
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="text-[11px] font-bold text-app-accent"
-                  disabled={restoreMutation.isPending}
-                  onClick={() => {
-                    setDeleteTarget(undefined);
-                    setRestoreTarget(snapshot.id);
-                  }}
-                >
-                  Restore
-                </button>
-              )}
-              {deleteTarget === snapshot.id ? (
-                <span className="flex items-center gap-2 rounded-control border border-app-danger/45 bg-app-danger/5 px-2 py-1">
-                  <span className="text-[10px] text-app-secondary">
-                    Delete permanently?
-                  </span>
-                  <button
-                    type="button"
-                    className="text-[10px] font-bold text-app-danger"
+                    className="p-2 text-app-muted hover:text-app-danger"
+                    aria-label={`Delete snapshot from ${formatDate(snapshot.createdAt)}`}
+                    title="Delete snapshot"
                     disabled={deleteMutation.isPending}
-                    onClick={() => deleteMutation.mutate(snapshot.id)}
                   >
-                    Delete
+                    <Trash2 size={14} />
                   </button>
-                  <button
-                    type="button"
-                    className="text-[10px] font-bold text-app-secondary"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => setDeleteTarget(undefined)}
-                  >
-                    Cancel
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="p-2 text-app-muted hover:text-app-danger"
-                  title="Delete snapshot"
-                  disabled={deleteMutation.isPending}
-                  onClick={() => {
-                    setRestoreTarget(undefined);
-                    setDeleteTarget(snapshot.id);
-                  }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
+                )}
+                title="Permanently delete this snapshot?"
+                description="This restore point will be deleted and cannot be recovered. The current instance is not changed."
+                confirmLabel="Delete snapshot"
+                pendingLabel="Deleting…"
+                pending={deleteMutation.isPending}
+                error={deleteMutation.isError ? contentErrorMessage(deleteMutation.error) : undefined}
+                destructive
+                onConfirm={() => deleteMutation.mutate(snapshot.id)}
+              />
             </div>
           ))}
         </div>

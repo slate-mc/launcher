@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import {
   EmptyState,
   InlineNotice,
@@ -694,39 +695,35 @@ export function AccountsPage() {
                       >
                         <RefreshCw size={15} aria-hidden="true" />
                       </button>
-                      <button
-                        type="button"
-                        className="inline-flex size-8 items-center justify-center rounded-compact border border-app-separator bg-app-bg text-app-secondary hover:border-app-danger/40 hover:text-app-danger"
-                        aria-label={`Remove ${account.displayName}`}
-                        title="Remove account"
-                        onClick={() => setConfirmRemove(account.id)}
-                      >
-                        <Trash2 size={15} aria-hidden="true" />
-                      </button>
+                      <ConfirmDialog
+                        open={confirmRemove === account.id}
+                        onOpenChange={(open) =>
+                          setConfirmRemove(open ? account.id : undefined)
+                        }
+                        trigger={(
+                          <button
+                            type="button"
+                            className="inline-flex size-8 items-center justify-center rounded-compact border border-app-separator bg-app-bg text-app-secondary hover:border-app-danger/40 hover:text-app-danger"
+                            aria-label={`Remove ${account.displayName}`}
+                            title="Remove account"
+                          >
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                        )}
+                        title={`Remove ${account.displayName}?`}
+                        description="This removes the saved sign-in from slate. It does not delete the Microsoft or Minecraft account, and you can add it again later."
+                        confirmLabel="Remove account"
+                        pendingLabel="Removing…"
+                        cancelLabel="Keep account"
+                        pending={removeMutation.isPending}
+                        error={removeMutation.isError
+                          ? userFacingError(removeMutation.error, "The account could not be removed. Try again.")
+                          : undefined}
+                        destructive
+                        onConfirm={() => removeMutation.mutate(account.id)}
+                      />
                     </div>
                   </div>
-                  {confirmRemove === account.id ? (
-                    <div className="mt-3 flex items-center justify-end gap-2 border-t border-app-separator/45 pt-3">
-                      <span className="mr-auto text-[11px] text-app-secondary">
-                        Remove this account from slate?
-                      </span>
-                      <button
-                        type="button"
-                        className="h-8 rounded-compact px-3 text-[11px] font-bold text-app-secondary hover:bg-app-hover"
-                        onClick={() => setConfirmRemove(undefined)}
-                      >
-                        Keep account
-                      </button>
-                      <button
-                        type="button"
-                        className="h-8 rounded-compact bg-app-danger px-3 text-[11px] font-bold text-black disabled:opacity-50"
-                        disabled={removeMutation.isPending}
-                        onClick={() => removeMutation.mutate(account.id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : null}
                 </div>
               ))}
             </div>

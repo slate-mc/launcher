@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import {
   EmptyState,
   InlineNotice,
@@ -354,6 +355,7 @@ function SavedServerRow({
   const removeMutation = useMutation({
     mutationFn: () => removeSavedServer(server.id),
     onSuccess: async () => {
+      setConfirmRemove(false);
       await queryClient.invalidateQueries({ queryKey: ["saved-servers"] });
     },
   });
@@ -438,15 +440,31 @@ function SavedServerRow({
               >
                 <Pencil size={15} />
               </button>
-              <button
-                type="button"
-                className={iconButtonClass}
-                aria-label={`Remove ${server.name}`}
-                title="Remove server"
-                onClick={() => setConfirmRemove(true)}
-              >
-                <Trash2 size={15} />
-              </button>
+              <ConfirmDialog
+                open={confirmRemove}
+                onOpenChange={setConfirmRemove}
+                trigger={(
+                  <button
+                    type="button"
+                    className={iconButtonClass}
+                    aria-label={`Remove ${server.name}`}
+                    title="Remove server"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
+                title={`Remove ${server.name}?`}
+                description="This removes the server from your saved list. It does not change the server or any Minecraft instance."
+                confirmLabel="Remove server"
+                pendingLabel="Removing…"
+                cancelLabel="Keep server"
+                pending={removeMutation.isPending}
+                error={removeMutation.isError
+                  ? getUserFacingError(removeMutation.error, "The server could not be removed. Try again.")
+                  : undefined}
+                destructive
+                onConfirm={() => removeMutation.mutate()}
+              />
             </div>
           </div>
 
@@ -508,31 +526,6 @@ function SavedServerRow({
           </button>
         </div>
       </div>
-
-      {confirmRemove ? (
-        <div className="mt-4 flex items-center justify-between gap-4 border-t border-app-separator/55 pt-4">
-          <p className="m-0 text-xs text-app-secondary">
-            Remove {server.name} from your saved servers?
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={secondaryButtonClass}
-              onClick={() => setConfirmRemove(false)}
-            >
-              Keep
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-9 items-center gap-2 rounded-control border-0 bg-app-danger px-4 text-xs font-bold text-app-bg disabled:opacity-50"
-              disabled={removeMutation.isPending}
-              onClick={() => removeMutation.mutate()}
-            >
-              <Trash2 size={14} /> Remove
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       {launchMutation.isError ||
       preferenceMutation.isError ||
