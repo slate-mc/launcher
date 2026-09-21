@@ -5,6 +5,7 @@ mod metadata;
 mod modpacks;
 mod mods;
 mod providers;
+mod releases;
 
 use crate::providers::{MissingResource, ProviderError};
 use crate::response::{ApiError, RequestContext};
@@ -22,6 +23,7 @@ pub fn router() -> Router<AppState> {
             .merge(content::routes())
             .merge(imports::routes())
             .merge(providers::routes())
+            .merge(releases::routes())
             .merge(mods::routes())
             .merge(modpacks::routes()),
     )

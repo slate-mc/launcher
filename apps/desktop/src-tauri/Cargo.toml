@@ -39,6 +39,7 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 zip.workspace = true
+tauri-plugin-updater = "=2.11.0"
 
 [lints]
 workspace = true

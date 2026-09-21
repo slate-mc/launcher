@@ -3,7 +3,9 @@ import {
   Check,
   CircleAlert,
   Database,
+  Download,
   HardDrive,
+  RefreshCw,
   Save,
   ShieldCheck,
 } from "lucide-react";
@@ -14,9 +16,17 @@ import {
   StatusPill,
 } from "../../components/PageScaffold";
 import {
+  bridgeMode,
+  checkForLauncherUpdate,
+  getBootstrap,
   getPreferences,
   getPreflight,
+  installLauncherUpdate,
   updatePreferences,
+} from "../../lib/bridge";
+import type {
+  LauncherUpdateCheck,
+  LauncherUpdateProgress,
 } from "../../lib/bridge";
 import type { AppPreferences } from "../../types/launcher";
 import { SettingsNavigation } from "./SettingsNavigation";
@@ -29,6 +39,11 @@ export function SettingsPage() {
   const preflightQuery = useQuery({
     queryKey: ["preflight"],
     queryFn: getPreflight,
+  });
+  const bootstrapQuery = useQuery({
+    queryKey: ["bootstrap"],
+    queryFn: getBootstrap,
+    staleTime: Number.POSITIVE_INFINITY,
   });
 
   return (
@@ -50,6 +65,7 @@ export function SettingsPage() {
           <PreferencesForm initial={preferencesQuery.data} />
         )}
         <aside className="grid content-start gap-5">
+          <UpdatePanel bootstrap={bootstrapQuery.data} />
           <PreflightPanel query={preflightQuery} />
           <InlineNotice title="Privacy default">
             Optional telemetry stays off unless you explicitly enable it.
@@ -59,6 +75,121 @@ export function SettingsPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function UpdatePanel({
+  bootstrap,
+}: {
+  bootstrap: Awaited<ReturnType<typeof getBootstrap>> | undefined;
+}) {
+  const [available, setAvailable] = useState<LauncherUpdateCheck>();
+  const [checked, setChecked] = useState(false);
+  const [progress, setProgress] = useState<LauncherUpdateProgress>();
+  const capability = bootstrap?.capabilities.find(
+    (entry) => entry.id === "launcher.updates",
+  );
+  const enabled = bridgeMode === "native" && capability?.available === true;
+  const checkMutation = useMutation({
+    mutationFn: checkForLauncherUpdate,
+    onSuccess: (update) => {
+      setChecked(true);
+      setAvailable(update);
+      setProgress(undefined);
+    },
+  });
+  const installMutation = useMutation({
+    mutationFn: () => installLauncherUpdate(setProgress),
+  });
+  const percent =
+    progress?.totalBytes && progress.totalBytes > 0
+      ? Math.min(
+          100,
+          Math.round((progress.downloadedBytes / progress.totalBytes) * 100),
+        )
+      : undefined;
+
+  return (
+    <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
+      <div className="flex items-center gap-2">
+        <Download size={18} className="text-app-accent" aria-hidden="true" />
+        <h2 className="m-0 text-[15px] font-bold">Launcher updates</h2>
+      </div>
+      <p className="mt-1 mb-4 text-[11px]/[17px] text-app-secondary">
+        {enabled
+          ? "Check for a signed slate release and install it when you are ready."
+          : "Signed release builds can check for launcher updates here."}
+      </p>
+
+      {available ? (
+        <div className="border-y border-app-separator/55 py-3">
+          <strong className="block text-xs">Version {available.version}</strong>
+          {available.notes ? (
+            <p className="mt-1 mb-0 line-clamp-3 text-[10px]/[16px] text-app-secondary">
+              {available.notes}
+            </p>
+          ) : null}
+        </div>
+      ) : checked ? (
+        <p className="m-0 border-y border-app-separator/55 py-3 text-[11px] text-app-secondary">
+          slate is up to date.
+        </p>
+      ) : null}
+
+      {installMutation.isPending ? (
+        <div className="mt-4" aria-live="polite">
+          <div className="mb-1.5 flex justify-between text-[10px] text-app-secondary">
+            <span>Downloading update</span>
+            <span>{percent === undefined ? "Starting" : `${percent}%`}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-app-raised">
+            <span
+              className="block h-full bg-app-accent transition-[width] duration-150"
+              style={{ width: `${percent ?? 8}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {checkMutation.isError || installMutation.isError ? (
+        <p
+          className="mt-3 mb-0 text-[10px]/[16px] text-app-danger"
+          role="alert"
+        >
+          {installMutation.isError
+            ? "The update was not installed. Restart slate and try again."
+            : "slate could not check for updates. Try again later."}
+        </p>
+      ) : null}
+
+      <button
+        type="button"
+        className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-control border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-text hover:border-app-accent/45 disabled:opacity-45"
+        disabled={
+          !enabled || checkMutation.isPending || installMutation.isPending
+        }
+        onClick={() =>
+          available ? installMutation.mutate() : checkMutation.mutate()
+        }
+      >
+        {available ? (
+          <Download size={14} aria-hidden="true" />
+        ) : (
+          <RefreshCw
+            size={14}
+            className={checkMutation.isPending ? "animate-spin" : undefined}
+            aria-hidden="true"
+          />
+        )}
+        {installMutation.isPending
+          ? "Installing…"
+          : available
+            ? `Install ${available.version}`
+            : checkMutation.isPending
+              ? "Checking…"
+              : "Check for updates"}
+      </button>
+    </section>
   );
 }
 

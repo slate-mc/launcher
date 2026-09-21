@@ -481,6 +481,14 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         CapabilitySummary::available("content.modpacks.install"),
         CapabilitySummary::available("content.mods"),
         CapabilitySummary::available("content.mods.install"),
+        if option_env!("SLATE_UPDATER_ENABLED") == Some("1") {
+            CapabilitySummary::available("launcher.updates")
+        } else {
+            CapabilitySummary::unavailable(
+                "launcher.updates",
+                "Update checks are available in signed release builds.",
+            )
+        },
         if credential_vault_ready {
             CapabilitySummary::available("minecraft.account")
         } else {
@@ -695,6 +703,7 @@ fn main() {
     let application = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let paths = setup_paths.clone();
             let database =

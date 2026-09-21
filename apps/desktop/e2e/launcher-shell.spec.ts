@@ -51,4 +51,10 @@ test("primary navigation remains usable at the minimum window size", async ({
   await expect(
     page.getByRole("heading", { name: "Launcher preferences" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Launcher updates" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Check for updates" }),
+  ).toBeDisabled();
 });

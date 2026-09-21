@@ -2,6 +2,7 @@ use crate::providers::{
     CurseForgeProvider, FtbProvider, ModrinthContentProvider, ModrinthProvider, ProviderRegistry,
 };
 use crate::rate_limit::RateLimiter;
+use crate::release::ReleaseCatalog;
 use crate::upstream::{UpstreamClient, UpstreamError};
 use moka::sync::Cache;
 use slate_minecraft::{MetadataFetchError, MojangMetadataClient, VersionManifest};
@@ -15,10 +16,15 @@ pub struct AppState {
     pub upstream: UpstreamClient,
     pub minecraft: MinecraftCatalog,
     pub rate_limiter: RateLimiter,
+    pub releases: ReleaseCatalog,
 }
 
 impl AppState {
-    pub fn new(upstream_url: url::Url, upstream_user_agent: &str) -> Result<Self, StateError> {
+    pub fn new(
+        upstream_url: url::Url,
+        upstream_user_agent: &str,
+        release_manifest_url: url::Url,
+    ) -> Result<Self, StateError> {
         let upstream = UpstreamClient::new(upstream_url, upstream_user_agent)?;
         let providers = ProviderRegistry::new(vec![
             Arc::new(CurseForgeProvider::new(upstream.clone())),
@@ -31,6 +37,7 @@ impl AppState {
             upstream,
             minecraft: MinecraftCatalog::new()?,
             rate_limiter: RateLimiter::default(),
+            releases: ReleaseCatalog::new(release_manifest_url, upstream_user_agent)?,
         })
     }
 }
@@ -68,4 +75,6 @@ pub enum StateError {
     Upstream(#[from] UpstreamError),
     #[error("could not initialize the Minecraft metadata client")]
     Minecraft(#[from] MetadataFetchError),
+    #[error("could not initialize the launcher release catalog")]
+    Release(#[from] crate::release::ReleaseError),
 }

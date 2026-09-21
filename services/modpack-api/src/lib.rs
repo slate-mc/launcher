@@ -4,6 +4,7 @@ pub mod config;
 pub mod domain;
 pub mod providers;
 pub mod rate_limit;
+pub mod release;
 pub mod response;
 pub mod state;
 pub mod upstream;

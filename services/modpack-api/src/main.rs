@@ -10,7 +10,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let config = Config::from_env()?;
-    let state = AppState::new(config.upstream_url.clone(), &config.upstream_user_agent)?;
+    let state = AppState::new(
+        config.upstream_url.clone(),
+        &config.upstream_user_agent,
+        config.release_manifest_url.clone(),
+    )?;
     let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
     tracing::info!(address = %config.bind_address, "slate modpack API listening");
     axum::serve(

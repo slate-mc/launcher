@@ -53,6 +53,12 @@ Last updated: September 20, 2026
 - Structured desktop/API tracing with request correlation, install and session lifecycle events,
   daily JSON launcher diagnostics, a bounded non-blocking event buffer, and automatic age/count/size
   retention.
+- Live session output is retained in bounded snapshots and can be reopened from an instance after a
+  restart. A rule-based crash assistant recognizes common Java, memory, dependency, duplicate-package,
+  and mixin failures and gives short recovery guidance without hiding the technical log.
+- Signed launcher-update checks and installation are available in release builds. GitHub Actions
+  produces updater artifacts for Windows, Linux, and both macOS architectures, while the release API
+  safely adapts the published signed manifest for the desktop updater.
 - User-reviewed support reports can package selected launcher diagnostics, installation activity,
   and anonymous compatibility details into a local archive. The exporter removes credentials,
   player identity, and absolute paths and never includes worlds, screenshots, or Minecraft chat.
@@ -70,7 +76,9 @@ Last updated: September 20, 2026
 Verified on Windows on September 20, 2026:
 
 - Frontend lint passes with zero warnings.
-- 15 Vitest/Testing Library tests pass.
+- 19 Vitest/Testing Library tests pass.
+- Three Playwright checks pass at the minimum supported window size, including dark and light visual
+  snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
 - `cargo test --workspace` passes: 154 tests passed and one process test is ignored.
@@ -84,9 +92,9 @@ Verified on Windows on September 20, 2026:
 
 ## F1 release blockers
 
-1. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
-   slate's release API, rollback validation, and uninstall/data-retention behavior have not been
-   proven end to end.
+1. **Distribution:** the signed Tauri updater, release workflow, and release API are implemented.
+   Real production signing credentials, a staged update/rollback exercise, release-channel policy,
+   and uninstall/data-retention behavior still need end-to-end evidence.
 2. **Native acceptance:** the clean-root install harness and a representative ATM10 run cover fresh
    Vanilla, Fabric, NeoForge, and exact large-modpack installation through verified launch planning.
    Authenticated game-process launch still needs recorded release evidence. Interruption safety now
@@ -107,13 +115,13 @@ Verified on Windows on September 20, 2026:
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
 | Backend observability | OpenTelemetry to Grafana Cloud | Export API traces, latency, dependency failures, logs, and resource metrics with production sampling and retention policies. |
 | Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, and sanitized user-reviewed report export are implemented. Add a durable offline delivery queue. |
-| Updates | Tauri updater plus the slate release API | Ship signed launcher updates, controlled channels and rollouts, rollback protection, and clear recovery behavior. |
+| Updates | Tauri updater plus the slate release API | Signed release builds, update UI, multi-platform artifact workflow, and the release endpoint are implemented. Add controlled channels, staged rollout, rollback protection, and recorded recovery evidence. |
 | Support reports | In-app report flow plus private object storage | Local review/export and report IDs are implemented. Add authenticated short-lived uploads to private object storage without exposing storage details. |
 
 ## Quality and documentation gaps
 
-- Add Playwright end-to-end/visual coverage for dark and light themes, onboarding, install, launch,
-  content management, storage, and destructive confirmations.
+- Extend the initial Playwright dark/light and minimum-window coverage to onboarding, install,
+  launch, content management, storage, and destructive confirmations.
 - Add accessible Radix-backed dialogs/popovers/tooltips where custom controls currently provide only
   visual behavior; complete keyboard and screen-reader testing.
 - Add localization/message catalogs before user-facing copy grows further.

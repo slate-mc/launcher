@@ -75,6 +75,12 @@ export {
   removeSavedServer,
   updateSavedServer,
 } from "./bridgeServers";
+export {
+  checkForLauncherUpdate,
+  installLauncherUpdate,
+  type LauncherUpdateCheck,
+  type LauncherUpdateProgress,
+} from "./bridgeUpdates";
 export * from "./bridgeContent";
 
 const previewStorageKey = "slate.preview.instances.v2";
