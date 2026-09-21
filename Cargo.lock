@@ -4494,6 +4494,7 @@ dependencies = [
  "slate-loaders",
  "slate-minecraft",
  "slate-modpack-api-contracts",
+ "slate-modpack-client",
  "slate-platform",
  "tempfile",
  "thiserror 2.0.20",

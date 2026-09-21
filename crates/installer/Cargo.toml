@@ -24,6 +24,7 @@ uuid.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
+slate-modpack-client = { path = "../modpack-client" }
 tempfile.workspace = true
 
 [lints]

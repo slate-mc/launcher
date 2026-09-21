@@ -74,15 +74,21 @@ Verified on Windows on September 20, 2026:
 - `cargo test --workspace` passes: 152 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
+- A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
+  Vanilla, Fabric, NeoForge, and optional exact modpack installations through launch planning.
+- A live Windows clean-root run passed Minecraft 1.21.1 Vanilla, Fabric, NeoForge, and All the Mods
+  10 8.1 (CurseForge `925200:8764211`), installing 3,935 pack content files and verifying 109
+  NeoForge launch artifacts on managed Java 21.
 
 ## F1 release blockers
 
 1. **Distribution:** production packaging, signing, release channels, the Tauri updater backed by
    slate's release API, rollback validation, and uninstall/data-retention behavior have not been
    proven end to end.
-2. **Native acceptance:** repeatable clean-machine tests must cover auth plus fresh Vanilla, Fabric,
-   NeoForge, and representative large modpack installs/launches on Windows. Interrupted-download and
-   recovery scenarios need automated native coverage.
+2. **Native acceptance:** the clean-root install harness and a representative ATM10 run cover fresh
+   Vanilla, Fabric, NeoForge, and exact large-modpack installation through verified launch planning.
+   Authenticated game-process launch and automated interruption/recovery scenarios still need
+   recorded release evidence.
 3. **Operational readiness:** structured local tracing and local support-report export are active.
    Crash reporting, privacy-aware product analytics, remote feature controls, hosted backend
    telemetry, offline delivery, and private support-report submission still need production
@@ -127,5 +133,5 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add native clean-install smoke coverage for fresh Vanilla, Fabric, NeoForge, and representative
-modpack installs so release claims are evidence-based rather than inferred from unit tests.
+Add an authenticated Windows process-launch acceptance path and interruption/recovery fault
+injection to the clean-root native harness.
