@@ -136,7 +136,10 @@ Verified on Windows on September 20, 2026:
   Radix-backed primitives. The shared alert dialog now traps/restores focus and handles Escape;
   remaining popovers/tooltips and screen-reader interaction tests still need coverage.
 - Add localization/message catalogs before user-facing copy grows further.
-- Add virtualization for very large mod, activity, and log views.
+- Live and retained Minecraft logs now virtualize rendered rows while preserving the bounded text
+  snapshot. Installed mods use filtering plus 25/50/100-row pagination, and active game activity is
+  naturally bounded by the process supervisor. Reassess provider search/result virtualization when
+  infinite scrolling replaces the current paged views.
 - Continue extending rule-based diagnostics as new crash signatures appear. The current assistant
   covers common Java, memory, dependency, duplicate-mod/package, mixin, damaged-archive, graphics,
   disk, and authentication failures; it links to relevant instance controls and includes bounded

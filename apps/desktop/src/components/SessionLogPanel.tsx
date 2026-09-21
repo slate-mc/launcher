@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertTriangle, ArrowDownToLine, ArrowRight, Eraser, Terminal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { readSessionLog, subscribeSessionLog } from "../lib/bridge";
@@ -30,12 +31,14 @@ export function SessionLogPanel({
   active: boolean;
   onAttached?: (session: GameSession) => void;
 }) {
+  "use no memo";
+
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [statusMessage, setStatusMessage] = useState("");
   const [historyTruncated, setHistoryTruncated] = useState(false);
   const [follow, setFollow] = useState(true);
-  const outputElement = useRef<HTMLPreElement>(null);
+  const outputElement = useRef<HTMLDivElement>(null);
   const { id } = session;
   const displayOutput = useMemo(
     () => formatMinecraftSessionLog(output),
@@ -45,6 +48,22 @@ export function SessionLogPanel({
     () => analyzeMinecraftLog(displayOutput),
     [displayOutput],
   );
+  const renderedText =
+    displayOutput ||
+    (output
+      ? "Waiting for the current structured log event to finish…"
+      : status === "connecting"
+        ? "Waiting for Minecraft output…"
+        : "No output was written for this session.");
+  const renderedLines = useMemo(() => renderedText.split("\n"), [renderedText]);
+  // TanStack Virtual intentionally owns mutable measurement state outside React Compiler.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const logVirtualizer = useVirtualizer({
+    count: renderedLines.length,
+    getScrollElement: () => outputElement.current,
+    estimateSize: () => 16,
+    overscan: 30,
+  });
 
   useEffect(() => {
     let disposed = false;
@@ -117,8 +136,8 @@ export function SessionLogPanel({
 
   useEffect(() => {
     if (!follow || !outputElement.current) return;
-    outputElement.current.scrollTop = outputElement.current.scrollHeight;
-  }, [follow, output]);
+    logVirtualizer.scrollToIndex(renderedLines.length - 1, { align: "end" });
+  }, [follow, logVirtualizer, output, renderedLines.length]);
 
   const displayStatus = status === "live" && !active ? "finishing" : status;
   const statusLabel = {
@@ -266,13 +285,13 @@ export function SessionLogPanel({
           </div>
         </div>
       ) : null}
-      <pre
+      <div
         ref={outputElement}
         role="log"
         aria-label={`Minecraft output for ${session.logName}`}
         aria-live="off"
         tabIndex={0}
-        className="m-0 h-64 overflow-auto bg-app-bg p-4 font-mono text-[10px]/[16px] break-words whitespace-pre-wrap text-app-secondary outline-none focus-visible:ring-1 focus-visible:ring-app-accent focus-visible:ring-inset"
+        className="m-0 h-64 overflow-auto bg-app-bg p-4 font-mono text-[10px]/[16px] whitespace-pre text-app-secondary outline-none focus-visible:ring-1 focus-visible:ring-app-accent focus-visible:ring-inset"
         onScroll={(event) => {
           const element = event.currentTarget;
           const atBottom =
@@ -281,13 +300,21 @@ export function SessionLogPanel({
           setFollow((current) => (current === atBottom ? current : atBottom));
         }}
       >
-        {displayOutput ||
-          (output
-            ? "Waiting for the current structured log event to finish…"
-            : status === "connecting"
-              ? "Waiting for Minecraft output…"
-              : "No output was written for this session.")}
-      </pre>
+        <div
+          className="relative min-w-max"
+          style={{ height: `${logVirtualizer.getTotalSize()}px` }}
+        >
+          {logVirtualizer.getVirtualItems().map((virtualRow) => (
+            <div
+              key={virtualRow.key}
+              className="absolute top-0 left-0 h-4 min-w-full"
+              style={{ transform: `translateY(${virtualRow.start}px)` }}
+            >
+              {renderedLines[virtualRow.index] || " "}
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
