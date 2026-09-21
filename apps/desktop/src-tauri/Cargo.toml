@@ -12,6 +12,8 @@ tauri-build.workspace = true
 base64.workspace = true
 futures-util.workspace = true
 hickory-resolver.workspace = true
+sentry.workspace = true
+sentry-tracing.workspace = true
 slate-auth = { path = "../../../crates/auth" }
 slate-contracts = { path = "../../../crates/contracts" }
 slate-domain = { path = "../../../crates/domain" }

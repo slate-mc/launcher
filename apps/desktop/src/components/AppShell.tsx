@@ -24,6 +24,7 @@ import {
 } from "../lib/bridge";
 import { MinecraftHead } from "./MinecraftHead";
 import { installJobMessage } from "../lib/installJobPresentation";
+import { configureBrowserCrashReporting } from "../lib/crashReporting";
 
 type NavigationItem = {
   label: string;
@@ -82,6 +83,14 @@ export function AppShell() {
   const activeAccount =
     accountsQuery.data?.find((account) => account.isDefault) ??
     accountsQuery.data?.[0];
+
+  useEffect(() => {
+    if (preferencesQuery.data) {
+      void configureBrowserCrashReporting(
+        preferencesQuery.data.crashReportingEnabled,
+      );
+    }
+  }, [preferencesQuery.data]);
 
   useEffect(() => {
     const theme = preferencesQuery.data?.theme ?? "dark";

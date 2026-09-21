@@ -24,6 +24,7 @@ pub struct AppPreferencesDto {
     pub download_concurrency: u8,
     pub download_bandwidth_limit_mib: u32,
     pub telemetry_enabled: bool,
+    pub crash_reporting_enabled: bool,
     pub reduce_motion: ReduceMotionPreferenceDto,
     pub trash_retention_days: u16,
 }

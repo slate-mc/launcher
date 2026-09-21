@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tracing_appender::non_blocking::{NonBlockingBuilder, WorkerGuard};
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 pub(super) const LOG_PREFIX: &str = "slate-desktop.jsonl";
@@ -24,18 +25,26 @@ pub(super) fn init_diagnostics(log_directory: &Path) -> Result<DiagnosticsGuard,
         .lossy(true)
         .thread_name("slate-diagnostics")
         .finish(appender);
-    tracing_subscriber::fmt()
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("slate_desktop=info,warn"));
+    let local_logs = tracing_subscriber::fmt::layer()
         .json()
         .with_ansi(false)
         .with_target(true)
         .with_current_span(true)
         .with_span_list(true)
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("slate_desktop=info,warn")),
-        )
-        .with_writer(writer)
-        .finish()
+        .with_writer(writer);
+    let sentry_events = sentry_tracing::layer()
+        .event_filter(|metadata| match *metadata.level() {
+            tracing::Level::ERROR => sentry_tracing::EventFilter::Event,
+            tracing::Level::WARN => sentry_tracing::EventFilter::Breadcrumb,
+            _ => sentry_tracing::EventFilter::Ignore,
+        })
+        .span_filter(|_| false);
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(local_logs)
+        .with(sentry_events)
         .try_init()
         .map_err(|_| DiagnosticsError::SubscriberUnavailable)?;
     Ok(DiagnosticsGuard { _worker: worker })

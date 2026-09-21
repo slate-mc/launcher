@@ -29,6 +29,11 @@ jobs:
     env:
       SLATE_UPDATER_ENABLED: "1"
       SLATE_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+      SLATE_DESKTOP_SENTRY_DSN: ${{ vars.SLATE_DESKTOP_SENTRY_DSN }}
+      VITE_SENTRY_DSN: ${{ vars.SLATE_DESKTOP_SENTRY_DSN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_DESKTOP_PROJECT }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
@@ -73,3 +78,7 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           args: --config src-tauri/tauri.release.generated.json ${{ matrix.args }}
+
+      - name: Upload native debug information
+        if: ${{ env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != '' }}
+        run: npx --yes @sentry/cli@3.8.0 debug-files upload target

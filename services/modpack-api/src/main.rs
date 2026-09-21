@@ -1,8 +1,10 @@
-use slate_modpack_api::{config::Config, observability, router, state::AppState};
+use slate_modpack_api::{config::Config, error_reporting, observability, router, state::AppState};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = Config::from_env()?;
+    let _sentry =
+        error_reporting::init(config.sentry_dsn.clone(), &config.observability.environment);
     let observability = observability::init(&config.observability)?;
     let state = AppState::new(
         config.upstream_url.clone(),

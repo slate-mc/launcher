@@ -5,6 +5,7 @@ mod artwork_support;
 mod auth_support;
 mod catalog_commands;
 mod content_commands;
+mod crash_reporting;
 mod diagnostics;
 mod external_instance_import;
 mod feature_controls;
@@ -48,6 +49,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use catalog_commands::*;
 use content_commands::*;
+use crash_reporting::CrashReporting;
 use diagnostics::init_diagnostics;
 use external_instance_import::{
     ExternalImportError, copy_external_game_directory, inspect_external_instance,
@@ -220,6 +222,7 @@ struct DesktopState {
     modpacks: ModpackApiClient,
     telemetry: ProductTelemetry,
     features: FeatureControls,
+    crash_reporting: CrashReporting,
 }
 
 async fn preferred_storage_root_id(state: &DesktopState) -> Result<StorageRootId, AppError> {
@@ -708,6 +711,7 @@ fn main() {
             std::process::exit(1);
         }
     };
+    let (crash_reporting, _sentry_guard) = CrashReporting::initialize(&boot_paths);
     let diagnostic_guard = match init_diagnostics(&boot_paths.logs()) {
         Ok(guard) => Some(guard),
         Err(_) => {
@@ -722,6 +726,7 @@ fn main() {
         "desktop starting"
     );
     let setup_paths = boot_paths.clone();
+    let setup_crash_reporting = crash_reporting.clone();
     let application = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -731,6 +736,10 @@ fn main() {
             let database =
                 tauri::async_runtime::block_on(Database::connect(&paths.state_database()))?;
             tauri::async_runtime::block_on(database.recover_interrupted_installs())?;
+            let preferences = tauri::async_runtime::block_on(database.get_app_preferences())?;
+            let installation_id =
+                tauri::async_runtime::block_on(database.get_or_create_telemetry_installation_id())?;
+            setup_crash_reporting.configure(preferences.crash_reporting_enabled, installation_id);
             let canonical_storage = std::fs::canonicalize(paths.storage_root())?;
             let canonical_storage = canonical_storage.to_string_lossy().into_owned();
             let storage_root_id = tauri::async_runtime::block_on(
@@ -762,6 +771,7 @@ fn main() {
                 modpacks,
                 telemetry: telemetry.clone(),
                 features: features.clone(),
+                crash_reporting: setup_crash_reporting.clone(),
             };
             app.manage(state.clone());
             tauri::async_runtime::spawn(purge_expired_instance_trash(state));

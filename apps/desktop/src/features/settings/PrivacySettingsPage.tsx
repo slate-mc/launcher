@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Check, LockKeyhole, Save, ShieldCheck } from "lucide-react";
+import { BarChart3, Bug, Check, LockKeyhole, Save, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { InlineNotice, PageHeader } from "../../components/PageScaffold";
 import { getPreferences, updatePreferences } from "../../lib/bridge";
@@ -11,35 +11,41 @@ export function PrivacySettingsPage() {
     queryKey: ["preferences"],
     queryFn: getPreferences,
   });
-  const [draftEnabled, setDraftEnabled] = useState<boolean>();
+  const [draftUsageEnabled, setDraftUsageEnabled] = useState<boolean>();
+  const [draftCrashEnabled, setDraftCrashEnabled] = useState<boolean>();
   const [saved, setSaved] = useState(false);
-  const enabled =
-    draftEnabled ?? preferencesQuery.data?.telemetryEnabled ?? false;
+  const usageEnabled =
+    draftUsageEnabled ?? preferencesQuery.data?.telemetryEnabled ?? false;
+  const crashEnabled =
+    draftCrashEnabled ?? preferencesQuery.data?.crashReportingEnabled ?? false;
   const mutation = useMutation({
     mutationFn: async () => {
       const preferences = preferencesQuery.data;
       if (!preferences) throw new Error("Preferences are unavailable.");
       return updatePreferences({
         ...preferences,
-        telemetryEnabled: enabled,
+        telemetryEnabled: usageEnabled,
+        crashReportingEnabled: crashEnabled,
       });
     },
     onSuccess: (preferences) => {
       queryClient.setQueryData(["preferences"], preferences);
-      setDraftEnabled(undefined);
+      setDraftUsageEnabled(undefined);
+      setDraftCrashEnabled(undefined);
       setSaved(true);
     },
   });
   const dirty =
     preferencesQuery.data !== undefined &&
-    enabled !== preferencesQuery.data.telemetryEnabled;
+    (usageEnabled !== preferencesQuery.data.telemetryEnabled ||
+      crashEnabled !== preferencesQuery.data.crashReportingEnabled);
 
   return (
     <div className="min-h-full bg-app-bg">
       <PageHeader
         eyebrow="Settings"
         title="Privacy"
-        description="Choose whether slate can send anonymous usage information."
+        description="Choose what diagnostic information slate may send."
       />
       <SettingsNavigation />
       <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-6 px-8 py-7">
@@ -59,14 +65,40 @@ export function PrivacySettingsPage() {
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-[var(--color-app-accent)]"
-                checked={enabled}
+                checked={usageEnabled}
                 disabled={preferencesQuery.isPending || preferencesQuery.isError}
                 onChange={(event) => {
-                  setDraftEnabled(event.target.checked);
+                  setDraftUsageEnabled(event.target.checked);
                   setSaved(false);
                 }}
               />
               Share usage
+            </label>
+          </div>
+
+          <div className="mt-6 flex items-start justify-between gap-8 border-t border-app-separator/55 pt-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <Bug size={18} className="text-app-accent" aria-hidden="true" />
+                <h2 className="m-0 text-base font-bold">Share crash reports</h2>
+              </div>
+              <p className="mt-2 mb-0 max-w-2xl text-xs/5 text-app-secondary">
+                Send sanitized error details and stack traces when slate fails.
+                Account details, file paths, game logs, and instance names are removed.
+              </p>
+            </div>
+            <label className="inline-flex shrink-0 cursor-pointer items-center gap-3 text-xs font-bold">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[var(--color-app-accent)]"
+                checked={crashEnabled}
+                disabled={preferencesQuery.isPending || preferencesQuery.isError}
+                onChange={(event) => {
+                  setDraftCrashEnabled(event.target.checked);
+                  setSaved(false);
+                }}
+              />
+              Share crashes
             </label>
           </div>
 
@@ -105,9 +137,9 @@ export function PrivacySettingsPage() {
                 ? "Privacy choice saved."
                 : dirty
                   ? "Your new choice is not saved yet."
-                  : enabled
-                    ? "Anonymous usage sharing is on."
-                    : "Anonymous usage sharing is off."}
+                  : usageEnabled || crashEnabled
+                    ? "Your privacy choices are active."
+                    : "Sharing is off."}
             </p>
             <button
               type="button"
@@ -123,7 +155,7 @@ export function PrivacySettingsPage() {
 
         <aside className="grid content-start gap-5">
           <InlineNotice title="Private by default">
-            No anonymous usage events are sent unless you choose to share them.
+            Usage events and crash reports stay on your device unless you choose to share them.
           </InlineNotice>
           <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
             <div className="flex items-center gap-2">
@@ -131,7 +163,7 @@ export function PrivacySettingsPage() {
               <h2 className="m-0 text-[15px] font-bold">Your choice applies immediately</h2>
             </div>
             <p className="mt-2 mb-0 text-[11px]/[18px] text-app-secondary">
-              Turning sharing off also removes anonymous events waiting to be sent.
+              Changes take effect immediately. Turning usage sharing off removes events waiting to be sent.
             </p>
           </section>
         </aside>

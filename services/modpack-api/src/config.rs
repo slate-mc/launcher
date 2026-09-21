@@ -17,6 +17,7 @@ pub struct Config {
     pub posthog_host: Url,
     pub posthog_project_token: Option<String>,
     pub observability: ObservabilityConfig,
+    pub sentry_dsn: Option<sentry::types::Dsn>,
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +78,11 @@ impl Config {
             return Err(ConfigError::InvalidPostHogProjectToken);
         }
         let observability = ObservabilityConfig::from_env()?;
+        let sentry_dsn = std::env::var("SLATE_SENTRY_DSN")
+            .ok()
+            .map(|value| value.parse())
+            .transpose()
+            .map_err(ConfigError::InvalidSentryDsn)?;
         Ok(Self {
             bind_address,
             upstream_url,
@@ -85,6 +91,7 @@ impl Config {
             posthog_host,
             posthog_project_token,
             observability,
+            sentry_dsn,
         })
     }
 }
@@ -185,6 +192,8 @@ pub enum ConfigError {
     InvalidOtelEndpoint(url::ParseError),
     #[error("OTEL_EXPORTER_OTLP_ENDPOINT must use HTTPS, except for a local collector")]
     UnsafeOtelEndpoint,
+    #[error("SLATE_SENTRY_DSN is not a valid Sentry DSN")]
+    InvalidSentryDsn(sentry::types::ParseDsnError),
 }
 
 #[cfg(test)]

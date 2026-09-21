@@ -204,14 +204,25 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        tracing::warn!(
-            request_id = %self.context.request_id,
-            trace_id = %self.context.trace_id,
-            span_id = %self.context.span_id,
-            status = self.status.as_u16(),
-            error_code = ?self.detail.code,
-            "request failed"
-        );
+        if self.status.is_server_error() {
+            tracing::error!(
+                request_id = %self.context.request_id,
+                trace_id = %self.context.trace_id,
+                span_id = %self.context.span_id,
+                status = self.status.as_u16(),
+                error_code = ?self.detail.code,
+                "request failed"
+            );
+        } else {
+            tracing::warn!(
+                request_id = %self.context.request_id,
+                trace_id = %self.context.trace_id,
+                span_id = %self.context.span_id,
+                status = self.status.as_u16(),
+                error_code = ?self.detail.code,
+                "request failed"
+            );
+        }
         let envelope = ApiEnvelope::<()> {
             success: false,
             data: None,

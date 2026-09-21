@@ -90,7 +90,7 @@ Verified on Windows on September 20, 2026:
   snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 164 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 166 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -118,7 +118,7 @@ Verified on Windows on September 20, 2026:
 
 | Need | Selected approach | Remaining work for slate |
 | --- | --- | --- |
-| Errors and crashes | Sentry | Integrate desktop and API releases, preserve useful stack traces, sanitize context, and group failures by affected version and user impact. |
+| Errors and crashes | Sentry | API failures, consented native panics, consented renderer failures, release tags, sanitization, source-map upload, native debug-file upload, and anonymous affected-installation grouping are implemented. Configure production projects and validate symbolication and alert routing. |
 | Feature flags and remote configuration | PostHog | Allowlisted emergency switches, local percentage rollouts, bounded caching, periodic refresh, and failure-safe defaults are implemented. Configure and exercise production flags, then add ownership and stale-flag cleanup policy. |
 | Product analytics | PostHog | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation. |
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
@@ -138,7 +138,7 @@ Verified on Windows on September 20, 2026:
 - Finish rule-based diagnostics and repair explanations, then include their sanitized results in
   the support-report pipeline above.
 - Required specification documents still missing: `ROUTES.md`, `GAME_PROTOCOL.md`, `MANIFESTS.md`,
-  `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `PRIVACY.md`, `COMPATIBILITY.md`, and
+  `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `COMPATIBILITY.md`, and
   `RELEASING.md`. Existing architecture, IPC, testing, security, and dependency docs also need a
   post-F1 implementation refresh.
 

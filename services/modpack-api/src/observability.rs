@@ -39,7 +39,11 @@ pub fn init(config: &ObservabilityConfig) -> anyhow::Result<Observability> {
     let fmt = tracing_subscriber::fmt::layer().json();
 
     if !config.enabled {
-        tracing_subscriber::registry().with(filter).with(fmt).init();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt)
+            .with(sentry_layer())
+            .init();
         return Ok(Observability {
             tracer_provider: None,
             meter_provider: None,
@@ -93,6 +97,7 @@ pub fn init(config: &ObservabilityConfig) -> anyhow::Result<Observability> {
         .with(fmt)
         .with(tracing_opentelemetry::layer().with_tracer(tracer))
         .with(log_bridge)
+        .with(sentry_layer())
         .init();
 
     tracing::info!(
@@ -105,6 +110,19 @@ pub fn init(config: &ObservabilityConfig) -> anyhow::Result<Observability> {
         meter_provider: Some(meter_provider),
         logger_provider: Some(logger_provider),
     })
+}
+
+fn sentry_layer<S>() -> sentry_tracing::SentryLayer<S>
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    sentry_tracing::layer()
+        .event_filter(|metadata| match *metadata.level() {
+            tracing::Level::ERROR => sentry_tracing::EventFilter::Event,
+            tracing::Level::WARN => sentry_tracing::EventFilter::Breadcrumb,
+            _ => sentry_tracing::EventFilter::Ignore,
+        })
+        .span_filter(|_| false)
 }
 
 pub fn record_http_request(method: &str, route: &str, status: u16, duration_ms: f64) {

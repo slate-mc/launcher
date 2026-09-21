@@ -56,3 +56,26 @@ metric, log, and trace providers.
 
 Sampling affects traces only. Metrics remain complete. Start with a 10% trace sample, retain errors
 longer than successful requests, and review labels before adding any new high-cardinality field.
+
+## Error reporting
+
+The API enables Sentry only when `SLATE_SENTRY_DSN` is present. Desktop releases receive the public
+ingest DSN at build time through `SLATE_DESKTOP_SENTRY_DSN` for native Rust and `VITE_SENTRY_DSN`
+for the renderer. The release workflow expects:
+
+```text
+SLATE_DESKTOP_SENTRY_DSN     repository variable
+SENTRY_ORG                   repository variable
+SENTRY_DESKTOP_PROJECT       repository variable
+SENTRY_AUTH_TOKEN            repository secret
+```
+
+The auth token is used only by the release build to upload browser source maps and native debug
+information. It is never compiled into or shipped with slate. Source maps are deleted from the web
+bundle after upload. Release binaries retain line-level native debug information for symbolication.
+
+The API reports server failures automatically. Desktop reporting remains inactive until the user
+turns on Share crash reports in Privacy settings. The native and renderer filters remove request
+data, account identity, absolute paths, breadcrumb fields, local variables, instance metadata, and
+secret-shaped values. A random installation ID is attached only after consent so Sentry can count
+affected installations without receiving a Minecraft identity.

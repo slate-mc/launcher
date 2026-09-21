@@ -12,6 +12,7 @@ async function openPreview(page: Page, theme: Theme) {
         downloadConcurrency: 4,
         downloadBandwidthLimitMib: 0,
         telemetryEnabled: false,
+        crashReportingEnabled: false,
         reduceMotion: "on",
         trashRetentionDays: 30,
       }),

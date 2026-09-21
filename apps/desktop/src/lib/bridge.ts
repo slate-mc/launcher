@@ -208,7 +208,7 @@ export async function getBootstrap(): Promise<Bootstrap> {
   return bootstrapSchema.parse({
     productName: "slate",
     ipcSchemaVersion: 1,
-    databaseSchemaVersion: 18,
+    databaseSchemaVersion: 19,
     capabilities: [
       { id: "instance.library", available: true },
       { id: "instance.create", available: true },
@@ -838,6 +838,7 @@ function defaultPreferences(): AppPreferences {
     downloadConcurrency: 4,
     downloadBandwidthLimitMib: 0,
     telemetryEnabled: false,
+    crashReportingEnabled: false,
     reduceMotion: "system",
     trashRetentionDays: 30,
   };

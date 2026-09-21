@@ -257,7 +257,7 @@ fn is_sensitive_key(key: &str) -> bool {
     .any(|needle| normalized.contains(needle))
 }
 
-fn sanitize_text(text: &str, replacements: &[String]) -> String {
+pub(super) fn sanitize_text(text: &str, replacements: &[String]) -> String {
     let mut sanitized = text.to_owned();
     for replacement in replacements {
         if replacement.is_empty() {

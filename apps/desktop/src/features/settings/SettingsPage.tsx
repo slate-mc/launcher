@@ -464,6 +464,7 @@ function samePreferences(left: AppPreferences, right: AppPreferences) {
     left.downloadConcurrency === right.downloadConcurrency &&
     left.downloadBandwidthLimitMib === right.downloadBandwidthLimitMib &&
     left.telemetryEnabled === right.telemetryEnabled &&
+    left.crashReportingEnabled === right.crashReportingEnabled &&
     left.reduceMotion === right.reduceMotion &&
     left.trashRetentionDays === right.trashRetentionDays
   );

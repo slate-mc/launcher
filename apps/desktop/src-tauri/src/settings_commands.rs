@@ -56,6 +56,7 @@ pub(super) async fn preferences_update(
             download_concurrency: request.download_concurrency,
             download_bandwidth_limit_mib: request.download_bandwidth_limit_mib,
             telemetry_enabled: request.telemetry_enabled,
+            crash_reporting_enabled: request.crash_reporting_enabled,
             reduce_motion: match request.reduce_motion {
                 ReduceMotionPreferenceDto::System => ReduceMotionPreference::System,
                 ReduceMotionPreferenceDto::On => ReduceMotionPreference::On,
@@ -67,6 +68,9 @@ pub(super) async fn preferences_update(
         .map_err(|error| map_storage_error(error, "slate could not save your preferences."))?;
     let response = preferences_dto(preferences);
     state.telemetry.set_enabled(request.telemetry_enabled).await;
+    state
+        .crash_reporting
+        .set_enabled(request.crash_reporting_enabled);
     tauri::async_runtime::spawn(purge_expired_instance_trash(state.inner().clone()));
     Ok(response)
 }
