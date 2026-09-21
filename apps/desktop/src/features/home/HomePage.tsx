@@ -33,6 +33,7 @@ import {
   InstanceBanner,
 } from "../../components/InstanceArtwork";
 import { MinecraftHead } from "../../components/MinecraftHead";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type {
   LauncherInstance,
   LauncherUpdate,
@@ -197,6 +198,53 @@ export function HomePage() {
     return <EmptyHome />;
   }
 
+  const playButton = (
+    <button
+      className={cn(
+        controlButtonClass,
+        "h-11 w-full text-[17px] active:translate-y-px disabled:bg-app-raised disabled:text-app-muted disabled:opacity-80",
+        activeSession
+          ? "border border-app-danger/50 bg-app-sidebar text-app-danger hover:bg-app-danger/10"
+          : "bg-app-accent text-app-on-accent hover:brightness-105",
+      )}
+      type="button"
+      disabled={
+        activeSession?.state === "stopping" ||
+        (!activeSession && !canPlay)
+      }
+      title={playReason}
+      onClick={() => {
+        if (!activeSession && defaultAccount) {
+          launchMutation.mutate({
+            instanceId: selected.id,
+            accountId: defaultAccount.id,
+          });
+        }
+      }}
+    >
+      {activeSession ? (
+        activeSession.state === "stopping" ? (
+          <LoaderCircle
+            className="animate-spin"
+            size={20}
+            aria-hidden="true"
+          />
+        ) : (
+          <Square size={17} fill="currentColor" aria-hidden="true" />
+        )
+      ) : (
+        <Play size={21} fill="currentColor" aria-hidden="true" />
+      )}
+      {activeSession?.state === "stopping"
+        ? "Stopping…"
+        : activeSession
+          ? "Stop game"
+          : launchMutation.isPending
+            ? "Starting…"
+            : "Play"}
+    </button>
+  );
+
   return (
     <div className="min-h-full">
       <section
@@ -264,76 +312,25 @@ export function HomePage() {
             </span>
             <ChevronDown size={17} aria-hidden="true" />
           </Link>
-          <button
-            className={cn(
-              controlButtonClass,
-              "h-11 w-full text-[17px] active:translate-y-px disabled:bg-app-raised disabled:text-app-muted disabled:opacity-80",
-              activeSession
-                ? "border border-app-danger/50 bg-app-sidebar text-app-danger hover:bg-app-danger/10"
-                : "bg-app-accent text-app-on-accent hover:brightness-105",
-            )}
-            type="button"
-            disabled={
-              activeSession?.state === "stopping" ||
-              (!activeSession && !canPlay)
-            }
-            title={playReason}
-            onClick={() => {
-              if (activeSession) {
-                setConfirmStopId(activeSession.id);
-              } else if (selected && defaultAccount) {
-                launchMutation.mutate({
-                  instanceId: selected.id,
-                  accountId: defaultAccount.id,
-                });
+          {activeSession ? (
+            <ConfirmDialog
+              open={confirmStopId === activeSession.id}
+              onOpenChange={(open) =>
+                setConfirmStopId(open ? activeSession.id : undefined)
               }
-            }}
-          >
-            {activeSession ? (
-              activeSession.state === "stopping" ? (
-                <LoaderCircle
-                  className="animate-spin"
-                  size={20}
-                  aria-hidden="true"
-                />
-              ) : (
-                <Square size={17} fill="currentColor" aria-hidden="true" />
-              )
-            ) : (
-              <Play size={21} fill="currentColor" aria-hidden="true" />
-            )}
-            {activeSession?.state === "stopping"
-              ? "Stopping…"
-              : activeSession
-                ? "Stop game"
-                : launchMutation.isPending
-                  ? "Starting…"
-                  : "Play"}
-          </button>
-          {activeSession && confirmStopId === activeSession.id ? (
-            <div className="rounded-compact border border-app-danger/35 bg-app-sidebar/95 px-3 py-2.5">
-              <p className="m-0 text-[10px]/[15px] text-app-secondary">
-                Force-closing may lose unsaved world progress.
-              </p>
-              <div className="mt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="h-7 rounded-compact border border-app-separator bg-app-bg px-2.5 text-[10px] font-bold text-app-secondary"
-                  onClick={() => setConfirmStopId(undefined)}
-                >
-                  Keep running
-                </button>
-                <button
-                  type="button"
-                  className="h-7 rounded-compact bg-app-danger px-2.5 text-[10px] font-bold text-app-bg"
-                  disabled={stopMutation.isPending}
-                  onClick={() => stopMutation.mutate(activeSession.id)}
-                >
-                  Force close
-                </button>
-              </div>
-            </div>
-          ) : activeSession ? (
+              trigger={playButton}
+              title="Force-close Minecraft?"
+              description="Minecraft will be stopped immediately. Unsaved world progress may be lost."
+              confirmLabel="Force close"
+              pendingLabel="Stopping…"
+              cancelLabel="Keep running"
+              pending={stopMutation.isPending}
+              error={stopMutation.isError ? "Minecraft did not stop. Open the instance for details." : undefined}
+              destructive
+              onConfirm={() => stopMutation.mutate(activeSession.id)}
+            />
+          ) : playButton}
+          {activeSession ? (
             <p className="m-0 rounded-compact bg-app-sidebar/95 px-3 py-2 font-mono text-[10px] text-app-accent">
               Minecraft is running
             </p>

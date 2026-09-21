@@ -195,6 +195,68 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
     installJob?.state === "running" ||
     installJob?.state === "paused";
   const ready = instance.setupState === "ready";
+  const launchActionButton = (
+    <button
+      type="button"
+      className={`inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-control px-4 text-xs font-bold disabled:bg-app-raised disabled:text-app-muted disabled:opacity-70 ${
+        activeSession
+          ? "border border-app-danger/45 bg-transparent text-app-danger hover:bg-app-danger/10"
+          : "bg-app-accent text-app-on-accent hover:brightness-105"
+      }`}
+      disabled={
+        activeSession?.state === "stopping" ||
+        installing ||
+        installMutation.isPending ||
+        launchMutation.isPending ||
+        stopMutation.isPending ||
+        (ready && !effectiveAccountId)
+      }
+      title={
+        activeSession
+          ? "Review the warning before force-closing Minecraft."
+          : ready
+            ? effectiveAccountId
+              ? "Start Minecraft with the selected account."
+              : "Connect a Minecraft account before launching."
+            : "Install the selected Minecraft and loader versions."
+      }
+      onClick={() => {
+        if (!activeSession && ready) {
+          launchMutation.mutate({ accountId: effectiveAccountId });
+        } else if (!activeSession) {
+          installMutation.mutate({
+            id: instance.id,
+            expectedRevision: instance.revision,
+          });
+        }
+      }}
+    >
+      {activeSession ? (
+        activeSession.state === "stopping" ? (
+          <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
+        ) : (
+          <Square size={15} fill="currentColor" aria-hidden="true" />
+        )
+      ) : ready ? (
+        <Play size={17} fill="currentColor" aria-hidden="true" />
+      ) : (
+        <Download size={17} aria-hidden="true" />
+      )}
+      {activeSession?.state === "stopping"
+        ? "Stopping…"
+        : activeSession
+          ? "Stop game"
+          : launchMutation.isPending
+            ? "Starting…"
+            : ready
+              ? "Play"
+              : installing || installMutation.isPending
+                ? "Installing…"
+                : instance.setupState === "blocked"
+                  ? "Retry install"
+                  : "Install"}
+    </button>
+  );
 
   return (
     <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)] gap-6">
@@ -233,106 +295,25 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
                         : "Install downloads and verifies the base game, assets, platform libraries, and matching Java version."}
               </p>
             </div>
-            <button
-              type="button"
-              className={`inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-control px-4 text-xs font-bold disabled:bg-app-raised disabled:text-app-muted disabled:opacity-70 ${
-                activeSession
-                  ? "border border-app-danger/45 bg-transparent text-app-danger hover:bg-app-danger/10"
-                  : "bg-app-accent text-app-on-accent hover:brightness-105"
-              }`}
-              disabled={
-                activeSession?.state === "stopping" ||
-                installing ||
-                installMutation.isPending ||
-                launchMutation.isPending ||
-                stopMutation.isPending ||
-                (ready && !effectiveAccountId)
-              }
-              title={
-                activeSession
-                  ? "Review the warning before force-closing Minecraft."
-                  : ready
-                    ? effectiveAccountId
-                      ? "Start Minecraft with the selected account."
-                      : "Connect a Minecraft account before launching."
-                    : "Install the selected Minecraft and loader versions."
-              }
-              onClick={() => {
-                if (activeSession) {
-                  setConfirmStop(true);
-                } else if (ready) {
-                  launchMutation.mutate({ accountId: effectiveAccountId });
-                } else {
-                  installMutation.mutate({
-                    id: instance.id,
-                    expectedRevision: instance.revision,
-                  });
-                }
-              }}
-            >
-              {activeSession ? (
-                activeSession.state === "stopping" ? (
-                  <LoaderCircle
-                    className="animate-spin"
-                    size={17}
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Square size={15} fill="currentColor" aria-hidden="true" />
-                )
-              ) : ready ? (
-                <Play size={17} fill="currentColor" aria-hidden="true" />
-              ) : (
-                <Download size={17} aria-hidden="true" />
-              )}
-              {activeSession?.state === "stopping"
-                ? "Stopping…"
-                : activeSession
-                  ? "Stop game"
-                  : launchMutation.isPending
-                    ? "Starting…"
-                    : ready
-                      ? "Play"
-                      : installing || installMutation.isPending
-                        ? "Installing…"
-                        : instance.setupState === "blocked"
-                          ? "Retry install"
-                          : "Install"}
-            </button>
+            {activeSession ? (
+              <ConfirmDialog
+                open={confirmStop}
+                onOpenChange={setConfirmStop}
+                trigger={launchActionButton}
+                title="Force-close Minecraft?"
+                description="Minecraft will be stopped immediately. Unsaved world progress may be lost."
+                confirmLabel="Force close"
+                pendingLabel="Stopping…"
+                cancelLabel="Keep running"
+                pending={stopMutation.isPending}
+                error={stopMutation.isError ? "Minecraft did not stop. Try again or use Task Manager." : undefined}
+                destructive
+                onConfirm={() => stopMutation.mutate(activeSession.id)}
+              />
+            ) : launchActionButton}
           </div>
           {installing && installJob ? (
             <InstallProgressIndicator job={installJob} />
-          ) : null}
-          {activeSession && confirmStop ? (
-            <div
-              className="mt-4 flex items-center gap-4 border-t border-app-separator/55 pt-4"
-              role="alert"
-            >
-              <span className="min-w-0 flex-1">
-                <strong className="block text-xs font-bold text-app-text">
-                  Force-close Minecraft?
-                </strong>
-                <span className="mt-0.5 block text-[11px]/[17px] text-app-secondary">
-                  slate cannot request an in-game save yet. Unsaved world
-                  progress may be lost.
-                </span>
-              </span>
-              <button
-                type="button"
-                className="h-8 rounded-compact border border-app-separator bg-app-bg px-3 text-[11px] font-bold text-app-secondary hover:text-app-text"
-                onClick={() => setConfirmStop(false)}
-              >
-                Keep running
-              </button>
-              <button
-                type="button"
-                className="h-8 rounded-compact bg-app-danger px-3 text-[11px] font-bold text-app-bg disabled:opacity-50"
-                disabled={stopMutation.isPending}
-                onClick={() => stopMutation.mutate(activeSession.id)}
-              >
-                Force close
-              </button>
-            </div>
           ) : null}
           {ready && !activeSession ? (
             <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 border-t border-app-separator/55 pt-4">

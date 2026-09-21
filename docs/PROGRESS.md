@@ -132,10 +132,10 @@ Verified on Windows on September 20, 2026:
 
 - Extend Playwright from route-level accessibility and destructive-dialog coverage into full native
   install, launch, content-management, storage, and recovery workflows.
-- Destructive instance, storage, account, saved-server, and snapshot actions now use the shared
-  Radix-backed alert dialog with trapped/restored focus, Escape handling, pending-state protection,
-  and typed-name validation for permanent instance deletion. Remaining popovers/tooltips and
-  screen-reader interaction tests still need coverage.
+- Destructive instance, storage, account, saved-server, snapshot, and force-stop actions now use the
+  shared Radix-backed alert dialog with trapped/restored focus, Escape handling, pending-state
+  protection, and typed-name validation for permanent instance deletion. Remaining
+  popovers/tooltips and screen-reader interaction tests still need coverage.
 - Add localization/message catalogs before user-facing copy grows further.
 - Live and retained Minecraft logs now virtualize rendered rows while preserving the bounded text
   snapshot. Installed mods use filtering plus 25/50/100-row pagination, and active game activity is
