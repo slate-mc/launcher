@@ -91,7 +91,7 @@ Verified on Windows on September 20, 2026:
   confirmation dialogs.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 172 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 173 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -117,16 +117,16 @@ Verified on Windows on September 20, 2026:
 
 ## Observability, rollout, and support plan
 
-| Need | Selected approach | Remaining work for slate |
-| --- | --- | --- |
-| Errors and crashes | Sentry | API failures, consented native panics, consented renderer failures, release tags, sanitization, source-map upload, native debug-file upload, and anonymous affected-installation grouping are implemented. Configure production projects and validate symbolication and alert routing. |
-| Feature flags and remote configuration | PostHog | Allowlisted emergency switches, local percentage rollouts, bounded caching, periodic refresh, and failure-safe defaults are implemented. Configure and exercise production flags, then add ownership and stale-flag cleanup policy. |
-| Product analytics | PostHog | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation. |
-| Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
-| Backend observability | OpenTelemetry to Grafana Cloud | Environment-gated OTLP export now covers API traces, structured logs, HTTP latency, provider failures/latency, cache outcomes, install plans, and service resources while retaining local JSON output. Configure production credentials, dashboards, alerts, sampling, and retention. |
-| Local diagnostics | Rotating files plus a bounded disk queue | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash reports avoid local queuing, and failed support uploads deliberately leave no extra archive behind. |
-| Updates | Tauri updater plus the slate release API | Signed release builds, Stable/Beta channels, deterministic staged rollout, an emergency stop percentage, downgrade protection, prerelease isolation, bounded local attempt history, update UI, and multi-platform artifacts are implemented. Configure channel manifests and complete the production rollout/recovery drill. |
-| Support reports | In-app report flow plus private object storage | User-reviewed local export, explicit bounded submission, private S3-compatible storage, server-only credentials, report IDs, rate limiting, and user-safe failures are implemented. Configure the production bucket lifecycle and validate access controls and expiry. |
+| Need                                   | Selected approach                              | Remaining work for slate                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Errors and crashes                     | Sentry                                         | API failures, consented native panics, consented renderer failures, release tags, sanitization, source-map upload, native debug-file upload, and anonymous affected-installation grouping are implemented. Configure production projects and validate symbolication and alert routing.                                       |
+| Feature flags and remote configuration | PostHog                                        | Allowlisted emergency switches, local percentage rollouts, bounded caching, periodic refresh, and failure-safe defaults are implemented. Configure and exercise production flags, then add ownership and stale-flag cleanup policy.                                                                                          |
+| Product analytics                      | PostHog                                        | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation.                                                                                                    |
+| Rust instrumentation                   | `tracing` + `tracing-subscriber`               | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added.                                                                                                                                                             |
+| Backend observability                  | OpenTelemetry to Grafana Cloud                 | Environment-gated OTLP export now covers API traces, structured logs, HTTP latency, provider failures/latency, cache outcomes, install plans, and service resources while retaining local JSON output. Configure production credentials, dashboards, alerts, sampling, and retention.                                        |
+| Local diagnostics                      | Rotating files plus a bounded disk queue       | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash reports avoid local queuing, and failed support uploads deliberately leave no extra archive behind.                                            |
+| Updates                                | Tauri updater plus the slate release API       | Signed release builds, Stable/Beta channels, deterministic staged rollout, an emergency stop percentage, downgrade protection, prerelease isolation, bounded local attempt history, update UI, and multi-platform artifacts are implemented. Configure channel manifests and complete the production rollout/recovery drill. |
+| Support reports                        | In-app report flow plus private object storage | User-reviewed local export, explicit bounded submission, private S3-compatible storage, server-only credentials, report IDs, rate limiting, and user-safe failures are implemented. Configure the production bucket lifecycle and validate access controls and expiry.                                                       |
 
 ## Quality and documentation gaps
 
@@ -141,10 +141,9 @@ Verified on Windows on September 20, 2026:
   covers common Java, memory, dependency, duplicate-mod/package, mixin, damaged-archive, graphics,
   disk, and authentication failures; it links to relevant instance controls and includes bounded
   finding codes in support reports without attaching Minecraft log text.
-- Required specification documents still missing: `ROUTES.md`, `GAME_PROTOCOL.md`, `MANIFESTS.md`,
-  `RECOVERY.md`, `CLIENT_MODULES.md`, `API.md`, `COMPATIBILITY.md`, and
-  `RELEASING.md`. Existing architecture, IPC, testing, security, and dependency docs also need a
-  post-F1 implementation refresh.
+- Route, game-process, manifest, recovery, companion-module, public API, compatibility, and release
+  contracts are now recorded in dedicated specifications. Existing architecture, IPC, data-model,
+  testing, security, and dependency summaries still need a post-F1 implementation refresh.
 
 ## Later phases
 

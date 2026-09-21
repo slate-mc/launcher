@@ -4,6 +4,7 @@
 **/dist/
 **/playwright-report/
 **/test-results/
+/graphify-out/
 apps/desktop/src-tauri/tauri.release.generated.json
 /.idea/
 /.vscode/

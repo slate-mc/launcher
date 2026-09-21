@@ -436,6 +436,7 @@ pub(super) fn required_java_major(minecraft_version: &str) -> u32 {
     let minor = components.next().unwrap_or_default();
     let patch = components.next().unwrap_or_default();
     match (major, minor, patch) {
+        (26.., _, _) => 25,
         (1, 0..=16, _) => 8,
         (1, 17, _) => 16,
         (1, 18..=19, _) | (1, 20, 0..=4) => 17,
@@ -448,4 +449,19 @@ pub(super) fn java_selection_error() -> AppError {
         "runtime.java_unavailable",
         "slate could not use that Java application. Choose another one.",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::required_java_major;
+
+    #[test]
+    fn java_compatibility_covers_legacy_modern_and_year_versions() {
+        assert_eq!(required_java_major("1.16.5"), 8);
+        assert_eq!(required_java_major("1.17.1"), 16);
+        assert_eq!(required_java_major("1.20.4"), 17);
+        assert_eq!(required_java_major("1.20.5"), 21);
+        assert_eq!(required_java_major("1.21.1"), 21);
+        assert_eq!(required_java_major("26.1.3"), 25);
+    }
 }
