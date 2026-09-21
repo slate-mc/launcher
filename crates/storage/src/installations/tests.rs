@@ -1,4 +1,3 @@
-
 use super::{
     CompletedInstall, CompletedModpackUpdate, InstalledRuntime, JobState, valid_install_operation,
 };
