@@ -6,13 +6,29 @@ use axum::Router;
 use axum::extract::{Extension, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum::routing::post;
+use axum::routing::{get, post};
 use slate_modpack_api_contracts::{
     ApiErrorCode, CaptureProductEventRequest, CaptureProductEventResponse,
 };
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/telemetry/events", post(capture))
+    Router::new()
+        .route("/telemetry/events", post(capture))
+        .route("/launcher/config", get(feature_config))
+}
+
+async fn feature_config(
+    State(state): State<AppState>,
+    Extension(context): Extension<RequestContext>,
+) -> Response {
+    let config = match state.telemetry.feature_config().await {
+        Ok(config) => config,
+        Err(_) => {
+            tracing::warn!("remote launcher controls are unavailable; safe defaults are active");
+            slate_modpack_api_contracts::LauncherFeatureConfig::default()
+        }
+    };
+    success(&context, config, CacheControl::PublicShort)
 }
 
 async fn capture(
@@ -34,10 +50,12 @@ async fn capture(
             "Anonymous usage reporting is temporarily unavailable.",
             true,
         )),
-        Err(TelemetryError::Rejected) => Err(ApiError::invalid_request(
-            &context,
-            "The anonymous usage event is invalid.",
-        )),
+        Err(TelemetryError::Rejected | TelemetryError::Json(_) | TelemetryError::InvalidFlags) => {
+            Err(ApiError::invalid_request(
+                &context,
+                "The anonymous usage event is invalid.",
+            ))
+        }
     }
 }
 

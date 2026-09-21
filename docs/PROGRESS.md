@@ -67,6 +67,10 @@ Last updated: September 20, 2026
   random installation ID, remain bounded in an offline queue, and are removed when sharing is
   disabled. The API relays configured events to PostHog without placing provider configuration in
   the desktop app.
+- Remote feature controls support cached emergency switches for authentication, installs, launch,
+  and support reports plus a stable local percentage rollout for UI experiments. Failed or expired
+  configuration falls back to working defaults, and rollout assignment does not send the local
+  installation identifier to the feature service.
 - First-run onboarding guides new players through Minecraft account connection, storage choice,
   managed Java readiness, and first-instance creation. Existing libraries bypass it automatically,
   and a chosen storage location becomes the default for future instances.
@@ -86,7 +90,7 @@ Verified on Windows on September 20, 2026:
   snapshots of the home shell.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
-- `cargo test --workspace` passes: 159 tests passed and one process test is ignored.
+- `cargo test --workspace` passes: 162 tests passed and one process test is ignored.
 - `cargo check -p slate-desktop` passes.
 - Workspace Clippy passes for all targets and features with warnings denied.
 - A clean-root native acceptance executable resolves compatible loader versions and verifies fresh
@@ -115,7 +119,7 @@ Verified on Windows on September 20, 2026:
 | Need | Selected approach | Remaining work for slate |
 | --- | --- | --- |
 | Errors and crashes | Sentry | Integrate desktop and API releases, preserve useful stack traces, sanitize context, and group failures by affected version and user impact. |
-| Feature flags and remote configuration | PostHog | Add gradual rollouts, experiments, emergency switches, safe defaults, local caching, and failure-safe behavior when PostHog is unavailable. |
+| Feature flags and remote configuration | PostHog | Allowlisted emergency switches, local percentage rollouts, bounded caching, periodic refresh, and failure-safe defaults are implemented. Configure and exercise production flags, then add ownership and stale-flag cleanup policy. |
 | Product analytics | PostHog | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation. |
 | Rust instrumentation | `tracing` + `tracing-subscriber` | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added. |
 | Backend observability | OpenTelemetry to Grafana Cloud | Export API traces, latency, dependency failures, logs, and resource metrics with production sampling and retention policies. |

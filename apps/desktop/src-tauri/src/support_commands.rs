@@ -18,6 +18,7 @@ pub(super) async fn support_report_export(
     state: tauri::State<'_, DesktopState>,
     request: CreateSupportReportRequest,
 ) -> Result<Option<SupportReportExport>, AppError> {
+    state.features.require(FeatureAccess::SupportReport)?;
     if !request.include_launcher_logs
         && !request.include_install_activity
         && !request.include_instance_summary

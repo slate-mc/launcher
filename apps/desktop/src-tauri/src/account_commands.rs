@@ -17,6 +17,7 @@ pub(super) async fn auth_start(
     app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,
 ) -> Result<AuthStartResponse, AppError> {
+    state.features.require(FeatureAccess::Authentication)?;
     if let Some((start, authorization_url)) = state.auth_flows.active_start()? {
         app.opener()
             .open_url(authorization_url, None::<&str>)

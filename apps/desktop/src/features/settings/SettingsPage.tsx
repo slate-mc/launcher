@@ -43,7 +43,7 @@ export function SettingsPage() {
   const bootstrapQuery = useQuery({
     queryKey: ["bootstrap"],
     queryFn: getBootstrap,
-    staleTime: Number.POSITIVE_INFINITY,
+    refetchInterval: 5 * 60_000,
   });
 
   return (

@@ -123,7 +123,7 @@ export function PrivacySettingsPage() {
 
         <aside className="grid content-start gap-5">
           <InlineNotice title="Private by default">
-            Nothing is sent unless you choose to share anonymous usage.
+            No anonymous usage events are sent unless you choose to share them.
           </InlineNotice>
           <section className="rounded-control border border-app-separator/70 bg-app-surface p-5">
             <div className="flex items-center gap-2">

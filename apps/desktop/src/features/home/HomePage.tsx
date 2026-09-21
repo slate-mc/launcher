@@ -57,6 +57,7 @@ export function HomePage() {
   const bootstrapQuery = useQuery({
     queryKey: ["bootstrap"],
     queryFn: getBootstrap,
+    refetchInterval: 5 * 60_000,
   });
   const instancesQuery = useQuery({
     queryKey: ["instances"],

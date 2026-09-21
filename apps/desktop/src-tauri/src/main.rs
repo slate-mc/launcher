@@ -7,6 +7,7 @@ mod catalog_commands;
 mod content_commands;
 mod diagnostics;
 mod external_instance_import;
+mod feature_controls;
 mod game_options;
 mod install_commands;
 mod install_supervisor;
@@ -51,6 +52,7 @@ use diagnostics::init_diagnostics;
 use external_instance_import::{
     ExternalImportError, copy_external_game_directory, inspect_external_instance,
 };
+use feature_controls::{FeatureAccess, FeatureControls};
 use game_options::{
     PendingGameOptionsWrite, ResourcePackOrderChange, prepare_options_update,
     prepare_resource_pack_update, read_recognized_options, read_resource_packs,
@@ -217,6 +219,7 @@ struct DesktopState {
     installs: InstallSupervisor,
     modpacks: ModpackApiClient,
     telemetry: ProductTelemetry,
+    features: FeatureControls,
 }
 
 async fn preferred_storage_root_id(state: &DesktopState) -> Result<StorageRootId, AppError> {
@@ -469,6 +472,7 @@ impl AuthCoordinator {
 #[tauri::command]
 fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
     let credential_vault_ready = state.credential_vault.check_available().is_ok();
+    let features = state.features.snapshot();
     BootstrapResponse::new(vec![
         CapabilitySummary::available("instance.library"),
         CapabilitySummary::available("instance.create"),
@@ -477,13 +481,15 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         CapabilitySummary::available("metadata.minecraft"),
         CapabilitySummary::available("metadata.fabric"),
         CapabilitySummary::available("metadata.neoforge"),
-        CapabilitySummary::available("minecraft.install"),
-        CapabilitySummary::available("minecraft.launch"),
+        feature_capability("minecraft.install", features.installs_enabled),
+        feature_capability("minecraft.launch", features.launch_enabled),
         CapabilitySummary::available("minecraft.session_logs"),
         CapabilitySummary::available("content.modpacks"),
-        CapabilitySummary::available("content.modpacks.install"),
+        feature_capability("content.modpacks.install", features.installs_enabled),
         CapabilitySummary::available("content.mods"),
-        CapabilitySummary::available("content.mods.install"),
+        feature_capability("content.mods.install", features.installs_enabled),
+        feature_capability("support.reports", features.support_reports_enabled),
+        feature_capability("ui.discover.preview", features.discover_preview_enabled),
         if option_env!("SLATE_UPDATER_ENABLED") == Some("1") {
             CapabilitySummary::available("launcher.updates")
         } else {
@@ -492,8 +498,13 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
                 "Update checks are available in signed release builds.",
             )
         },
-        if credential_vault_ready {
+        if credential_vault_ready && features.authentication_enabled {
             CapabilitySummary::available("minecraft.account")
+        } else if !features.authentication_enabled {
+            CapabilitySummary::unavailable(
+                "minecraft.account",
+                "Account connections are temporarily unavailable.",
+            )
         } else {
             CapabilitySummary::unavailable(
                 "minecraft.account",
@@ -501,6 +512,14 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
             )
         },
     ])
+}
+
+fn feature_capability(id: &'static str, available: bool) -> CapabilitySummary {
+    if available {
+        CapabilitySummary::available(id)
+    } else {
+        CapabilitySummary::unavailable(id, "Temporarily unavailable. Try again later.")
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -726,6 +745,10 @@ fn main() {
                 database.clone(),
                 modpacks.clone(),
             ))?;
+            let features = tauri::async_runtime::block_on(FeatureControls::new(
+                database.clone(),
+                modpacks.clone(),
+            ))?;
             let state = DesktopState {
                 database,
                 paths,
@@ -738,10 +761,12 @@ fn main() {
                 installs: InstallSupervisor::default(),
                 modpacks,
                 telemetry: telemetry.clone(),
+                features: features.clone(),
             };
             app.manage(state.clone());
             tauri::async_runtime::spawn(purge_expired_instance_trash(state));
             tauri::async_runtime::spawn(telemetry.clone().run());
+            tauri::async_runtime::spawn(features.run());
             tauri::async_runtime::block_on(telemetry.capture(
                 slate_modpack_api_contracts::ProductEvent::LauncherStarted,
                 None,

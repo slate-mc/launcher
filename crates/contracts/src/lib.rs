@@ -85,7 +85,7 @@ pub use system::{
 };
 
 pub const IPC_SCHEMA_VERSION: u32 = 1;
-pub const DATABASE_SCHEMA_VERSION: u32 = 17;
+pub const DATABASE_SCHEMA_VERSION: u32 = 18;
 pub use auth::{
     AccountIdRequest, AuthCancelRequest, AuthFlowStateDto, AuthFlowStatus, AuthStartResponse,
     MinecraftAccountStatusDto, MinecraftAccountSummary, SetDefaultAccountRequest,

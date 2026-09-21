@@ -6,6 +6,7 @@ pub(super) async fn instance_launch(
     state: tauri::State<'_, DesktopState>,
     request: LaunchInstanceRequest,
 ) -> Result<GameSessionSummary, AppError> {
+    state.features.require(FeatureAccess::Launch)?;
     refresh_exited_sessions(state.inner()).await;
     let requested_server = request
         .server_address

@@ -176,6 +176,7 @@ pub(super) async fn queue_instance_install(
     modpack_update: Option<PendingModpackUpdate>,
     operation: RetryableInstallOperation,
 ) -> Result<InstallJobSummary, AppError> {
+    state.features.require(FeatureAccess::Install)?;
     let PendingModChanges {
         installed: pending_mods,
         replaced_paths: replaced_mod_paths,

@@ -2,6 +2,7 @@
 
 mod accounts;
 mod database;
+mod features;
 mod installations;
 mod instance_content;
 mod instance_mods;

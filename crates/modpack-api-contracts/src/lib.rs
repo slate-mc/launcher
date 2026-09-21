@@ -2,6 +2,7 @@
 
 mod content;
 mod error;
+mod features;
 mod file;
 mod import_plan;
 mod install;
@@ -13,6 +14,7 @@ mod version;
 
 pub use content::{ContentInstallPlanRequest, ContentKind};
 pub use error::{ApiEnvelope, ApiErrorCode, ApiErrorDetail, ApiFieldError, ApiMeta};
+pub use features::LauncherFeatureConfig;
 pub use file::{
     DownloadSource, FileOption, Hashes, ModpackFile, PackFileType, ProviderReference, Side,
 };
