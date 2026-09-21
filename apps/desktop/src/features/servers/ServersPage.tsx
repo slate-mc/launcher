@@ -565,7 +565,7 @@ function ServerIcon({
     return (
       <span
         className="inline-flex size-[72px] animate-pulse rounded-control border border-app-separator bg-app-raised"
-        aria-label={`Loading ${name} server icon`}
+        aria-hidden="true"
       />
     );
   }
@@ -588,7 +588,7 @@ function ServerIcon({
   return (
     <span
       className="inline-flex size-[72px] items-center justify-center rounded-control border border-app-separator bg-app-accent/10 font-mono text-base font-bold tracking-[.08em] text-app-accent"
-      aria-label={`${name} server icon`}
+      aria-hidden="true"
     >
       <span aria-hidden="true">{initials || "MC"}</span>
     </span>
@@ -615,8 +615,8 @@ function ServerMotd({ status }: { status?: ServerStatus }) {
   return (
     <p
       className="mt-4 mb-0 line-clamp-2 min-h-[34px] whitespace-pre-wrap font-mono text-[11px]/[17px]"
-      aria-label={status.description}
     >
+      <span className="sr-only">{status.description}</span>
       {status.descriptionSegments.map((segment, index) => (
         <span
           key={`${index}:${segment.text}`}

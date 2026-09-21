@@ -246,6 +246,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
           description="Dark is the initial slate experience; System follows the operating system."
         >
           <select
+            aria-label="Theme"
             value={values.theme}
             className={selectClass}
             onChange={(event) =>
@@ -262,6 +263,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
           description="System respects your OS preference; On minimizes interface motion."
         >
           <select
+            aria-label="Reduced motion"
             value={values.reduceMotion}
             className={selectClass}
             onChange={(event) =>
@@ -281,6 +283,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
           description="Stable receives production releases. Beta receives signed previews and may change more often."
         >
           <select
+            aria-label="Update channel"
             value={values.updateChannel}
             className={selectClass}
             onChange={(event) =>
@@ -299,6 +302,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
           description="Maximum number of verified game, loader, modpack, and mod files downloaded in parallel."
         >
           <select
+            aria-label="Concurrent downloads"
             value={values.downloadConcurrency}
             className={selectClass}
             onChange={(event) =>
@@ -317,6 +321,7 @@ function PreferencesForm({ initial }: { initial: AppPreferences }) {
           description="Limit slate’s combined download speed when installing games, modpacks, and mods."
         >
           <select
+            aria-label="Download speed"
             value={values.downloadBandwidthLimitMib}
             className={selectClass}
             onChange={(event) =>

@@ -85,9 +85,10 @@ Last updated: September 20, 2026
 Verified on Windows on September 20, 2026:
 
 - Frontend lint passes with zero warnings.
-- 19 Vitest/Testing Library tests pass.
-- Three Playwright checks pass at the minimum supported window size, including dark and light visual
-  snapshots of the home shell.
+- 22 Vitest/Testing Library tests pass.
+- 20 Playwright checks pass. They cover dark/light home snapshots, minimum-window navigation,
+  automated WCAG A/AA scans across 16 primary routes, and keyboard/focus behavior for destructive
+  confirmation dialogs.
 - The Vite/Tailwind production build passes with route-level chunks and no size warning.
 - `cargo fmt --all -- --check` passes.
 - `cargo test --workspace` passes: 172 tests passed and one process test is ignored.
@@ -129,10 +130,11 @@ Verified on Windows on September 20, 2026:
 
 ## Quality and documentation gaps
 
-- Extend the initial Playwright dark/light and minimum-window coverage to onboarding, install,
-  launch, content management, storage, and destructive confirmations.
-- Add accessible Radix-backed dialogs/popovers/tooltips where custom controls currently provide only
-  visual behavior; complete keyboard and screen-reader testing.
+- Extend Playwright from route-level accessibility and destructive-dialog coverage into full native
+  install, launch, content-management, storage, and recovery workflows.
+- Continue moving appropriate destructive confirmations and layered controls onto accessible
+  Radix-backed primitives. The shared alert dialog now traps/restores focus and handles Escape;
+  remaining popovers/tooltips and screen-reader interaction tests still need coverage.
 - Add localization/message catalogs before user-facing copy grows further.
 - Add virtualization for very large mod, activity, and log views.
 - Continue extending rule-based diagnostics as new crash signatures appear. The current assistant

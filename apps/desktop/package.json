@@ -14,6 +14,7 @@
     "test:e2e:update": "playwright test --update-snapshots"
   },
   "dependencies": {
+    "@radix-ui/react-alert-dialog": "1.1.23",
     "@sentry/react": "10.75.0",
     "@tanstack/react-query": "5.102.8",
     "@tanstack/react-router": "1.170.35",
@@ -32,6 +33,7 @@
     "zod": "4.6.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
     "@sentry/vite-plugin": "5.4.0",
@@ -49,6 +51,7 @@
     "eslint-plugin-react-refresh": "0.5.6",
     "globals": "17.12.0",
     "jsdom": "30.0.1",
+    "playwright-core": "1.63.0",
     "prettier": "3.9.6",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",

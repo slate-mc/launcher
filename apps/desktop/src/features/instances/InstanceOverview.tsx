@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ComboBox } from "../../components/ComboBox";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { InstallProgressIndicator } from "../../components/InstallProgressIndicator";
 import { SessionLogPanel } from "../../components/SessionLogPanel";
 import { InlineNotice } from "../../components/PageScaffold";
@@ -626,75 +627,46 @@ export function InstanceOverview({ instance }: { instance: LauncherInstance }) {
               />
               {instance.favorite ? "Remove favorite" : "Add favorite"}
             </button>
-            <button
-              type="button"
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-control border border-app-danger/35 bg-transparent text-xs font-bold text-app-danger hover:bg-app-danger/10"
-              disabled={Boolean(activeSession)}
-              title={
-                activeSession
-                  ? "Stop Minecraft before moving this instance to trash."
+            <ConfirmDialog
+              open={confirmTrash}
+              onOpenChange={setConfirmTrash}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-control border border-app-danger/35 bg-transparent text-xs font-bold text-app-danger hover:bg-app-danger/10"
+                  disabled={Boolean(activeSession)}
+                  title={
+                    activeSession
+                      ? "Stop Minecraft before moving this instance to trash."
+                      : undefined
+                  }
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  Move to trash
+                </button>
+              }
+              title={`Move ${instance.name} to trash?`}
+              description="The instance will move to Storage, where you can restore it or permanently delete its files."
+              confirmLabel="Move to trash"
+              pendingLabel="Moving…"
+              pending={trashMutation.isPending}
+              destructive
+              error={
+                trashMutation.isError
+                  ? "The instance could not be moved. Reload and try again."
                   : undefined
               }
-              onClick={() => setConfirmTrash(true)}
-            >
-              <Trash2 size={16} aria-hidden="true" />
-              Move to trash
-            </button>
+              onConfirm={() =>
+                trashMutation.mutate({
+                  id: instance.id,
+                  expectedRevision: instance.revision,
+                })
+              }
+            />
           </div>
         </section>
       </aside>
 
-      {confirmTrash ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-6"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setConfirmTrash(false);
-          }}
-        >
-          <section
-            className="w-full max-w-[430px] rounded-dialog border border-app-separator bg-app-surface p-6 shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="trash-title"
-          >
-            <h2 id="trash-title" className="m-0 text-lg font-bold">
-              Move {instance.name} to trash?
-            </h2>
-            <p className="mt-2 mb-0 text-xs/[19px] text-app-secondary">
-              The instance will move to Storage, where you can restore it or
-              permanently delete its files.
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                className="h-9 rounded-control border border-app-separator bg-app-bg px-4 text-xs font-bold text-app-text"
-                onClick={() => setConfirmTrash(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="h-9 rounded-control bg-app-danger px-4 text-xs font-bold text-black disabled:opacity-50"
-                disabled={trashMutation.isPending}
-                onClick={() =>
-                  trashMutation.mutate({
-                    id: instance.id,
-                    expectedRevision: instance.revision,
-                  })
-                }
-              >
-                {trashMutation.isPending ? "Moving…" : "Move to trash"}
-              </button>
-            </div>
-            {trashMutation.isError ? (
-              <p className="mt-3 text-xs text-app-danger" role="alert">
-                The instance could not be moved. Reload and try again.
-              </p>
-            ) : null}
-          </section>
-        </div>
-      ) : null}
     </div>
   );
 }

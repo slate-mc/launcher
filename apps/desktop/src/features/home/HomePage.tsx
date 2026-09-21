@@ -441,7 +441,7 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="mt-[18px]" role="list">
+          <div className="mt-[18px]">
             <div
               className={cn(
                 instanceGridClass,
