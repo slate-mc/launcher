@@ -4,6 +4,25 @@ This document reserves the protocol and ownership boundary for F2 Java companion
 companion module is shipped by the current F1 launcher, and the launcher must not represent module
 controls as available until a verified module artifact and compatible adapter exist.
 
+## Implementation language and quality policy
+
+Companion code is written in Kotlin. Shared API, configuration, layout, diagnostics, and module
+logic remain loader-neutral; Fabric and NeoForge integration lives in separate adapters. Java may
+only be introduced when a loader or tooling boundary cannot be expressed safely in Kotlin.
+
+Kotlin follows Google's Android Kotlin style, with four-space indentation, UTF-8 source files,
+explicit visibility at public boundaries, no wildcard imports, compiler warnings treated as
+errors, and deterministic formatting. The Gradle build must enforce Spotless/ktlint formatting,
+Detekt static analysis, JUnit tests, dependency locking, and reproducible archives. Any necessary
+Java interoperability source is formatted with Google Java Format and held to the same warning and
+test gates.
+
+The first implementation slice is a Kotlin multi-module build containing the common protocol,
+lifecycle runtime, configuration reconciliation, HUD layout model, QoL and PvP module contracts,
+bounded diagnostics, benchmarks, and isolated Fabric/NeoForge adapter projects. Adapter projects
+must not claim game compatibility until they compile and run against an exact Minecraft and loader
+version in the native acceptance matrix.
+
 ## Ownership
 
 The Rust launcher owns module selection, catalog resolution, verified download, hash/signature

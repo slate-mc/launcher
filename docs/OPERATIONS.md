@@ -6,6 +6,21 @@ The API always emits structured JSON logs to standard output. Remote OpenTelemet
 by default and must be enabled explicitly in the server environment. The desktop launcher never
 receives the collector endpoint or its credentials.
 
+When `SLATE_DEPLOYMENT_ENVIRONMENT=production`, startup now fails unless Sentry, PostHog,
+OpenTelemetry export, and private support-report storage are all configured. Run the safe preflight
+before deployment:
+
+```powershell
+cargo run -p slate-modpack-api -- check-config
+```
+
+The command reports only configuration booleans. It never prints DSNs, tokens, collector headers,
+or storage credentials. `ops/modpack-api.production.env.example` is the canonical variable
+inventory. The manually dispatched `production-readiness.yml` workflow additionally checks the
+deployed health/readiness routes, sends an anonymous PostHog validation event through the API, and
+can upload a synthetic private support report. Operators can run the same drill with
+`tools/validate-production-services.ps1`.
+
 Required production variables:
 
 ```text

@@ -71,6 +71,9 @@ Last updated: September 20, 2026
   and support reports plus a stable local percentage rollout for UI experiments. Failed or expired
   configuration falls back to working defaults, and rollout assignment does not send the local
   installation identifier to the feature service.
+- Production API configuration now fails closed unless Sentry, PostHog, OTLP export, and private
+  support-report storage are configured. A secret-safe preflight and manually dispatched endpoint
+  drill validate the deployed health, analytics relay, and support upload paths.
 - First-run onboarding guides new players through Minecraft account connection, storage choice,
   managed Java readiness, and first-instance creation. Existing libraries bypass it automatically,
   and a chosen storage location becomes the default for future instances.
@@ -119,14 +122,14 @@ Verified on Windows on September 20, 2026:
 
 | Need                                   | Selected approach                              | Remaining work for slate                                                                                                                                                                                                                                                                                                     |
 | -------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Errors and crashes                     | Sentry                                         | API failures, consented native panics, consented renderer failures, release tags, sanitization, source-map upload, native debug-file upload, and anonymous affected-installation grouping are implemented. Configure production projects and validate symbolication and alert routing.                                       |
+| Errors and crashes                     | Sentry                                         | API failures, consented native panics, consented renderer failures, release tags, sanitization, source-map upload, native debug-file upload, anonymous affected-installation grouping, and production configuration enforcement are implemented. Configure the actual project and validate symbolication and alert routing.    |
 | Feature flags and remote configuration | PostHog                                        | Allowlisted emergency switches, local percentage rollouts, bounded caching, periodic refresh, and failure-safe defaults are implemented. Configure and exercise production flags, then add ownership and stale-flag cleanup policy.                                                                                          |
 | Product analytics                      | PostHog                                        | Explicit opt-in, an allowlisted event contract, lifecycle events, a bounded offline queue, and the server-side PostHog relay are implemented. Configure the production project and finish dashboard/retention validation.                                                                                                    |
 | Rust instrumentation                   | `tracing` + `tracing-subscriber`               | Structured JSON tracing now covers API request correlation and desktop install/launch/session lifecycle events. Continue extending fields as features are added.                                                                                                                                                             |
-| Backend observability                  | OpenTelemetry to Grafana Cloud                 | Environment-gated OTLP export now covers API traces, structured logs, HTTP latency, provider failures/latency, cache outcomes, install plans, and service resources while retaining local JSON output. Configure production credentials, dashboards, alerts, sampling, and retention.                                        |
+| Backend observability                  | OpenTelemetry to Grafana Cloud                 | Environment-gated OTLP export covers API traces, structured logs, HTTP latency, provider failures/latency, cache outcomes, install plans, and service resources while retaining local JSON output. Production now requires an exporter. Configure credentials, dashboards, alerts, sampling, and retention.                     |
 | Local diagnostics                      | Rotating files plus a bounded disk queue       | Daily bounded launcher logs, a bounded non-blocking writer, sanitized user-reviewed report export, and a separate bounded product-event delivery queue are implemented. Crash reports avoid local queuing, and failed support uploads deliberately leave no extra archive behind.                                            |
 | Updates                                | Tauri updater plus the slate release API       | Signed release builds, Stable/Beta channels, deterministic staged rollout, an emergency stop percentage, downgrade protection, prerelease isolation, bounded local attempt history, update UI, and multi-platform artifacts are implemented. Configure channel manifests and complete the production rollout/recovery drill. |
-| Support reports                        | In-app report flow plus private object storage | User-reviewed local export, explicit bounded submission, private S3-compatible storage, server-only credentials, report IDs, rate limiting, and user-safe failures are implemented. Configure the production bucket lifecycle and validate access controls and expiry.                                                       |
+| Support reports                        | In-app report flow plus private object storage | User-reviewed local export, explicit bounded submission, private S3-compatible storage, server-only credentials, report IDs, rate limiting, user-safe failures, and a synthetic upload drill are implemented. Configure the production bucket lifecycle and validate operator retrieval, access controls, and expiry.           |
 
 ## Quality and documentation gaps
 
@@ -151,8 +154,10 @@ Verified on Windows on September 20, 2026:
 
 ## Later phases
 
-- F2 Java companion projects, module lifecycle, HUD editor, QoL/PvP modules, config reconciliation,
-  diagnostics, benchmarks, and tested Fabric/NeoForge client integration are not started.
+- F2 companion implementation is standardized on Kotlin with Google Android Kotlin style and
+  enforced formatting/static-analysis/test gates. The module lifecycle, HUD editor, QoL/PvP
+  modules, config reconciliation, diagnostics, benchmarks, and tested Fabric/NeoForge client
+  integration remain to be implemented.
 - F3 product accounts, communities, publishing, signed releases, cloud sync/backups, operator tools,
   server integration, and cloud support bundles are not started.
 - F4 social/party features, practice/replay/recording, cosmetics, creator tools, legacy PvP support,

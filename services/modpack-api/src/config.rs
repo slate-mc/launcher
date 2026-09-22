@@ -38,6 +38,16 @@ pub struct SupportReportStorageConfig {
     pub prefix: String,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductionReadinessSummary {
+    pub environment: String,
+    pub sentry_configured: bool,
+    pub posthog_configured: bool,
+    pub otel_configured: bool,
+    pub support_report_storage_configured: bool,
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind_address = std::env::var("SLATE_API_BIND")
@@ -110,7 +120,7 @@ impl Config {
             .transpose()
             .map_err(ConfigError::InvalidSentryDsn)?;
         let support_reports = SupportReportStorageConfig::from_env()?;
-        Ok(Self {
+        let config = Self {
             bind_address,
             upstream_url,
             upstream_user_agent,
@@ -123,8 +133,54 @@ impl Config {
             observability,
             sentry_dsn,
             support_reports,
-        })
+        };
+        config.validate_production_services()?;
+        Ok(config)
     }
+
+    #[must_use]
+    pub fn production_readiness_summary(&self) -> ProductionReadinessSummary {
+        ProductionReadinessSummary {
+            environment: self.observability.environment.clone(),
+            sentry_configured: self.sentry_dsn.is_some(),
+            posthog_configured: self.posthog_project_token.is_some(),
+            otel_configured: self.observability.enabled,
+            support_report_storage_configured: self.support_reports.bucket.is_some(),
+        }
+    }
+
+    fn validate_production_services(&self) -> Result<(), ConfigError> {
+        validate_production_services(
+            &self.observability.environment,
+            self.sentry_dsn.is_some(),
+            self.posthog_project_token.is_some(),
+            self.observability.enabled,
+            self.support_reports.bucket.is_some(),
+        )
+    }
+}
+
+fn validate_production_services(
+    environment: &str,
+    sentry_configured: bool,
+    posthog_configured: bool,
+    otel_configured: bool,
+    support_reports_configured: bool,
+) -> Result<(), ConfigError> {
+    if environment != "production" {
+        return Ok(());
+    }
+    for (configured, variable) in [
+        (sentry_configured, "SLATE_SENTRY_DSN"),
+        (posthog_configured, "SLATE_POSTHOG_PROJECT_TOKEN"),
+        (otel_configured, "SLATE_OTEL_ENABLED=true"),
+        (support_reports_configured, "SLATE_SUPPORT_REPORTS_BUCKET"),
+    ] {
+        if !configured {
+            return Err(ConfigError::MissingProductionService(variable));
+        }
+    }
+    Ok(())
 }
 
 fn rollout_percentage(variable: &'static str) -> Result<u8, ConfigError> {
@@ -307,11 +363,16 @@ pub enum ConfigError {
     InvalidSupportReportsEndpoint(url::ParseError),
     #[error("AWS_ENDPOINT_URL_S3 must use HTTPS, except for a local development endpoint")]
     UnsafeSupportReportsEndpoint,
+    #[error("production requires {0}")]
+    MissingProductionService(&'static str),
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_enabled, validate_otel_endpoint, validate_support_endpoint};
+    use super::{
+        parse_enabled, validate_otel_endpoint, validate_production_services,
+        validate_support_endpoint,
+    };
 
     #[test]
     fn otel_switch_accepts_explicit_boolean_values() {
@@ -334,5 +395,14 @@ mod tests {
         assert!(validate_support_endpoint("http://127.0.0.1:9000").is_ok());
         assert!(validate_support_endpoint("http://object-storage.example.com").is_err());
         assert!(validate_support_endpoint("https://user:secret@example.com").is_err());
+    }
+
+    #[test]
+    fn production_requires_every_operational_service() {
+        assert!(validate_production_services("development", false, false, false, false).is_ok());
+        assert!(validate_production_services("production", true, true, true, true).is_ok());
+        assert!(validate_production_services("production", true, false, true, true).is_err());
+        assert!(validate_production_services("production", true, true, false, true).is_err());
+        assert!(validate_production_services("production", true, true, true, false).is_err());
     }
 }

@@ -1,0 +1,63 @@
+name: Production readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Deployed slate API origin
+        required: true
+        default: https://api.slatelauncher.org
+        type: string
+      upload_support_report:
+        description: Exercise private support-report storage
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-2025
+    environment: production
+    env:
+      SLATE_DEPLOYMENT_ENVIRONMENT: production
+      SLATE_OTEL_ENABLED: "true"
+      SLATE_OTEL_SAMPLE_RATIO: "0.1"
+      SLATE_SENTRY_DSN: ${{ secrets.SLATE_SENTRY_DSN }}
+      SLATE_POSTHOG_HOST: ${{ vars.SLATE_POSTHOG_HOST }}
+      SLATE_POSTHOG_PROJECT_TOKEN: ${{ secrets.SLATE_POSTHOG_PROJECT_TOKEN }}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+      OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+      SLATE_SUPPORT_REPORTS_BUCKET: ${{ vars.SLATE_SUPPORT_REPORTS_BUCKET }}
+      SLATE_SUPPORT_REPORTS_PREFIX: ${{ vars.SLATE_SUPPORT_REPORTS_PREFIX }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL_S3: ${{ vars.AWS_ENDPOINT_URL_S3 }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - name: Validate configured services
+        shell: pwsh
+        run: |
+          foreach ($name in @(
+            'SLATE_POSTHOG_HOST',
+            'SLATE_SUPPORT_REPORTS_PREFIX',
+            'AWS_ENDPOINT_URL_S3'
+          )) {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "Env:$name").Value)) {
+              Remove-Item "Env:$name"
+            }
+          }
+          $arguments = @('-BaseUrl', '${{ inputs.base_url }}')
+          if ('${{ inputs.upload_support_report }}' -eq 'true') {
+            $arguments += '-UploadSupportReport'
+          }
+          & ./tools/validate-production-services.ps1 @arguments

@@ -3,6 +3,13 @@ use slate_modpack_api::{config::Config, error_reporting, observability, router, 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = Config::from_env()?;
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("check-config")) {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&config.production_readiness_summary())?
+        );
+        return Ok(());
+    }
     let _sentry =
         error_reporting::init(config.sentry_dsn.clone(), &config.observability.environment);
     let observability = observability::init(&config.observability)?;
