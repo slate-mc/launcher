@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "2.3.21" apply false
+    id("net.fabricmc.fabric-loom-remap") version "1.16.3" apply false
     id("com.diffplug.spotless") version "8.10.2"
     id("dev.detekt") version "2.0.0-alpha.3" apply false
     id("me.champeau.jmh") version "0.7.3" apply false

@@ -1,13 +1,16 @@
 pluginManagement {
     repositories {
+        maven("https://maven.fabricmc.net")
         gradlePluginPortal()
         mavenCentral()
     }
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    // Loom supplies a local remapped-mod repository for exact Minecraft artifacts.
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
+        maven("https://maven.fabricmc.net")
         mavenCentral()
     }
 }

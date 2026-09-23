@@ -89,6 +89,10 @@ Last updated: September 22, 2026
   broad client presets, and performance/QoL/PvP primitives have unit coverage. PvP is one optional
   preset within the broader Lunar/Dawn-style client platform. Loader adapters intentionally report
   contract-only until real game hooks pass exact-version acceptance.
+- The Fabric adapter now builds and remaps a self-contained Minecraft 1.21.1/Fabric Loader 0.19.5
+  client mod with a Kotlin entrypoint, bundled shared modules, exact manifest constraints, atomic
+  process-bound handshake output, and cleanup on orderly shutdown. Its handshake remains
+  `contract_only` until the artifact is installed by the launcher and passes a real-game run.
 
 ## Verification evidence
 

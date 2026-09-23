@@ -18,6 +18,11 @@ Projects:
 - `adapters/fabric` and `adapters/neoforge`: isolated loader boundaries
 - `benchmarks`: JMH performance gates for hot paths
 
+The Fabric adapter currently produces a remapped client mod for the exact target Minecraft 1.21.1
+and Fabric Loader 0.19.5. It boots the shared module supervisor and writes an atomic, process-bound
+handshake under the game directory. That handshake deliberately remains `contract_only` until a
+real game run and launcher-side validation pass. NeoForge remains a pure contract project.
+
 Run every required quality gate from the repository root:
 
 ```powershell
@@ -28,4 +33,10 @@ Run benchmarks separately so ordinary verification stays fast:
 
 ```powershell
 ./gradlew :client-benchmarks:jmh
+```
+
+Build the exact Fabric artifact with:
+
+```powershell
+./gradlew :client-adapter-fabric:build
 ```
