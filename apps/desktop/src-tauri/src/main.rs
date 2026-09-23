@@ -156,7 +156,7 @@ use slate_domain::{
 use slate_installer::{
     ContentUpdateRequest, InstallProgress, InstallRequest as NativeInstallRequest,
     install_with_progress, load_installed_revision, update_content_with_progress,
-    verify_installed_content_artifact, verify_installed_launch_artifacts,
+    verify_installed_launch_artifacts,
 };
 use slate_loaders::{FabricAdapter, NeoForgeAdapter};
 use slate_minecraft::{

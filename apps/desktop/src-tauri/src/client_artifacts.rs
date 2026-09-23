@@ -8,6 +8,7 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tauri::Manager;
+use uuid::Uuid;
 
 const MANIFEST_SCHEMA: u32 = 1;
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
@@ -171,6 +172,122 @@ impl ClientArtifactCatalog {
             })
             .collect())
     }
+
+    pub(super) async fn synchronize_for_instance(
+        &self,
+        instance: &InstanceRecord,
+        game_directory: &Path,
+    ) -> Result<usize, AppError> {
+        let artifacts = self.for_instance(instance)?;
+        let mut refreshed = 0;
+        for artifact in &artifacts {
+            match synchronize_artifact(artifact, game_directory).await {
+                Ok(true) => {
+                    refreshed += 1;
+                    tracing::info!(
+                        instance_id = %instance.id,
+                        artifact = %artifact.display_name,
+                        "refreshed managed client artifact"
+                    );
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        instance_id = %instance.id,
+                        artifact = %artifact.display_name,
+                        error = %error,
+                        "managed client artifact synchronization failed"
+                    );
+                    return Err(AppError::new(
+                        "local.slate_client_update_failed",
+                        "Slate Client could not be updated for this launch. Close Minecraft and try again.",
+                    ));
+                }
+            }
+        }
+        Ok(refreshed)
+    }
+}
+
+async fn synchronize_artifact(
+    artifact: &ManagedContentArtifact,
+    game_directory: &Path,
+) -> Result<bool, ClientArtifactError> {
+    let destination = managed_mod_destination(&artifact.destination)?;
+    let target = game_directory.join(destination.replace('/', std::path::MAIN_SEPARATOR_STR));
+    if artifact_matches(&target, &artifact.sha256).await? {
+        return Ok(false);
+    }
+
+    let source_metadata = tokio::fs::symlink_metadata(&artifact.source_path).await?;
+    if !source_metadata.is_file()
+        || source_metadata.file_type().is_symlink()
+        || source_metadata.len() > MAX_ARTIFACT_BYTES
+    {
+        return Err(ClientArtifactError::InvalidArtifact);
+    }
+    let parent = target
+        .parent()
+        .ok_or(ClientArtifactError::InvalidArtifact)?;
+    tokio::fs::create_dir_all(parent).await?;
+    let parent_metadata = tokio::fs::symlink_metadata(parent).await?;
+    if !parent_metadata.is_dir() || parent_metadata.file_type().is_symlink() {
+        return Err(ClientArtifactError::InvalidArtifact);
+    }
+
+    let file_name = target
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or(ClientArtifactError::InvalidArtifact)?;
+    let partial = target.with_file_name(format!(".{file_name}.partial-{}", Uuid::new_v4()));
+    if let Err(error) = tokio::fs::copy(&artifact.source_path, &partial).await {
+        let _ = tokio::fs::remove_file(&partial).await;
+        return Err(error.into());
+    }
+    if !artifact_matches(&partial, &artifact.sha256).await? {
+        let _ = tokio::fs::remove_file(&partial).await;
+        return Err(ClientArtifactError::InvalidArtifact);
+    }
+    match tokio::fs::symlink_metadata(&target).await {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            let _ = tokio::fs::remove_file(&partial).await;
+            return Err(ClientArtifactError::InvalidArtifact);
+        }
+        Ok(_) => tokio::fs::remove_file(&target).await?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            let _ = tokio::fs::remove_file(&partial).await;
+            return Err(error.into());
+        }
+    }
+    if let Err(error) = tokio::fs::rename(&partial, &target).await {
+        let _ = tokio::fs::remove_file(&partial).await;
+        return Err(error.into());
+    }
+    if !artifact_matches(&target, &artifact.sha256).await? {
+        let _ = tokio::fs::remove_file(&target).await;
+        return Err(ClientArtifactError::InvalidArtifact);
+    }
+    Ok(true)
+}
+
+async fn artifact_matches(path: &Path, expected_sha256: &str) -> Result<bool, ClientArtifactError> {
+    let metadata = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_ARTIFACT_BYTES
+    {
+        return Err(ClientArtifactError::InvalidArtifact);
+    }
+    let path = path.to_path_buf();
+    let actual = tokio::task::spawn_blocking(move || sha256_file(&path))
+        .await
+        .map_err(|_| ClientArtifactError::InvalidArtifact)??;
+    Ok(actual == expected_sha256.to_ascii_lowercase())
 }
 
 fn managed_mod_destination(value: &str) -> Result<String, ClientArtifactError> {
@@ -239,7 +356,8 @@ enum ClientArtifactError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientArtifactCatalog, sha256_file};
+    use super::{ClientArtifactCatalog, sha256_file, synchronize_artifact};
+    use slate_installer::ManagedContentArtifact;
 
     #[test]
     fn loads_only_hash_verified_artifacts() -> Result<(), Box<dyn std::error::Error>> {
@@ -258,6 +376,33 @@ mod tests {
         assert!(catalog.is_available());
         std::fs::write(&artifact, b"changed")?;
         assert!(ClientArtifactCatalog::load(directory.path()).is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn refreshes_only_the_declared_managed_artifact() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let directory = tempfile::tempdir()?;
+        let source = directory.path().join("current-client.jar");
+        let game = directory.path().join("game");
+        let mods = game.join("mods");
+        let target = mods.join("slate-client.jar");
+        let user_mod = mods.join("user-mod.jar");
+        std::fs::create_dir_all(&mods)?;
+        std::fs::write(&source, b"current client")?;
+        std::fs::write(&target, b"stale client")?;
+        std::fs::write(&user_mod, b"user content")?;
+        let artifact = ManagedContentArtifact {
+            source_path: source.clone(),
+            destination: "mods/slate-client.jar".to_owned(),
+            sha256: sha256_file(&source)?,
+            display_name: "Slate Client".to_owned(),
+        };
+
+        assert!(synchronize_artifact(&artifact, &game).await?);
+        assert_eq!(std::fs::read(&target)?, b"current client");
+        assert_eq!(std::fs::read(&user_mod)?, b"user content");
+        assert!(!synchronize_artifact(&artifact, &game).await?);
         Ok(())
     }
 }
