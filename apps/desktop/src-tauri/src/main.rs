@@ -485,6 +485,10 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         CapabilitySummary::available("metadata.minecraft"),
         CapabilitySummary::available("metadata.fabric"),
         CapabilitySummary::available("metadata.neoforge"),
+        CapabilitySummary::unavailable(
+            "slate.client",
+            "Slate Client is not available in this build yet.",
+        ),
         feature_capability("minecraft.install", features.installs_enabled),
         feature_capability("minecraft.launch", features.launch_enabled),
         CapabilitySummary::available("minecraft.session_logs"),

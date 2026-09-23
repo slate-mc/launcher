@@ -217,6 +217,11 @@ export async function getBootstrap(): Promise<Bootstrap> {
       { id: "instance.library", available: true },
       { id: "instance.create", available: true },
       { id: "instance.configure", available: true },
+      {
+        id: "slate.client",
+        available: false,
+        unavailableReason: "Slate Client is not available in this build yet.",
+      },
       { id: "content.modpacks", available: false },
       { id: "settings.local", available: true },
       {

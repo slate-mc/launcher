@@ -13,6 +13,7 @@ import { ComboBox } from "../../components/ComboBox";
 import { InlineNotice, PageHeader } from "../../components/PageScaffold";
 import {
   createInstance,
+  getBootstrap,
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
 } from "../../lib/bridge";
@@ -59,6 +60,14 @@ export function NewInstancePage() {
     queryFn: getMinecraftVersionCatalog,
     staleTime: 15 * 60_000,
   });
+  const bootstrapQuery = useQuery({
+    queryKey: ["bootstrap"],
+    queryFn: getBootstrap,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const slateClientCapability = bootstrapQuery.data?.capabilities.find(
+    (capability) => capability.id === "slate.client",
+  );
   const loaderQuery = useQuery({
     queryKey: ["loader-version-catalog", minecraftVersion, loaderKind],
     queryFn: () => getLoaderVersionCatalog({ minecraftVersion, loaderKind }),
@@ -186,7 +195,11 @@ export function NewInstancePage() {
 
         <section className="min-w-0 rounded-dialog border border-app-separator/70 bg-app-surface p-6">
           {step === 1 ? (
-            <ExperienceStep mode={mode} onSelect={selectMode} />
+            <ExperienceStep
+              mode={mode}
+              slateClientAvailable={slateClientCapability?.available === true}
+              onSelect={selectMode}
+            />
           ) : step === 2 ? (
             <ConfigurationStep
               name={name}
@@ -278,9 +291,11 @@ export function NewInstancePage() {
 
 function ExperienceStep({
   mode,
+  slateClientAvailable,
   onSelect,
 }: {
   mode: CreateInstanceInput["mode"];
+  slateClientAvailable: boolean;
   onSelect: (mode: CreateInstanceInput["mode"]) => void;
 }) {
   const experiences = [
@@ -303,7 +318,7 @@ function ExperienceStep({
       title: "Slate Client",
       description: "Performance, HUD, accessibility, QoL, creator, and optional PvP tools.",
       icon: Sparkles,
-      available: false,
+      available: slateClientAvailable,
     },
   ];
   return (
