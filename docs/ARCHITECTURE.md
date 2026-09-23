@@ -22,6 +22,8 @@ while the launcher validates and applies that plan to disk.
 - `slate-modpack-api-contracts`: versioned HTTP request, response, envelope, content, and install-plan
   types shared by the API and client.
 - `slate-contracts`: renderer-safe Tauri DTOs and the JSON Schema registry.
+- `slate-client-protocol`: bounded, versioned, process-bound handshake validation between the
+  launcher and Kotlin client adapters.
 - `slate-auth`: Microsoft PKCE, Xbox/Minecraft token exchange, profile validation, skin lookup, and
   operating-system credential-vault access.
 - `slate-minecraft`: Mojang metadata, version inheritance, artifacts, rules, and shell-free launch

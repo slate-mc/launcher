@@ -97,6 +97,10 @@ Last updated: September 22, 2026
   the desktop UI. Existing local records remain readable through a private legacy storage mapping.
   The creation card describes the full client platform and stays unavailable until launcher-owned
   artifact installation is complete; PvP remains an optional module/preset rather than a mode.
+- A Rust launcher/Kotlin handshake contract now parses only bounded regular files and validates the
+  schema/protocol, exact Minecraft/loader/Java target, process ID, session freshness, module IDs,
+  semantic versions, uniqueness, and accepted adapter status. Contract-only adapters cannot satisfy
+  the future active-client gate.
 
 ## Verification evidence
 

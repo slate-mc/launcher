@@ -16,6 +16,7 @@ Tailwind CSS v4. Local instance data crosses a small typed Tauri command facade 
 - services/modpack-api — normalized provider, install-plan, release, telemetry, and support API
 - crates/domain — stable IDs and pure business/state policies
 - crates/contracts — versioned renderer-safe IPC DTOs and schema registry
+- crates/client-protocol — bounded, exact-target launcher/Kotlin handshake validation
 - crates/modpack-api-contracts — versioned public HTTP contract shared by API and launcher
 - crates/platform — application paths and managed relative-path validation
 - crates/storage — SQLite connection policy, migrations, and repositories

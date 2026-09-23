@@ -1,5 +1,6 @@
 //! Supervised game process ownership for slate.
 
+use slate_client_protocol::{ClientHandshake, ExpectedClient};
 use slate_domain::{InstanceId, SessionId};
 use slate_minecraft::LaunchPlan;
 use std::collections::BTreeMap;
@@ -292,6 +293,25 @@ impl ProcessSupervisor {
         }))
     }
 
+    pub fn validate_client_handshake(
+        &self,
+        instance_id: InstanceId,
+        handshake_path: &std::path::Path,
+        mut expected: ExpectedClient,
+    ) -> Result<ClientHandshake, ProcessError> {
+        let children = self
+            .children
+            .lock()
+            .map_err(|_| ProcessError::LockPoisoned)?;
+        let process = children
+            .get(&instance_id)
+            .ok_or(ProcessError::SessionNotFound)?;
+        expected.process_id = u64::from(process.pid);
+        let handshake = ClientHandshake::read(handshake_path)?;
+        handshake.validate(&expected)?;
+        Ok(handshake)
+    }
+
     pub fn force_stop(&self, session_id: SessionId) -> Result<ActiveProcess, ProcessError> {
         let mut children = self
             .children
@@ -412,6 +432,8 @@ pub enum ProcessError {
     AffinityUnavailable,
     #[error("process I/O failed")]
     Io(#[from] std::io::Error),
+    #[error("Slate Client did not complete its verified handshake")]
+    ClientHandshake(#[from] slate_client_protocol::ClientHandshakeError),
 }
 
 #[cfg(test)]
@@ -420,6 +442,7 @@ mod tests {
         ChildProcessPriority, LOG_SNAPSHOT_BYTES, LogChunkKind, ProcessError, ProcessState,
         ProcessSupervisor, SessionLogTail,
     };
+    use slate_client_protocol::{ClientLoader, ExpectedClient};
     use slate_domain::{InstanceId, SessionId};
     use slate_minecraft::{LaunchArgument, LaunchPlan};
     use std::time::Duration;
@@ -528,6 +551,41 @@ mod tests {
             ),
             Err(ProcessError::InstanceAlreadyRunning)
         ));
+        let handshake_path = directory.path().join("client-handshake.json");
+        std::fs::write(
+            &handshake_path,
+            format!(
+                r#"{{
+                    "schema": 1,
+                    "protocolVersion": 1,
+                    "processId": {},
+                    "startedAtEpochMillis": 1000,
+                    "adapterStatus": "contract_only",
+                    "target": {{
+                        "minecraftVersion": "1.21.1",
+                        "loader": "fabric",
+                        "loaderVersion": "0.19.5",
+                        "javaMajor": 21
+                    }},
+                    "modules": []
+                }}"#,
+                started.pid
+            ),
+        )?;
+        let handshake = supervisor.validate_client_handshake(
+            instance_id,
+            &handshake_path,
+            ExpectedClient {
+                process_id: 0,
+                started_at_epoch_millis_minimum: 999,
+                minecraft_version: "1.21.1".to_owned(),
+                loader: ClientLoader::Fabric,
+                loader_version: "0.19.5".to_owned(),
+                java_major: 21,
+                require_active_adapter: false,
+            },
+        )?;
+        assert_eq!(handshake.process_id, u64::from(started.pid));
         assert_eq!(
             supervisor.force_stop(session_id)?.state,
             ProcessState::Stopping

@@ -5176,6 +5176,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "slate-client-protocol"
+version = "0.1.0"
+dependencies = [
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "slate-contracts"
 version = "0.1.0"
 dependencies = [
@@ -5376,6 +5387,7 @@ dependencies = [
 name = "slate-process"
 version = "0.1.0"
 dependencies = [
+ "slate-client-protocol",
  "slate-domain",
  "slate-minecraft",
  "tempfile",
