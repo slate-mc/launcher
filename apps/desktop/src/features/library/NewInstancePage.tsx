@@ -6,7 +6,7 @@ import {
   Box,
   Check,
   Layers3,
-  Shield,
+  Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import { ComboBox } from "../../components/ComboBox";
@@ -289,18 +289,21 @@ function ExperienceStep({
       title: "Vanilla",
       description: "Minecraft without a mod loader.",
       icon: Box,
+      available: true,
     },
     {
       id: "modded" as const,
       title: "Modded",
       description: "Use Fabric or NeoForge for mods and modpacks.",
       icon: Layers3,
+      available: true,
     },
     {
-      id: "pvp" as const,
-      title: "PvP",
-      description: "A separate setup for multiplayer controls and performance settings.",
-      icon: Shield,
+      id: "slateClient" as const,
+      title: "Slate Client",
+      description: "Performance, HUD, accessibility, QoL, creator, and optional PvP tools.",
+      icon: Sparkles,
+      available: false,
     },
   ];
   return (
@@ -322,11 +325,12 @@ function ExperienceStep({
               key={experience.id}
               type="button"
               aria-pressed={mode === experience.id}
+              disabled={!experience.available}
               className={`min-h-[168px] rounded-control border p-4 text-left transition-colors ${
                 mode === experience.id
                   ? "border-app-accent bg-app-accent/8"
                   : "border-app-separator bg-app-bg hover:bg-app-hover/45"
-              }`}
+              } disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-app-bg`}
               onClick={() => onSelect(experience.id)}
             >
               <span className="inline-flex size-9 items-center justify-center rounded-lg bg-app-raised text-app-accent">
@@ -338,6 +342,11 @@ function ExperienceStep({
               <span className="mt-1.5 block text-[11px]/[17px] text-app-secondary">
                 {experience.description}
               </span>
+              {!experience.available ? (
+                <span className="mt-3 inline-flex rounded-full border border-app-separator px-2 py-1 font-mono text-[9px] tracking-[.08em] text-app-muted uppercase">
+                  In development
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -423,9 +432,6 @@ function ConfigurationStep(props: {
               : [
                   { value: "fabric", label: "Fabric" },
                   { value: "neoForge", label: "NeoForge" },
-                  ...(props.mode === "pvp"
-                    ? [{ value: "vanilla", label: "Vanilla" }]
-                    : []),
                 ]
           }
           disabled={props.mode === "vanilla"}

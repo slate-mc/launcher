@@ -50,7 +50,7 @@ pub enum InstanceNameError {
 pub enum InstanceMode {
     Vanilla,
     Modded,
-    Pvp,
+    SlateClient,
 }
 
 impl InstanceMode {
@@ -59,7 +59,9 @@ impl InstanceMode {
         match self {
             Self::Vanilla => "vanilla",
             Self::Modded => "modded",
-            Self::Pvp => "pvp",
+            // Keep the legacy value readable until the instance table is rebuilt in a later
+            // storage migration. It is never exposed through the public contract.
+            Self::SlateClient => "pvp",
         }
     }
 }
@@ -71,7 +73,7 @@ impl TryFrom<&str> for InstanceMode {
         match value {
             "vanilla" => Ok(Self::Vanilla),
             "modded" => Ok(Self::Modded),
-            "pvp" => Ok(Self::Pvp),
+            "pvp" | "slate_client" => Ok(Self::SlateClient),
             other => Err(UnknownInstanceMode(other.to_owned())),
         }
     }
@@ -205,7 +207,7 @@ pub struct UnknownInstanceSetupState(String);
 
 #[cfg(test)]
 mod tests {
-    use super::{InstanceName, LoaderFamily};
+    use super::{InstanceMode, InstanceName, LoaderFamily};
 
     #[test]
     fn trims_and_validates_instance_names() -> Result<(), Box<dyn std::error::Error>> {
@@ -222,5 +224,16 @@ mod tests {
         assert!(!LoaderFamily::Vanilla.requires_version());
         assert!(LoaderFamily::Fabric.requires_version());
         assert!(LoaderFamily::NeoForge.requires_version());
+    }
+
+    #[test]
+    fn legacy_pvp_storage_value_loads_as_slate_client() -> Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(InstanceMode::try_from("pvp")?, InstanceMode::SlateClient);
+        assert_eq!(
+            InstanceMode::try_from("slate_client")?,
+            InstanceMode::SlateClient
+        );
+        assert_eq!(InstanceMode::SlateClient.as_storage_value(), "pvp");
+        Ok(())
     }
 }

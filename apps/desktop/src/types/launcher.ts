@@ -35,7 +35,11 @@ export const supportReportSubmissionSchema = z.object({
 });
 
 export const loaderKindSchema = z.enum(["vanilla", "fabric", "neoForge"]);
-export const instanceModeSchema = z.enum(["vanilla", "modded", "pvp"]);
+export const instanceModeSchema = z.enum([
+  "vanilla",
+  "modded",
+  "slateClient",
+]);
 export const setupStateSchema = z.enum([
   "configured",
   "preparing",
@@ -218,11 +222,11 @@ export const createInstanceSchema = z
         message: "Vanilla instances cannot use a mod loader.",
       });
     }
-    if (value.mode === "modded" && value.loaderKind === "vanilla") {
+    if (value.mode !== "vanilla" && value.loaderKind === "vanilla") {
       context.addIssue({
         code: "custom",
         path: ["loaderKind"],
-        message: "Modded instances require Fabric or NeoForge.",
+        message: "Modded and Slate Client instances require Fabric or NeoForge.",
       });
     }
     if (value.loaderKind !== "vanilla" && !value.loaderVersion?.trim().length) {

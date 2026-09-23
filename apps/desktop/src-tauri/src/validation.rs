@@ -23,7 +23,9 @@ pub(super) fn validate_instance_configuration(
     if mode == InstanceModeDto::Vanilla && loader_kind != LoaderKindDto::Vanilla {
         return Err(ConfigurationValidationError::VanillaLoader);
     }
-    if mode == InstanceModeDto::Modded && loader_kind == LoaderKindDto::Vanilla {
+    if matches!(mode, InstanceModeDto::Modded | InstanceModeDto::SlateClient)
+        && loader_kind == LoaderKindDto::Vanilla
+    {
         return Err(ConfigurationValidationError::ModdedLoader);
     }
     let loader_version = loader_version
@@ -278,7 +280,7 @@ pub(super) fn validated_optional_server(value: Option<String>) -> Result<Option<
 
 pub(super) fn recommended_memory_mb(instance: &InstanceRecord) -> u32 {
     let baseline = match instance.mode {
-        slate_domain::InstanceMode::Vanilla | slate_domain::InstanceMode::Pvp => 4_096,
+        slate_domain::InstanceMode::Vanilla | slate_domain::InstanceMode::SlateClient => 4_096,
         slate_domain::InstanceMode::Modded => match instance.mod_count {
             0..=50 => 4_096,
             51..=150 => 6_144,

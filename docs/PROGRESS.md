@@ -93,6 +93,10 @@ Last updated: September 22, 2026
   client mod with a Kotlin entrypoint, bundled shared modules, exact manifest constraints, atomic
   process-bound handshake output, and cleanup on orderly shutdown. Its handshake remains
   `contract_only` until the artifact is installed by the launcher and passes a real-game run.
+- The old public `pvp` instance mode is now `slateClient` across Rust, IPC schemas, validation, and
+  the desktop UI. Existing local records remain readable through a private legacy storage mapping.
+  The creation card describes the full client platform and stays unavailable until launcher-owned
+  artifact installation is complete; PvP remains an optional module/preset rather than a mode.
 
 ## Verification evidence
 

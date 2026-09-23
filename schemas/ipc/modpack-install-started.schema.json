@@ -121,7 +121,7 @@
       "enum": [
         "vanilla",
         "modded",
-        "pvp"
+        "slateClient"
       ]
     },
     "InstanceSettingsSummary": {

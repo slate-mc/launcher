@@ -561,7 +561,7 @@ fn configuration_app_error(error: ConfigurationValidationError) -> AppError {
         .with_field_error("loaderKind", "Choose Vanilla for this experience."),
         ConfigurationValidationError::ModdedLoader => AppError::new(
             "validation.loader_mode",
-            "Modded instances require Fabric or NeoForge.",
+            "Modded and Slate Client instances require Fabric or NeoForge.",
         )
         .with_field_error("loaderKind", "Choose Fabric or NeoForge."),
         ConfigurationValidationError::LoaderVersionRequired => AppError::new(

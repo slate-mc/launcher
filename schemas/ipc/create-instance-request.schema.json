@@ -40,7 +40,7 @@
       "enum": [
         "vanilla",
         "modded",
-        "pvp"
+        "slateClient"
       ]
     },
     "LoaderKindDto": {

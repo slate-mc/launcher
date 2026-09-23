@@ -411,7 +411,7 @@ pub fn schema_documents() -> BTreeMap<&'static str, Schema> {
 #[cfg(test)]
 mod tests {
     use super::schema_documents;
-    use crate::{BootstrapResponse, CapabilitySummary};
+    use crate::{BootstrapResponse, CapabilitySummary, InstanceModeDto};
 
     #[test]
     fn bootstrap_wire_fields_are_camel_case() -> Result<(), serde_json::Error> {
@@ -435,5 +435,14 @@ mod tests {
         assert!(schemas.contains_key("app-error"));
         assert!(schemas.contains_key("event-envelope"));
         assert!(schemas.contains_key("support-report-submission"));
+    }
+
+    #[test]
+    fn slate_client_mode_has_a_product_level_wire_name() -> Result<(), serde_json::Error> {
+        let value = serde_json::to_value(InstanceModeDto::SlateClient)?;
+
+        assert_eq!(value, "slateClient");
+        assert_ne!(value, "pvp");
+        Ok(())
     }
 }

@@ -445,9 +445,6 @@ export function InstanceSettings({ instance }: { instance: LauncherInstance }) {
                 : [
                     { value: "fabric", label: "Fabric" },
                     { value: "neoForge", label: "NeoForge" },
-                    ...(instance.mode === "pvp"
-                      ? [{ value: "vanilla", label: "Vanilla" }]
-                      : []),
                   ]
             }
             disabled={instance.mode === "vanilla"}

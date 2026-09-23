@@ -10,7 +10,7 @@ use uuid::Uuid;
 pub enum InstanceModeDto {
     Vanilla,
     Modded,
-    Pvp,
+    SlateClient,
 }
 
 impl From<InstanceMode> for InstanceModeDto {
@@ -18,7 +18,7 @@ impl From<InstanceMode> for InstanceModeDto {
         match value {
             InstanceMode::Vanilla => Self::Vanilla,
             InstanceMode::Modded => Self::Modded,
-            InstanceMode::Pvp => Self::Pvp,
+            InstanceMode::SlateClient => Self::SlateClient,
         }
     }
 }
@@ -28,7 +28,7 @@ impl From<InstanceModeDto> for InstanceMode {
         match value {
             InstanceModeDto::Vanilla => Self::Vanilla,
             InstanceModeDto::Modded => Self::Modded,
-            InstanceModeDto::Pvp => Self::Pvp,
+            InstanceModeDto::SlateClient => Self::SlateClient,
         }
     }
 }
