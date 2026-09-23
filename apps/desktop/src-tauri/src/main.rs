@@ -4,6 +4,7 @@ mod account_commands;
 mod artwork_support;
 mod auth_support;
 mod catalog_commands;
+mod client_artifacts;
 mod content_commands;
 mod crash_diagnostics;
 mod crash_reporting;
@@ -49,6 +50,7 @@ use auth_support::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use catalog_commands::*;
+use client_artifacts::ClientArtifactCatalog;
 use content_commands::*;
 use crash_reporting::CrashReporting;
 use diagnostics::init_diagnostics;
@@ -154,7 +156,7 @@ use slate_domain::{
 use slate_installer::{
     ContentUpdateRequest, InstallProgress, InstallRequest as NativeInstallRequest,
     install_with_progress, load_installed_revision, update_content_with_progress,
-    verify_installed_launch_artifacts,
+    verify_installed_content_artifact, verify_installed_launch_artifacts,
 };
 use slate_loaders::{FabricAdapter, NeoForgeAdapter};
 use slate_minecraft::{
@@ -224,6 +226,7 @@ struct DesktopState {
     telemetry: ProductTelemetry,
     features: FeatureControls,
     crash_reporting: CrashReporting,
+    client_artifacts: ClientArtifactCatalog,
 }
 
 async fn preferred_storage_root_id(state: &DesktopState) -> Result<StorageRootId, AppError> {
@@ -485,10 +488,14 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         CapabilitySummary::available("metadata.minecraft"),
         CapabilitySummary::available("metadata.fabric"),
         CapabilitySummary::available("metadata.neoforge"),
-        CapabilitySummary::unavailable(
-            "slate.client",
-            "Slate Client is not available in this build yet.",
-        ),
+        if state.client_artifacts.is_available() {
+            CapabilitySummary::available("slate.client")
+        } else {
+            CapabilitySummary::unavailable(
+                "slate.client",
+                "Slate Client is not available in this build yet.",
+            )
+        },
         feature_capability("minecraft.install", features.installs_enabled),
         feature_capability("minecraft.launch", features.launch_enabled),
         CapabilitySummary::available("minecraft.session_logs"),
@@ -535,6 +542,7 @@ enum ConfigurationValidationError {
     MinecraftVersion,
     VanillaLoader,
     ModdedLoader,
+    UnsupportedSlateClientTarget,
     LoaderVersionRequired,
     VanillaLoaderVersion,
     Memory,
@@ -568,6 +576,14 @@ fn configuration_app_error(error: ConfigurationValidationError) -> AppError {
             "Modded and Slate Client instances require Fabric or NeoForge.",
         )
         .with_field_error("loaderKind", "Choose Fabric or NeoForge."),
+        ConfigurationValidationError::UnsupportedSlateClientTarget => AppError::new(
+            "validation.slate_client_target",
+            "This Slate Client build supports Minecraft 1.21.1 with Fabric 0.19.5.",
+        )
+        .with_field_error(
+            "minecraftVersion",
+            "Choose the Minecraft and loader version supported by this build.",
+        ),
         ConfigurationValidationError::LoaderVersionRequired => AppError::new(
             "validation.loader_version",
             "Fabric and NeoForge require a loader version.",
@@ -732,7 +748,7 @@ fn main() {
     );
     let setup_paths = boot_paths.clone();
     let setup_crash_reporting = crash_reporting.clone();
-    let application = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -741,8 +757,13 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init());
+    let builder = if option_env!("SLATE_UPDATER_ENABLED") == Some("1") {
+        builder.plugin(tauri_plugin_updater::Builder::new().build())
+    } else {
+        builder
+    };
+    let application = builder
         .setup(move |app| {
             let paths = setup_paths.clone();
             let database =
@@ -770,6 +791,7 @@ fn main() {
                 database.clone(),
                 modpacks.clone(),
             ))?;
+            let client_artifacts = ClientArtifactCatalog::discover(app.handle());
             let state = DesktopState {
                 database,
                 paths,
@@ -784,6 +806,7 @@ fn main() {
                 telemetry: telemetry.clone(),
                 features: features.clone(),
                 crash_reporting: setup_crash_reporting.clone(),
+                client_artifacts,
             };
             app.manage(state.clone());
             tauri::async_runtime::spawn(purge_expired_instance_trash(state));

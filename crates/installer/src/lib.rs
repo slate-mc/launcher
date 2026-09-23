@@ -12,7 +12,7 @@ use artifact_manifest::{
 };
 use natives::extract_natives;
 
-pub use artifact_manifest::verify_installed_launch_artifacts;
+pub use artifact_manifest::{verify_installed_content_artifact, verify_installed_launch_artifacts};
 pub use download::{DownloadError, DownloadProgress, DownloadSummary, Downloader};
 pub use modpack::{ContentInstallError, PendingContentCommit};
 pub use runtime::{ManagedJavaRuntime, RuntimeInstallError, ensure_managed_java};
@@ -48,9 +48,18 @@ pub struct InstallRequest {
     pub loader_kind: LoaderFamily,
     pub loader_version: Option<String>,
     pub modpack_plan: Option<InstallPlan>,
+    pub managed_content: Vec<ManagedContentArtifact>,
     pub download_concurrency: u8,
     pub download_bandwidth_limit_mib: u32,
     pub paths: AppPaths,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ManagedContentArtifact {
+    pub source_path: PathBuf,
+    pub destination: String,
+    pub sha256: String,
+    pub display_name: String,
 }
 
 #[derive(Clone, Debug)]
@@ -334,15 +343,19 @@ where
         "Extracting native libraries",
     ));
     extract_natives(full_install.native_extractions).await?;
-    let installed_content = if let Some(plan) = &request.modpack_plan {
+    let installed_content = if request.modpack_plan.is_some() || !request.managed_content.is_empty()
+    {
         Some(
             modpack::install_plan_content(
-                plan,
-                &layout.game_directory,
-                &revision_directory,
-                request.paths.storage_root(),
-                request.download_concurrency,
-                request.download_bandwidth_limit_mib,
+                modpack::ContentInstallRequest {
+                    plan: request.modpack_plan.as_ref(),
+                    managed_content: &request.managed_content,
+                    game_directory: &layout.game_directory,
+                    revision_directory: &revision_directory,
+                    storage_root: request.paths.storage_root(),
+                    download_concurrency: request.download_concurrency,
+                    download_bandwidth_limit_mib: request.download_bandwidth_limit_mib,
+                },
                 |completed, total, message| {
                     on_progress(InstallProgress {
                         phase: InstallPhase::Content,
@@ -458,12 +471,15 @@ where
     tokio::task::spawn_blocking(move || clone_directory_tree(&parent_natives, &revision_natives))
         .await??;
     let installed_content = modpack::install_plan_content(
-        &request.plan,
-        &game_directory,
-        &revision_directory,
-        request.paths.storage_root(),
-        request.download_concurrency,
-        request.download_bandwidth_limit_mib,
+        modpack::ContentInstallRequest {
+            plan: Some(&request.plan),
+            managed_content: &[],
+            game_directory: &game_directory,
+            revision_directory: &revision_directory,
+            storage_root: request.paths.storage_root(),
+            download_concurrency: request.download_concurrency,
+            download_bandwidth_limit_mib: request.download_bandwidth_limit_mib,
+        },
         |completed, total, message| {
             on_progress(InstallProgress {
                 phase: InstallPhase::Content,

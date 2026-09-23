@@ -95,6 +95,7 @@ pub(super) async fn instance_launch(
     let layers = installed.metadata_layers;
     let runtime = installed.runtime;
     let installed_artifacts = installed.launch_artifacts;
+    let installed_content_artifacts = installed.content_artifacts;
     if runtime.executable != revision.runtime_executable
         || runtime.major_version != revision.runtime_major
     {
@@ -247,6 +248,25 @@ pub(super) async fn instance_launch(
             "A required game file is missing, changed, or corrupt. Reinstall the instance.",
         )
     })?;
+    for artifact in state.client_artifacts.for_instance(&instance)? {
+        verify_installed_content_artifact(
+            state.paths.storage_root(),
+            &state
+                .paths
+                .instance(instance_id)
+                .join("game")
+                .join(&artifact.destination),
+            &artifact.sha256,
+            &installed_content_artifacts,
+        )
+        .await
+        .map_err(|_| {
+            AppError::new(
+                "local.slate_client_invalid",
+                "Slate Client is missing or changed. Repair the instance before launching.",
+            )
+        })?;
+    }
 
     let session_id = SessionId::new();
     state

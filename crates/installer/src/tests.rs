@@ -16,6 +16,7 @@ fn validates_loader_version_shape() {
         loader_kind: LoaderFamily::Fabric,
         loader_version: None,
         modpack_plan: None,
+        managed_content: Vec::new(),
         download_concurrency: 4,
         download_bandwidth_limit_mib: 0,
         paths: AppPaths::from_roots(PathBuf::from("C:/slate"), PathBuf::from("C:/slate/storage")),
@@ -44,6 +45,22 @@ fn installed_artifact_declarations_are_unique_and_managed() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn artifact_paths_accept_equivalent_canonical_windows_roots()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let artifact = directory.path().join("artifacts/example.jar");
+    std::fs::create_dir_all(artifact.parent().ok_or("artifact parent is missing")?)?;
+    std::fs::write(&artifact, b"artifact")?;
+
+    let canonical_artifact = std::fs::canonicalize(&artifact)?;
+    assert_eq!(
+        relative_artifact_path(directory.path(), &canonical_artifact)?,
+        "artifacts/example.jar"
+    );
+    Ok(())
 }
 
 #[tokio::test]

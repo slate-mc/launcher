@@ -1,4 +1,6 @@
-use super::{InstallRequest, InstalledArtifactDigest, download::BandwidthThrottle};
+use super::{
+    InstallRequest, InstalledArtifactDigest, ManagedContentArtifact, download::BandwidthThrottle,
+};
 use futures_util::{StreamExt, TryStreamExt, stream};
 use reqwest::{Client, StatusCode};
 use sha1::Sha1;
@@ -23,6 +25,8 @@ const MAX_TOTAL_DOWNLOAD_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 200_000;
 const MAX_EXTRACTED_BYTES: u64 = 32 * 1024 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 5;
+const MAX_MANAGED_CONTENT_ARTIFACTS: usize = 32;
+const MAX_MANAGED_CONTENT_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct PendingContentCommit {
@@ -87,6 +91,16 @@ pub(super) struct InstalledContent {
     pub transaction: PendingContentCommit,
 }
 
+pub(super) struct ContentInstallRequest<'a> {
+    pub plan: Option<&'a InstallPlan>,
+    pub managed_content: &'a [ManagedContentArtifact],
+    pub game_directory: &'a Path,
+    pub revision_directory: &'a Path,
+    pub storage_root: &'a Path,
+    pub download_concurrency: u8,
+    pub download_bandwidth_limit_mib: u32,
+}
+
 pub(super) fn validate_plan_compatibility(
     request: &InstallRequest,
     plan: &InstallPlan,
@@ -143,18 +157,25 @@ pub(super) fn validate_plan_target(
 }
 
 pub(super) async fn install_plan_content<F>(
-    plan: &InstallPlan,
-    game_directory: &Path,
-    revision_directory: &Path,
-    storage_root: &Path,
-    download_concurrency: u8,
-    download_bandwidth_limit_mib: u32,
+    request: ContentInstallRequest<'_>,
     on_progress: F,
 ) -> Result<InstalledContent, ContentInstallError>
 where
     F: Fn(u64, u64, String) + Send + Sync,
 {
-    validate_plan_shape(plan)?;
+    let ContentInstallRequest {
+        plan,
+        managed_content,
+        game_directory,
+        revision_directory,
+        storage_root,
+        download_concurrency,
+        download_bandwidth_limit_mib,
+    } = request;
+    if let Some(plan) = plan {
+        validate_plan_shape(plan)?;
+    }
+    validate_managed_content(plan, managed_content)?;
     let staging = revision_directory.join("content-staging");
     let backup = revision_directory.join("content-backup");
     remove_managed_path(&staging).await?;
@@ -167,11 +188,13 @@ where
         .redirect(reqwest::redirect::Policy::none())
         .user_agent("slate-launcher/0.1 (+https://slatelauncher.org)")
         .build()?;
-    let total = u64::try_from(plan.downloads.len()).unwrap_or(u64::MAX);
+    let downloads = plan.map_or(&[][..], |plan| plan.downloads.as_slice());
+    let total_items = downloads.len().saturating_add(managed_content.len());
+    let total = u64::try_from(total_items).unwrap_or(u64::MAX);
     let throttle = BandwidthThrottle::from_mebibytes(download_bandwidth_limit_mib)?;
     on_progress(0, total, "Preparing modpack content".to_owned());
     let completed = AtomicU64::new(0);
-    let staged_downloads = stream::iter(plan.downloads.iter().cloned())
+    let staged_downloads = stream::iter(downloads.iter().cloned())
         .map(|download| {
             let client = client.clone();
             let staging = staging.clone();
@@ -208,8 +231,18 @@ where
         .try_collect::<BTreeMap<_, _>>()
         .await?;
 
-    let extract_total = plan.extract.len();
-    for (index, action) in plan.extract.iter().enumerate() {
+    stage_managed_content(
+        managed_content,
+        &staging,
+        u64::try_from(downloads.len()).unwrap_or(u64::MAX),
+        total,
+        &on_progress,
+    )
+    .await?;
+
+    let extract = plan.map_or(&[][..], |plan| plan.extract.as_slice());
+    let extract_total = extract.len();
+    for (index, action) in extract.iter().enumerate() {
         on_progress(
             total,
             total,
@@ -242,7 +275,7 @@ where
     let staging_for_commit = staging.clone();
     let game_for_commit = game_directory.to_path_buf();
     let backup_for_commit = backup.clone();
-    let deletes = plan.delete.clone();
+    let deletes = plan.map_or_else(Vec::new, |plan| plan.delete.clone());
     let transaction = tokio::task::spawn_blocking(move || {
         commit_staged_content(
             &staging_for_commit,
@@ -278,6 +311,80 @@ where
         artifacts,
         transaction,
     })
+}
+
+fn validate_managed_content(
+    plan: Option<&InstallPlan>,
+    managed_content: &[ManagedContentArtifact],
+) -> Result<(), ContentInstallError> {
+    if managed_content.len() > MAX_MANAGED_CONTENT_ARTIFACTS {
+        return Err(ContentInstallError::PlanTooLarge);
+    }
+    let mut destinations = BTreeSet::new();
+    if let Some(plan) = plan {
+        for download in &plan.downloads {
+            destinations.insert(validate_relative_path(&download.destination, true)?);
+        }
+    }
+    for artifact in managed_content {
+        let destination = validate_relative_path(&artifact.destination, false)?;
+        if !destinations.insert(destination) {
+            return Err(ContentInstallError::DuplicateDestination);
+        }
+        if !super::valid_sha256(&artifact.sha256)
+            || artifact.display_name.trim().is_empty()
+            || artifact.display_name.chars().count() > 96
+        {
+            return Err(ContentInstallError::InvalidHash);
+        }
+    }
+    Ok(())
+}
+
+async fn stage_managed_content<F>(
+    artifacts: &[ManagedContentArtifact],
+    staging: &Path,
+    completed_downloads: u64,
+    total: u64,
+    on_progress: &F,
+) -> Result<(), ContentInstallError>
+where
+    F: Fn(u64, u64, String) + Send + Sync,
+{
+    for (index, artifact) in artifacts.iter().enumerate() {
+        let metadata = tokio::fs::symlink_metadata(&artifact.source_path).await?;
+        if !metadata.is_file()
+            || metadata.file_type().is_symlink()
+            || metadata.len() > MAX_MANAGED_CONTENT_BYTES
+        {
+            return Err(ContentInstallError::UnsafePath);
+        }
+        let destination = staging.join(validate_relative_path(&artifact.destination, false)?);
+        if let Some(parent) = destination.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let completed =
+            completed_downloads.saturating_add(u64::try_from(index).unwrap_or(u64::MAX));
+        on_progress(
+            completed,
+            total,
+            format!("Installing {}", artifact.display_name),
+        );
+        tokio::fs::copy(&artifact.source_path, &destination).await?;
+        let destination_for_hash = destination.clone();
+        let actual = tokio::task::spawn_blocking(move || super::sha256_file(&destination_for_hash))
+            .await??;
+        if actual != artifact.sha256.to_ascii_lowercase() {
+            let _ = tokio::fs::remove_file(destination).await;
+            return Err(ContentInstallError::HashMismatch);
+        }
+        on_progress(
+            completed.saturating_add(1),
+            total,
+            format!("Verified {}", artifact.display_name),
+        );
+    }
+    Ok(())
 }
 
 fn content_download_label(download: &InstallPlanDownload) -> String {
@@ -852,10 +959,55 @@ pub enum ContentInstallError {
 #[cfg(test)]
 mod tests {
     use super::{
-        ContentInstallError, commit_staged_content, content_download_label, format_download_size,
-        validate_archive_prefix, validate_download_url, validate_relative_path,
+        ContentInstallError, ContentInstallRequest, commit_staged_content, content_download_label,
+        format_download_size, install_plan_content, validate_archive_prefix, validate_download_url,
+        validate_relative_path,
     };
+    use crate::ManagedContentArtifact;
     use slate_modpack_api_contracts::{DownloadSource, Hashes, InstallPlanDownload};
+
+    #[tokio::test]
+    async fn managed_client_content_is_verified_and_transactional()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = tempfile::tempdir()?;
+        let source = temporary.path().join("slate-client.jar");
+        std::fs::write(&source, b"verified client")?;
+        let sha256 = super::super::sha256_file(&source)?;
+        let game = temporary.path().join("instances/example/game");
+        let revision = temporary
+            .path()
+            .join("instances/example/revisions/revision");
+        std::fs::create_dir_all(&game)?;
+        std::fs::create_dir_all(&revision)?;
+
+        let installed = install_plan_content(
+            ContentInstallRequest {
+                plan: None,
+                managed_content: &[ManagedContentArtifact {
+                    source_path: source,
+                    destination: "mods/slate-client.jar".to_owned(),
+                    sha256,
+                    display_name: "Slate Client".to_owned(),
+                }],
+                game_directory: &game,
+                revision_directory: &revision,
+                storage_root: temporary.path(),
+                download_concurrency: 1,
+                download_bandwidth_limit_mib: 0,
+            },
+            |_, _, _| {},
+        )
+        .await?;
+
+        assert_eq!(installed.artifacts.len(), 1);
+        assert_eq!(
+            std::fs::read(game.join("mods/slate-client.jar"))?,
+            b"verified client"
+        );
+        installed.transaction.rollback()?;
+        assert!(!game.join("mods/slate-client.jar").exists());
+        Ok(())
+    }
 
     #[test]
     fn paths_cannot_escape_or_use_reserved_storage() {

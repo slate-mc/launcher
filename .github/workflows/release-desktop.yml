@@ -57,6 +57,12 @@ jobs:
           toolchain: 1.95.0
           targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
       - name: Install Linux desktop dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -68,6 +74,10 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+
+      - name: Build verified Slate Client artifacts
+        shell: bash
+        run: ./gradlew stageDesktopClientArtifacts --no-daemon
 
       - name: Prepare signed updater configuration
         run: node tools/write-tauri-release-config.mjs

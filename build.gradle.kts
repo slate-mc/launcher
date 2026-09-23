@@ -103,3 +103,9 @@ tasks.register("clientCheck") {
     dependsOn(subprojects.map { "${it.path}:spotlessCheck" })
     dependsOn(":client-benchmarks:jmhClasses")
 }
+
+tasks.register("stageDesktopClientArtifacts") {
+    group = "distribution"
+    description = "Stages every verified Slate Client adapter bundled by the desktop launcher."
+    dependsOn(":client-adapter-fabric:stageDesktopClientArtifacts")
+}

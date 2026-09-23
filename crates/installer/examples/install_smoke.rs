@@ -154,6 +154,7 @@ async fn verify_install(
         loader_kind,
         loader_version: loader_version.clone(),
         modpack_plan,
+        managed_content: Vec::new(),
         download_concurrency: 8,
         download_bandwidth_limit_mib: 0,
         paths: paths.clone(),

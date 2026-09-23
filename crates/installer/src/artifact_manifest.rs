@@ -49,6 +49,31 @@ pub async fn verify_installed_launch_artifacts(
     .await?
 }
 
+pub async fn verify_installed_content_artifact(
+    storage_root: &Path,
+    target: &Path,
+    expected_sha256: &str,
+    installed: &[InstalledArtifactDigest],
+) -> Result<(), InstallError> {
+    if !valid_sha256(expected_sha256) {
+        return Err(InstallError::InvalidInstalledManifest);
+    }
+    let relative = relative_artifact_path(storage_root, target)?;
+    let declared = installed
+        .iter()
+        .find(|artifact| artifact.relative_path == relative)
+        .ok_or_else(|| InstallError::LaunchArtifactNotDeclared(relative.clone()))?;
+    if declared.sha256 != expected_sha256.to_ascii_lowercase() {
+        return Err(InstallError::InstalledArtifactHashMismatch(relative));
+    }
+    let target = target.to_path_buf();
+    let actual = tokio::task::spawn_blocking(move || sha256_file(&target)).await??;
+    if actual != declared.sha256 {
+        return Err(InstallError::InstalledArtifactHashMismatch(relative));
+    }
+    Ok(())
+}
+
 pub(super) fn validate_installed_artifact_declarations(
     artifacts: &[InstalledArtifactDigest],
 ) -> Result<(), InstallError> {
@@ -70,9 +95,16 @@ pub(super) fn validate_installed_artifact_declarations(
 }
 
 pub(super) fn relative_artifact_path(root: &Path, target: &Path) -> Result<String, InstallError> {
-    let relative = target
-        .strip_prefix(root)
-        .map_err(|_| InstallError::ArtifactOutsideStorageRoot)?;
+    let relative = match (std::fs::canonicalize(root), std::fs::canonicalize(target)) {
+        (Ok(canonical_root), Ok(canonical_target)) => canonical_target
+            .strip_prefix(canonical_root)
+            .map(Path::to_path_buf)
+            .map_err(|_| InstallError::ArtifactOutsideStorageRoot)?,
+        _ => target
+            .strip_prefix(root)
+            .map(Path::to_path_buf)
+            .map_err(|_| InstallError::ArtifactOutsideStorageRoot)?,
+    };
     let mut segments = Vec::new();
     for component in relative.components() {
         let Component::Normal(segment) = component else {

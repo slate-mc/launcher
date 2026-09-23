@@ -87,6 +87,13 @@ export function NewInstancePage() {
     setMode(value);
     if (value === "vanilla") {
       setLoaderKind("vanilla");
+    } else if (value === "slateClient") {
+      setMinecraftVersion("1.21.1");
+      setLoaderKind("fabric");
+      setLoaderSelection({
+        catalogKey: "1.21.1|fabric",
+        value: "0.19.5",
+      });
     } else if (loaderKind === "vanilla") {
       setLoaderKind("fabric");
     }
@@ -400,7 +407,9 @@ function ConfigurationStep(props: {
         Choose your game version
       </h2>
       <p className="mt-0 mb-5 text-xs text-app-secondary">
-        Choose Minecraft first, then pick one of the compatible loader versions.
+        {props.mode === "slateClient"
+          ? "This build uses Minecraft 1.21.1 with Fabric 0.19.5."
+          : "Choose Minecraft first, then pick one of the compatible loader versions."}
       </p>
 
       <div className="grid grid-cols-2 gap-5">
@@ -425,7 +434,9 @@ function ConfigurationStep(props: {
             }))}
             placeholder={props.versionsPending ? "Loading releases…" : "Choose a release"}
             emptyText="No matching Minecraft releases"
-            disabled={props.versionsPending || props.versionsError}
+            disabled={
+              props.mode === "slateClient" || props.versionsPending || props.versionsError
+            }
             onValueChange={props.onMinecraftVersionChange}
           />
           {props.versionsError ? (
@@ -449,7 +460,7 @@ function ConfigurationStep(props: {
                   { value: "neoForge", label: "NeoForge" },
                 ]
           }
-          disabled={props.mode === "vanilla"}
+          disabled={props.mode === "vanilla" || props.mode === "slateClient"}
           onValueChange={(value) => props.onLoaderChange(value as LoaderKind)}
         />
         <div>
@@ -478,6 +489,7 @@ function ConfigurationStep(props: {
             disabled={
               !props.minecraftVersion ||
               props.loaderKind === "vanilla" ||
+              props.mode === "slateClient" ||
               props.loaderPending ||
               props.loaderVersions.length === 0
             }

@@ -268,6 +268,7 @@ pub(super) async fn queue_instance_install(
         .await;
     let response = supervised_install_job_summary(state, pending.job.clone());
     let install_paths = paths_for_instance(state, &instance);
+    let managed_content = state.client_artifacts.for_instance(&instance)?;
     let target_loader_version = modpack_update.as_ref().map_or_else(
         || instance.loader_version.clone(),
         |update| update.loader_version.clone(),
@@ -349,6 +350,7 @@ pub(super) async fn queue_instance_install(
                             loader_kind: instance.loader_kind,
                             loader_version: target_loader_version,
                             modpack_plan,
+                            managed_content,
                             download_concurrency: preferences.download_concurrency,
                             download_bandwidth_limit_mib: preferences.download_bandwidth_limit_mib,
                             paths: install_paths,

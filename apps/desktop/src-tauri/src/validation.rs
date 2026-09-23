@@ -28,6 +28,13 @@ pub(super) fn validate_instance_configuration(
     {
         return Err(ConfigurationValidationError::ModdedLoader);
     }
+    if mode == InstanceModeDto::SlateClient
+        && (version != "1.21.1"
+            || loader_kind != LoaderKindDto::Fabric
+            || loader_version.map(str::trim) != Some("0.19.5"))
+    {
+        return Err(ConfigurationValidationError::UnsupportedSlateClientTarget);
+    }
     let loader_version = loader_version
         .map(str::trim)
         .filter(|value| !value.is_empty());

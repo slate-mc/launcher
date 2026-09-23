@@ -8,6 +8,9 @@
 **/test-results/
 /graphify-out/
 apps/desktop/src-tauri/tauri.release.generated.json
+apps/desktop/src-tauri/resources/client/generated/
+desktop-resources/client/*
+!desktop-resources/client/.gitkeep
 /.idea/
 /.vscode/
 /.env
