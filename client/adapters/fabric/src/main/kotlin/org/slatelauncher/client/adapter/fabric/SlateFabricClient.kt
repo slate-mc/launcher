@@ -4,6 +4,7 @@ import java.time.Clock
 import java.util.concurrent.atomic.AtomicBoolean
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.loader.api.FabricLoader
+import org.slatelauncher.client.adapter.fabric.ui.SlateScreenController
 import org.slatelauncher.client.api.GameTarget
 import org.slatelauncher.client.api.LoaderKind
 import org.slatelauncher.client.api.ModuleContext
@@ -11,7 +12,9 @@ import org.slatelauncher.client.api.ModuleEventSink
 import org.slatelauncher.client.api.ModuleTarget
 import org.slatelauncher.client.modules.accessibility.StandardAccessibilityModule
 import org.slatelauncher.client.modules.performance.StandardPerformanceModule
+import org.slatelauncher.client.modules.pvp.StandardPvpModule
 import org.slatelauncher.client.modules.qol.StandardQolModule
+import org.slatelauncher.client.modules.visual.StandardVisualModule
 import org.slatelauncher.client.runtime.ModuleSupervisor
 import org.slf4j.LoggerFactory
 
@@ -47,6 +50,8 @@ public class SlateFabricClient : ClientModInitializer {
                 StandardPerformanceModule(moduleTarget),
                 StandardAccessibilityModule(moduleTarget),
                 StandardQolModule(moduleTarget),
+                StandardVisualModule(moduleTarget),
+                StandardPvpModule(moduleTarget),
             )
         val context = ModuleContext(target, loggingEventSink())
         val supervisor = ModuleSupervisor(modules, context)
@@ -62,6 +67,10 @@ public class SlateFabricClient : ClientModInitializer {
             processId = ProcessHandle.current().pid(),
             startedAtEpochMillis = Clock.systemUTC().millis(),
         )
+        SlateScreenController(
+            supervisor = supervisor,
+            clientVersion = loader.requiredVersionOf("slate-client"),
+        ).register()
         registerShutdown(supervisor, writer)
         LOGGER.info(
             "Slate Client Fabric bootstrap completed with {} contract modules",

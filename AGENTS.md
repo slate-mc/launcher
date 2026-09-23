@@ -19,6 +19,9 @@ system. PvP is one optional module family and preset.
   and loader version in acceptance tests.
 - Run `.\gradlew.bat clientCheck` before committing Kotlin client changes. This enforces Spotless,
   Detekt, warning-free compilation, unit tests, and benchmark compilation.
+- Slate Client owns the basic in-game interface shell: title and pause menus use Slate controls,
+  and Right Shift opens the module control center. Keep these surfaces accessible, keyboard
+  navigable, performant, and recognizably Slate without copying another client's assets.
 
 Authoritative product and module boundaries live in `docs/PRODUCT.md`, `docs/CLIENT_MODULES.md`, and
 `minecraft-client-launcher-spec.md`.

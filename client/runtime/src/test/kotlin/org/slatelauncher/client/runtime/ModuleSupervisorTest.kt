@@ -43,6 +43,25 @@ internal class ModuleSupervisorTest {
         assertEquals(ModuleState.REGISTERED, supervisor.snapshot()[module.descriptor.id])
     }
 
+    @Test
+    fun `module controls start dependencies and stop dependents`() {
+        val base = FakeModule("slate.base")
+        val hud = FakeModule("slate.hud", setOf(base.descriptor.id))
+        val supervisor = ModuleSupervisor(listOf(hud, base), context)
+
+        supervisor.setEnabled(hud.descriptor.id, true)
+        assertEquals(ModuleState.ACTIVE, supervisor.snapshot()[base.descriptor.id])
+        assertEquals(ModuleState.ACTIVE, supervisor.snapshot()[hud.descriptor.id])
+
+        supervisor.setEnabled(base.descriptor.id, false)
+        assertEquals(ModuleState.STOPPED, supervisor.snapshot()[base.descriptor.id])
+        assertEquals(ModuleState.STOPPED, supervisor.snapshot()[hud.descriptor.id])
+        assertEquals(
+            listOf("start:slate.base", "start:slate.hud", "stop:slate.hud", "stop:slate.base"),
+            events,
+        )
+    }
+
     private inner class FakeModule(id: String, dependencies: Set<ModuleId> = emptySet()) :
         ClientModule {
         override val descriptor: ModuleDescriptor =

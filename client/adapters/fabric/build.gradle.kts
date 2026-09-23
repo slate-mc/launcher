@@ -106,16 +106,22 @@ dependencies {
     api(project(":client-api"))
     implementation(project(":client-runtime"))
     implementation(project(":client-diagnostics"))
+    implementation(project(":client-hud"))
     implementation(project(":client-modules-performance"))
     implementation(project(":client-modules-accessibility"))
     implementation(project(":client-modules-qol"))
+    implementation(project(":client-modules-visual"))
+    implementation(project(":client-modules-pvp"))
 
     include(project(":client-api"))
     include(project(":client-runtime"))
     include(project(":client-diagnostics"))
+    include(project(":client-hud"))
     include(project(":client-modules-performance"))
     include(project(":client-modules-accessibility"))
     include(project(":client-modules-qol"))
+    include(project(":client-modules-visual"))
+    include(project(":client-modules-pvp"))
 }
 
 val modVersion = project.version.toString()

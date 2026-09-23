@@ -2,6 +2,7 @@ package org.slatelauncher.client.runtime
 
 import org.slatelauncher.client.api.ClientModule
 import org.slatelauncher.client.api.ModuleContext
+import org.slatelauncher.client.api.ModuleDescriptor
 import org.slatelauncher.client.api.ModuleId
 import org.slatelauncher.client.api.ModuleState
 
@@ -19,12 +20,7 @@ public class ModuleSupervisor(
         val started = mutableListOf<ClientModule>()
         try {
             for (module in dependencyOrder()) {
-                require(module.descriptor.supports(context.target)) {
-                    "module ${module.descriptor.id} does not support the exact game target"
-                }
-                states[module.descriptor.id] = ModuleState.STARTING
-                module.start(context)
-                states[module.descriptor.id] = ModuleState.ACTIVE
+                startModule(module)
                 started += module
             }
         } catch (error: Exception) {
@@ -57,6 +53,71 @@ public class ModuleSupervisor(
 
     @Synchronized
     public fun snapshot(): Map<ModuleId, ModuleState> = states.toMap()
+
+    @Synchronized
+    public fun descriptors(): List<ModuleDescriptor> =
+        modulesById.values.map { it.descriptor }.sortedBy { it.id }
+
+    @Synchronized
+    public fun setEnabled(moduleId: ModuleId, enabled: Boolean): Map<ModuleId, ModuleState> {
+        val order = dependencyOrder()
+        require(moduleId in modulesById) { "unknown module $moduleId" }
+        if (enabled) {
+            startWithDependencies(requireNotNull(modulesById[moduleId]))
+        } else {
+            for (candidate in order.asReversed()) {
+                if (candidate.descriptor.id == moduleId || dependsOn(candidate, moduleId)) {
+                    stopModule(candidate)
+                }
+            }
+        }
+        return snapshot()
+    }
+
+    private fun startWithDependencies(module: ClientModule) {
+        for (dependencyId in module.descriptor.dependencies.sorted()) {
+            startWithDependencies(requireNotNull(modulesById[dependencyId]))
+        }
+        if (states[module.descriptor.id] != ModuleState.ACTIVE) {
+            startModule(module)
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun startModule(module: ClientModule) {
+        require(module.descriptor.supports(context.target)) {
+            "module ${module.descriptor.id} does not support the exact game target"
+        }
+        states[module.descriptor.id] = ModuleState.STARTING
+        try {
+            module.start(context)
+            states[module.descriptor.id] = ModuleState.ACTIVE
+        } catch (error: Exception) {
+            states[module.descriptor.id] = ModuleState.FAILED
+            throw error
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun stopModule(module: ClientModule) {
+        if (states[module.descriptor.id] != ModuleState.ACTIVE) {
+            return
+        }
+        states[module.descriptor.id] = ModuleState.STOPPING
+        try {
+            module.stop(context)
+            states[module.descriptor.id] = ModuleState.STOPPED
+        } catch (error: Exception) {
+            states[module.descriptor.id] = ModuleState.FAILED
+            throw ModuleLifecycleException("Slate Client module shutdown failed", error)
+        }
+    }
+
+    private fun dependsOn(module: ClientModule, dependencyId: ModuleId): Boolean =
+        module.descriptor.dependencies.any { candidate ->
+            candidate == dependencyId ||
+                dependsOn(requireNotNull(modulesById[candidate]), dependencyId)
+        }
 
     private fun dependencyOrder(): List<ClientModule> {
         val order = mutableListOf<ClientModule>()
