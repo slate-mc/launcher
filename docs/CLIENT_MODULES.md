@@ -1,12 +1,19 @@
-# Java companion module boundary
+# Slate Client module boundary
 
-This document reserves the protocol and ownership boundary for F2 Java companion modules. No
-companion module is shipped by the current F1 launcher, and the launcher must not represent module
-controls as available until a verified module artifact and compatible adapter exist.
+This document defines the protocol and ownership boundary for the F2 Kotlin client platform. The
+loader-neutral foundation and contract-only adapter projects exist, but no Slate Client module is
+shipped by the current launcher. The launcher must not represent module controls as available until
+a verified module artifact and compatible adapter exist.
+
+Slate Client is a general Minecraft client platform in the same product category as Lunar Client
+or Dawn Client, not a PvP-only client. PvP remains an important module family, but it sits beside
+performance, HUD, accessibility, visual, quality-of-life, profile, diagnostics, and creator
+capabilities. Presets may emphasize survival, performance, creator workflows, modded play, or PvP
+without changing the underlying trust and compatibility model.
 
 ## Implementation language and quality policy
 
-Companion code is written in Kotlin. Shared API, configuration, layout, diagnostics, and module
+Slate Client code is written in Kotlin. Shared API, configuration, layout, diagnostics, and module
 logic remain loader-neutral; Fabric and NeoForge integration lives in separate adapters. Java may
 only be introduced when a loader or tooling boundary cannot be expressed safely in Kotlin.
 
@@ -18,7 +25,7 @@ Java interoperability source is formatted with Google Java Format and held to th
 test gates.
 
 The first implementation slice is a Kotlin multi-module build containing the common protocol,
-lifecycle runtime, configuration reconciliation, HUD layout model, QoL and PvP module contracts,
+lifecycle runtime, configuration reconciliation, HUD layout model, cross-client module contracts,
 bounded diagnostics, benchmarks, and isolated Fabric/NeoForge adapter projects. Adapter projects
 must not claim game compatibility until they compile and run against an exact Minecraft and loader
 version in the native acceptance matrix.
@@ -84,6 +91,7 @@ recoverable previous revision.
 ## F2 completion evidence
 
 F2 is not complete until the common API and both loader adapters build reproducibly, install through
-the launcher, exchange a versioned handshake, apply/reconcile settings, render and edit HUD/QoL/PvP
-modules, survive update/rollback, and pass performance plus real-game compatibility tests across the
-supported matrix. Until then, capability reporting remains unavailable rather than simulated.
+the launcher, exchange a versioned handshake, apply/reconcile settings, render and edit the standard
+HUD/performance/accessibility/visual/QoL/PvP module set, survive update/rollback, and pass performance
+plus real-game compatibility tests across the supported matrix. Until then, capability reporting
+remains unavailable rather than simulated.

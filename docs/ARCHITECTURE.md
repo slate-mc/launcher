@@ -2,8 +2,9 @@
 
 ## System boundary
 
-slate is split into a native launcher, a sandboxed renderer, a public content API, and the JVM
-processes it installs and supervises. Rust owns persistence, authentication, downloads,
+slate is split into a native launcher, a sandboxed renderer, a public content API, the Kotlin Slate
+Client platform, and the JVM processes it installs and supervises. Rust owns persistence,
+authentication, downloads,
 installation, Java selection, launch planning, filesystem mutation, recovery, and process
 ownership. React owns presentation and sends typed requests through Tauri IPC. Minecraft and its
 loaders remain separate Java processes.
@@ -38,6 +39,16 @@ while the launcher validates and applies that plan to disk.
 - `slate-modpack-api`: Axum service for normalized provider discovery, resolution, install plans,
   telemetry relay, support reports, and launcher releases.
 - `xtask`: deterministic IPC schema generation and checks.
+- `client-api`: loader-neutral Slate Client protocol, exact game targets, capabilities, and module
+  lifecycle contracts.
+- `client-runtime`: dependency-ordered module supervision and rollback on startup failure.
+- `client-config`, `client-hud`, `client-diagnostics`, and `client-profiles`: typed reconciliation,
+  safe-area layout/editor state, bounded sanitized evidence, and curated client presets.
+- `client-modules-*`: standard performance, accessibility, visual, QoL, and optional PvP module
+  families.
+- `client-adapter-*`: exact-loader integration boundaries. These remain unavailable while their
+  handshake status is contract-only.
+- `client-benchmarks`: repeatable JMH baselines for hot shared-client paths.
 
 ## Dependency direction
 
@@ -87,3 +98,11 @@ Routes are lazy-loaded into Home, Library, Discover, Servers, system pages, sett
 and instance pages. Features call small bridge modules grouped by concern. Runtime validation with
 Zod happens at the bridge boundary. Shared primitives own artwork fallback, markdown sanitization,
 comboboxes, install progress, virtualized logs, notices, and destructive confirmation behavior.
+
+## Slate Client boundary
+
+The Kotlin client is a broad in-game platform rather than a PvP-specific mod. Shared modules cannot
+import Minecraft or loader implementation classes. Fabric and NeoForge adapters are separate and
+must match the exact Minecraft and loader versions supplied by the launcher. The initial adapters
+only expose a contract-only handshake; real game hooks and launcher installation remain gated on
+version-specific acceptance evidence.

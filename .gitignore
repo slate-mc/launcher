@@ -1,4 +1,6 @@
 /target/
+/.gradle/
+**/build/
 /node_modules/
 **/node_modules/
 **/dist/
@@ -16,6 +18,8 @@ apps/desktop/src-tauri/tauri.release.generated.json
 *.log
 tmp/
 !Cargo.lock
+!gradle/wrapper/gradle-wrapper.jar
 *.md
 !**/README.md
+!AGENTS.md
 docs

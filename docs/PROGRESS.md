@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: September 20, 2026
+Last updated: September 22, 2026
 
 ## Working now
 
@@ -82,10 +82,17 @@ Last updated: September 20, 2026
   view where it is useful.
 - Route-level loading keeps the initial desktop JavaScript entry near 311 KB; larger Discover and
   instance-management features load only when opened.
+- The first Kotlin Slate Client foundation now builds as isolated API, runtime, configuration, HUD,
+  diagnostics, profile, standard module, Fabric/NeoForge adapter-contract, and JMH benchmark
+  projects. Exact-target compatibility, dependency ordering, rollback on module startup failure,
+  compare-and-swap configuration, safe-area HUD layout and undo, bounded diagnostic sanitization,
+  broad client presets, and performance/QoL/PvP primitives have unit coverage. PvP is one optional
+  preset within the broader Lunar/Dawn-style client platform. Loader adapters intentionally report
+  contract-only until real game hooks pass exact-version acceptance.
 
 ## Verification evidence
 
-Verified on Windows on September 20, 2026:
+Verification evidence current through September 22, 2026:
 
 - Frontend lint passes with zero warnings.
 - 22 Vitest/Testing Library tests pass.
@@ -102,6 +109,9 @@ Verified on Windows on September 20, 2026:
 - A live Windows clean-root run passed Minecraft 1.21.1 Vanilla, Fabric, NeoForge, and All the Mods
   10 8.1 (CurseForge `925200:8764211`), installing 3,935 pack content files and verifying 109
   NeoForge launch artifacts on managed Java 21.
+- The Gradle `clientCheck` gate passes for all Kotlin Slate Client projects: Spotless/ktlint,
+  Detekt, warning-free Kotlin/JVM 21 compilation, JUnit tests, adapter contract tests, dependency
+  locks, and JMH benchmark compilation.
 
 ## F1 release blockers
 
@@ -154,10 +164,12 @@ Verified on Windows on September 20, 2026:
 
 ## Later phases
 
-- F2 companion implementation is standardized on Kotlin with Google Android Kotlin style and
-  enforced formatting/static-analysis/test gates. The module lifecycle, HUD editor, QoL/PvP
-  modules, config reconciliation, diagnostics, benchmarks, and tested Fabric/NeoForge client
-  integration remain to be implemented.
+- F2 Slate Client foundation is implemented in Kotlin with Google Android Kotlin style and enforced
+  formatting/static-analysis/test gates. Loader-neutral lifecycle, HUD layout/editor state,
+  performance/accessibility/visual/QoL/PvP module foundations, config reconciliation, diagnostics,
+  presets, and benchmark sources are present. Real Fabric/NeoForge 1.21.1 hooks, rendered in-game
+  screens, launcher artifact installation/handshake, full module behavior, config persistence, and
+  real-game performance/compatibility evidence remain.
 - F3 product accounts, communities, publishing, signed releases, cloud sync/backups, operator tools,
   server integration, and cloud support bundles are not started.
 - F4 social/party features, practice/replay/recording, cosmetics, creator tools, legacy PvP support,
@@ -165,5 +177,5 @@ Verified on Windows on September 20, 2026:
 
 ## Next executable slice
 
-Add an authenticated Windows process-launch acceptance path, then extend the clean-root harness with
-an injected mid-download process interruption for end-to-end recovery evidence.
+Implement the first exact-version Fabric 1.21.1 Slate Client adapter and launcher handshake without
+changing the contract-only NeoForge status, then prove the adapter in a real-game acceptance run.

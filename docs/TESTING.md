@@ -37,6 +37,16 @@ Frontend checks:
     corepack yarn test:e2e
     corepack yarn build
 
+Slate Client checks:
+
+```powershell
+.\gradlew.bat clientCheck
+```
+
+This gate formats Kotlin/Gradle/Java sources, runs Detekt, compiles with warnings denied, executes
+JUnit tests across the protocol/runtime/configuration/HUD/modules/adapters, and compiles the JMH
+benchmarks. Dependency versions are locked per module.
+
 The ignored native smoke executable performs real Vanilla, Fabric, NeoForge, and optional modpack
 downloads, verifies the installed revision, and constructs the complete authenticated launch plan
 with a nonfunctional test identity. It does not start Minecraft. Release evidence must separately
