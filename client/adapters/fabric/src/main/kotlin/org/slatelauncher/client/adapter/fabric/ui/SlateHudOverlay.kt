@@ -4,6 +4,7 @@ import java.util.Locale
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.network.chat.Component
 import org.slatelauncher.client.api.ModuleId
 import org.slatelauncher.client.api.ModuleState
 import org.slatelauncher.client.hud.ResolvedHudElement
@@ -58,7 +59,14 @@ internal class SlateHudOverlay(
         graphics.fill(x, y, x + width, y + height, SlateUiTheme.canvas)
         graphics.fill(x, y, x + 3, y + height, SlateUiTheme.jade)
         graphics.renderOutline(x, y, width, height, SlateUiTheme.border)
-        graphics.drawString(font, text, x + 8, y + 5, SlateUiTheme.text, false)
+        graphics.drawString(
+            font,
+            SlateTypography.mono(Component.literal(text)),
+            x + 8,
+            y + 5,
+            SlateUiTheme.text,
+            false,
+        )
     }
 
     private fun isActive(moduleId: ModuleId): Boolean =

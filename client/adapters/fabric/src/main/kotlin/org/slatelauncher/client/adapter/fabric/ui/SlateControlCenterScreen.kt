@@ -3,7 +3,6 @@
 package org.slatelauncher.client.adapter.fabric.ui
 
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.slatelauncher.client.api.ModuleDescriptor
@@ -27,15 +26,22 @@ internal class SlateControlCenterScreen(
         rebuildModuleButtons()
     }
 
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun renderBackground(
+        graphics: GuiGraphics,
+        mouseX: Int,
+        mouseY: Int,
+        partialTick: Float,
+    ) {
         if (minecraft?.level != null) {
+            renderBlurredBackground(partialTick)
             renderTransparentBackground(graphics)
         } else {
             renderPanorama(graphics, partialTick)
+            renderBlurredBackground(partialTick)
             graphics.fill(0, 0, width, height, 0x660A100D)
         }
         val layout = controlLayout(width, height)
-        SlateTopBar.draw(graphics, font, layout.topBar, SlateTopBar.Tab.MODS)
+        SlateTopBar.draw(graphics, font, layout.topBar)
         SlateScreenGraphics.drawPanel(
             graphics,
             layout.browserX,
@@ -45,7 +51,7 @@ internal class SlateControlCenterScreen(
         )
         graphics.drawString(
             font,
-            Component.translatable("slate.mods.heading"),
+            SlateTypography.ui(Component.translatable("slate.mods.heading")),
             layout.browserX + 12,
             layout.contentY + 12,
             SlateUiTheme.text,
@@ -53,9 +59,11 @@ internal class SlateControlCenterScreen(
         )
         graphics.drawString(
             font,
-            Component.translatable(
-                "slate.mods.count",
-                filterModules(supervisor.descriptors(), searchQuery).size,
+            SlateTypography.ui(
+                Component.translatable(
+                    "slate.mods.count",
+                    filterModules(supervisor.descriptors(), searchQuery).size,
+                ),
             ),
             layout.browserX + layout.browserWidth - 48,
             layout.contentY + 12,
@@ -65,7 +73,6 @@ internal class SlateControlCenterScreen(
         if (layout.wide) {
             drawDetails(graphics, layout)
         }
-        super.render(graphics, mouseX, mouseY, partialTick)
     }
 
     override fun onClose() {
@@ -75,8 +82,8 @@ internal class SlateControlCenterScreen(
     override fun isPauseScreen(): Boolean = previous?.isPauseScreen ?: minecraft?.level != null
 
     private fun installNavigation() {
-        val topBar = SlateTopBar.layout(width)
-        var x = topBar.x + 84
+        val topBar = controlLayout(width, height).topBar
+        var x = topBar.x + 92
         addNavButton(x, topBar.y + 5, "slate.nav.mods", true) {}
         x += 62
         addNavButton(x, topBar.y + 5, "slate.nav.hud") { screens.openHudEditor(previous) }
@@ -101,7 +108,7 @@ internal class SlateControlCenterScreen(
                 54,
                 Component.translatable("gui.done"),
                 SlateButton.Style.PRIMARY,
-                ::onClose,
+                action = ::onClose,
             ),
         )
     }
@@ -109,7 +116,7 @@ internal class SlateControlCenterScreen(
     private fun installSearch() {
         val layout = controlLayout(width, height)
         val search =
-            EditBox(
+            SlateTextField(
                 font,
                 layout.browserX + 12,
                 layout.contentY + 28,
@@ -117,7 +124,6 @@ internal class SlateControlCenterScreen(
                 20,
                 Component.translatable("slate.search.modules"),
             )
-        search.setHint(Component.translatable("slate.search.modules"))
         search.setValue(searchQuery)
         search.setResponder { value ->
             if (value != searchQuery) {
@@ -242,7 +248,7 @@ internal class SlateControlCenterScreen(
         val active = supervisor.snapshot()[descriptor.id] == ModuleState.ACTIVE
         graphics.drawString(
             font,
-            moduleDisplayName(descriptor),
+            SlateTypography.ui(moduleDisplayName(descriptor)),
             layout.detailX + 16,
             layout.contentY + 16,
             SlateUiTheme.text,
@@ -250,8 +256,10 @@ internal class SlateControlCenterScreen(
         )
         graphics.drawString(
             font,
-            Component.translatable(
-                if (active) "slate.module.enabled" else "slate.module.disabled",
+            SlateTypography.ui(
+                Component.translatable(
+                    if (active) "slate.module.enabled" else "slate.module.disabled",
+                ),
             ),
             layout.detailX + layout.detailWidth - 42,
             layout.contentY + 16,
@@ -260,8 +268,10 @@ internal class SlateControlCenterScreen(
         )
         graphics.drawWordWrap(
             font,
-            Component.translatable(
-                "slate.module.${descriptor.id.value.substringAfter("slate.")}.description",
+            SlateTypography.ui(
+                Component.translatable(
+                    "slate.module.${descriptor.id.value.substringAfter("slate.")}.description",
+                ),
             ),
             layout.detailX + 16,
             layout.contentY + 39,
@@ -270,7 +280,9 @@ internal class SlateControlCenterScreen(
         )
         graphics.drawString(
             font,
-            Component.translatable("slate.module.version", descriptor.version.toString()),
+            SlateTypography.mono(
+                Component.translatable("slate.module.version", descriptor.version.toString()),
+            ),
             layout.detailX + 16,
             layout.contentY + 84,
             SlateUiTheme.textMuted,
@@ -291,8 +303,8 @@ internal class SlateControlCenterScreen(
                 y,
                 if (translationKey == "slate.nav.hud") 72 else 56,
                 Component.translatable(translationKey),
-                if (active) SlateButton.Style.PRIMARY else SlateButton.Style.SECONDARY,
-                action,
+                if (active) SlateButton.Style.TAB_ACTIVE else SlateButton.Style.TAB,
+                action = action,
             ),
         )
     }
@@ -315,9 +327,11 @@ private fun moduleDisplayName(descriptor: ModuleDescriptor): Component = Compone
 )
 
 private fun controlLayout(screenWidth: Int, screenHeight: Int): ControlLayout {
-    val topBar = SlateTopBar.layout(screenWidth)
+    val workspaceHeight = minOf(420, maxOf(230, screenHeight * 82 / 100), screenHeight - 16)
+    val topBar =
+        SlateTopBar.layout(screenWidth).copy(y = (screenHeight - workspaceHeight) / 2)
     val contentY = topBar.bottom + 8
-    val contentHeight = screenHeight - contentY - 8
+    val contentHeight = workspaceHeight - topBar.height - 8
     val wide = topBar.width >= 560
     val browserWidth = if (wide) minOf(240, topBar.width / 3) else topBar.width
     val detailX = topBar.x + browserWidth + 8

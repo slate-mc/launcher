@@ -12,85 +12,93 @@ internal class SlatePauseScreen(private val screens: SlateScreenController) :
     Screen(Component.translatable("menu.game")) {
     override fun init() {
         val layout = layout()
-        val halfWidth = (layout.contentWidth - SlateUiTheme.GAP) / 2
-        var buttonY = layout.panelY + 61
-        addButton(layout.contentX, buttonY, layout.contentWidth, "menu.returnToGame", true) {
+        var buttonY = layout.actionsY
+        addAction(
+            layout,
+            buttonY,
+            "menu.returnToGame",
+            SlateButton.Icon.PLAY,
+            SlateButton.Style.PRIMARY,
+        ) {
             onClose()
         }
-        buttonY += SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP
+        buttonY += layout.rowHeight + layout.rowGap + 6
+
         val client = minecraft
         val player = client?.player
-        addButton(layout.contentX, buttonY, halfWidth, "gui.advancements") {
-            val advancements = player?.connection?.advancements ?: return@addButton
+        addAction(layout, buttonY, "gui.advancements", SlateButton.Icon.TROPHY) {
+            val advancements = player?.connection?.advancements ?: return@addAction
             minecraft?.setScreen(AdvancementsScreen(advancements, this))
         }.active = player != null
-        addButton(
-            layout.contentX + halfWidth + SlateUiTheme.GAP,
-            buttonY,
-            halfWidth,
-            "gui.stats",
-        ) {
-            val stats = player?.stats ?: return@addButton
+        buttonY += layout.rowHeight + layout.rowGap
+        addAction(layout, buttonY, "gui.stats", SlateButton.Icon.CHART) {
+            val stats = player?.stats ?: return@addAction
             minecraft?.setScreen(StatsScreen(this, stats))
         }.active = player != null
-        buttonY += SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP
-        addButton(layout.contentX, buttonY, halfWidth, "menu.options") {
+        buttonY += layout.rowHeight + layout.rowGap
+        addAction(layout, buttonY, "menu.options", SlateButton.Icon.SLIDERS) {
             minecraft?.setScreen(SlateOptionsScreen(this))
         }
-        addButton(
-            layout.contentX + halfWidth + SlateUiTheme.GAP,
-            buttonY,
-            halfWidth,
-            "menu.shareToLan",
-        ) {
+        buttonY += layout.rowHeight + layout.rowGap
+        addAction(layout, buttonY, "menu.shareToLan", SlateButton.Icon.NETWORK) {
             minecraft?.setScreen(ShareToLanScreen(this))
         }.active = client?.hasSingleplayerServer() == true
-        buttonY += SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP
-        addButton(layout.contentX, buttonY, halfWidth, "slate.menu.control_center") {
+        buttonY += layout.rowHeight + layout.rowGap + 8
+
+        addAction(layout, buttonY, "slate.menu.control_center", SlateButton.Icon.SLATE) {
             screens.openControlCenter(this)
         }
-        addButton(
-            layout.contentX + halfWidth + SlateUiTheme.GAP,
-            buttonY,
-            halfWidth,
-            "slate.menu.edit_hud",
-        ) {
+        buttonY += layout.rowHeight + layout.rowGap
+        addAction(layout, buttonY, "slate.menu.edit_hud", SlateButton.Icon.SLIDERS) {
             screens.openHudEditor(this)
         }
-        buttonY += SlateUiTheme.BUTTON_HEIGHT + 10
-        addButton(layout.contentX, buttonY, layout.contentWidth, "menu.returnToMenu") {
+        buttonY += layout.rowHeight + layout.rowGap + 8
+        addAction(layout, buttonY, "menu.returnToMenu", SlateButton.Icon.EXIT) {
             minecraft?.disconnect(screens.titleScreen())
         }
     }
 
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun renderBackground(
+        graphics: GuiGraphics,
+        mouseX: Int,
+        mouseY: Int,
+        partialTick: Float,
+    ) {
+        renderBlurredBackground(partialTick)
         renderTransparentBackground(graphics)
         val layout = layout()
-        SlateScreenGraphics.drawPanel(
-            graphics,
-            layout.panelX,
-            layout.panelY,
-            layout.panelWidth,
-            layout.panelHeight,
-        )
-        SlateScreenGraphics.drawBrand(graphics, font, layout.contentX, layout.panelY + 13)
+        graphics.fill(0, 0, layout.railWidth, height, SlateUiTheme.sidebar)
+        graphics.vLine(layout.railWidth - 1, 0, height, SlateUiTheme.border)
+        SlateScreenGraphics.drawBrandLockup(graphics, font, layout.contentX, 9)
         graphics.drawString(
             font,
-            Component.translatable("slate.pause.heading"),
-            layout.contentX,
-            layout.panelY + 40,
-            SlateUiTheme.text,
-            false,
-        )
-        graphics.drawString(
-            font,
-            if (minecraft?.isSingleplayer == true) "Singleplayer" else "Multiplayer",
-            layout.panelX + layout.panelWidth - 80,
-            layout.panelY + 40,
+            SlateTypography.mono(
+                Component.literal(
+                    if (minecraft?.isSingleplayer == true) "Singleplayer" else "Multiplayer",
+                ),
+            ),
+            layout.contentX + 74,
+            16,
             SlateUiTheme.textMuted,
             false,
         )
-        super.render(graphics, mouseX, mouseY, partialTick)
+        SlateScreenGraphics.drawScaledString(
+            graphics,
+            font,
+            Component.translatable("slate.pause.heading.short"),
+            layout.contentX,
+            35,
+            if (height < 310) 1.2f else 1.5f,
+            SlateUiTheme.text,
+        )
+        graphics.drawString(
+            font,
+            SlateTypography.mono(Component.literal("1.21.1 / Fabric")),
+            layout.contentX,
+            height - 14,
+            SlateUiTheme.textMuted,
+            false,
+        )
     }
 
     override fun onClose() {
@@ -100,44 +108,46 @@ internal class SlatePauseScreen(private val screens: SlateScreenController) :
     override fun isPauseScreen(): Boolean = true
 
     private fun layout(): PauseLayout {
-        val panelWidth = minOf(340, width - 24)
-        val panelHeight = minOf(232, height - 16)
-        val panelX = (width - panelWidth) / 2
-        val panelY = (height - panelHeight) / 2
+        val railWidth = minOf(210, maxOf(150, width * 31 / 100))
+        val compact = height < 300
         return PauseLayout(
-            panelX = panelX,
-            panelY = panelY,
-            panelWidth = panelWidth,
-            panelHeight = panelHeight,
-            contentX = panelX + 16,
-            contentWidth = panelWidth - 32,
+            railWidth = railWidth,
+            contentX = 14,
+            contentWidth = railWidth - 28,
+            actionsY = if (compact) 52 else 70,
+            rowHeight = if (compact) 18 else SlateUiTheme.BUTTON_HEIGHT,
+            rowGap = if (compact) 1 else 3,
         )
     }
 
-    private fun addButton(
-        x: Int,
+    private fun addAction(
+        layout: PauseLayout,
         y: Int,
-        width: Int,
         translationKey: String,
-        primary: Boolean = false,
-        action: () -> Unit,
+        icon: SlateButton.Icon,
+        style: SlateButton.Style = SlateButton.Style.GHOST,
+        action: () -> Unit = {},
     ): SlateButton = addRenderableWidget(
         SlateButton(
-            x,
+            layout.contentX,
             y,
-            width,
+            layout.contentWidth,
             Component.translatable(translationKey),
-            if (primary) SlateButton.Style.PRIMARY else SlateButton.Style.SECONDARY,
-            action,
+            style,
+            icon = icon,
+            alignment = SlateButton.Alignment.LEFT,
+            showChevron = style != SlateButton.Style.PRIMARY,
+            buttonHeight = layout.rowHeight,
+            action = action,
         ),
     )
 
     private data class PauseLayout(
-        val panelX: Int,
-        val panelY: Int,
-        val panelWidth: Int,
-        val panelHeight: Int,
+        val railWidth: Int,
         val contentX: Int,
         val contentWidth: Int,
+        val actionsY: Int,
+        val rowHeight: Int,
+        val rowGap: Int,
     )
 }

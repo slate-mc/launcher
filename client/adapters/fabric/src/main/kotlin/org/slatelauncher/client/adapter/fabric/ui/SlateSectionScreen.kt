@@ -18,6 +18,7 @@ internal class SlateSectionScreen(
                 topBar.y + 5,
                 56,
                 Component.translatable("slate.nav.mods"),
+                SlateButton.Style.TAB,
             ) {
                 screens.openControlCenter(previous)
             },
@@ -28,6 +29,7 @@ internal class SlateSectionScreen(
                 topBar.y + 5,
                 72,
                 Component.translatable("slate.nav.hud"),
+                SlateButton.Style.TAB,
             ) {
                 screens.openHudEditor(previous)
             },
@@ -39,33 +41,48 @@ internal class SlateSectionScreen(
                 54,
                 Component.translatable("gui.done"),
                 SlateButton.Style.PRIMARY,
-                ::onClose,
+                action = ::onClose,
             ),
         )
     }
 
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun renderBackground(
+        graphics: GuiGraphics,
+        mouseX: Int,
+        mouseY: Int,
+        partialTick: Float,
+    ) {
         if (minecraft?.level != null) {
+            renderBlurredBackground(partialTick)
             renderTransparentBackground(graphics)
         } else {
             renderPanorama(graphics, partialTick)
+            renderBlurredBackground(partialTick)
             graphics.fill(0, 0, width, height, 0x660A100D)
         }
         val topBar = SlateTopBar.layout(width)
-        SlateTopBar.draw(graphics, font, topBar, tab)
+        SlateTopBar.draw(graphics, font, topBar)
         val panelY = topBar.bottom + 8
         val panelHeight = height - panelY - 8
         SlateScreenGraphics.drawPanel(graphics, topBar.x, panelY, topBar.width, panelHeight)
-        graphics.drawString(font, title, topBar.x + 18, panelY + 18, SlateUiTheme.text, false)
+        graphics.drawString(
+            font,
+            SlateTypography.ui(title),
+            topBar.x + 18,
+            panelY + 18,
+            SlateUiTheme.text,
+            false,
+        )
         graphics.drawWordWrap(
             font,
-            Component.translatable("slate.section.${tab.name.lowercase()}.description"),
+            SlateTypography.ui(
+                Component.translatable("slate.section.${tab.name.lowercase()}.description"),
+            ),
             topBar.x + 18,
             panelY + 40,
             topBar.width - 36,
             SlateUiTheme.textMuted,
         )
-        super.render(graphics, mouseX, mouseY, partialTick)
     }
 
     override fun onClose() {

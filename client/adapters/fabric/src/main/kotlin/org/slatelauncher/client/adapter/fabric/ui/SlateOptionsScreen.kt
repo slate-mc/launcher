@@ -62,16 +62,23 @@ internal class SlateOptionsScreen(private val previous: Screen) :
                 layout.contentWidth,
                 Component.translatable("gui.done"),
                 SlateButton.Style.PRIMARY,
-                ::onClose,
+                action = ::onClose,
             ),
         )
     }
 
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun renderBackground(
+        graphics: GuiGraphics,
+        mouseX: Int,
+        mouseY: Int,
+        partialTick: Float,
+    ) {
         if (minecraft?.level == null) {
             renderPanorama(graphics, partialTick)
+            renderBlurredBackground(partialTick)
             graphics.fill(0, 0, width, height, 0x660A100D)
         } else {
+            renderBlurredBackground(partialTick)
             renderTransparentBackground(graphics)
         }
         val layout = layout()
@@ -82,16 +89,15 @@ internal class SlateOptionsScreen(private val previous: Screen) :
             layout.panelWidth,
             layout.panelHeight,
         )
-        SlateScreenGraphics.drawBrand(graphics, font, layout.contentX, layout.panelY + 14)
+        SlateScreenGraphics.drawBrandLockup(graphics, font, layout.contentX, layout.panelY + 12)
         graphics.drawString(
             font,
-            title,
-            layout.panelX + layout.panelWidth - 16 - font.width(title),
+            SlateTypography.ui(title),
+            layout.panelX + layout.panelWidth - 16 - font.width(SlateTypography.ui(title)),
             layout.panelY + 20,
             SlateUiTheme.text,
             false,
         )
-        super.render(graphics, mouseX, mouseY, partialTick)
     }
 
     override fun onClose() {

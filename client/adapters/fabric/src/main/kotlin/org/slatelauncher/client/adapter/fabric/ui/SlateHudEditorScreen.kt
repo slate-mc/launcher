@@ -23,10 +23,18 @@ internal class SlateHudEditorScreen(
         installInspectorButtons()
     }
 
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun renderBackground(
+        graphics: GuiGraphics,
+        mouseX: Int,
+        mouseY: Int,
+        partialTick: Float,
+    ) {
         if (minecraft?.level == null) {
             renderPanorama(graphics, partialTick)
+            renderBlurredBackground(partialTick)
             graphics.fill(0, 0, width, height, 0x550A100D)
+        } else {
+            graphics.fill(0, 0, width, height, 0x260A100D)
         }
         val layout = editorLayout(width, height)
         drawEditorGrid(graphics, layout)
@@ -36,7 +44,7 @@ internal class SlateHudEditorScreen(
             screens.hudState.resolve(width, height),
             selectedId,
         )
-        SlateTopBar.draw(graphics, font, layout.topBar, SlateTopBar.Tab.HUD)
+        SlateTopBar.draw(graphics, font, layout.topBar)
         drawHudElementPanel(graphics, font, layout)
         if (layout.showInspector) {
             drawHudInspector(
@@ -48,7 +56,6 @@ internal class SlateHudEditorScreen(
             )
         }
         drawHudBottomTools(graphics, font, layout, width, height)
-        super.render(graphics, mouseX, mouseY, partialTick)
     }
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -104,6 +111,7 @@ internal class SlateHudEditorScreen(
                 topBar.y + 5,
                 56,
                 Component.translatable("slate.nav.mods"),
+                SlateButton.Style.TAB,
             ) {
                 screens.openControlCenter(previous)
             },
@@ -114,7 +122,7 @@ internal class SlateHudEditorScreen(
                 topBar.y + 5,
                 72,
                 Component.translatable("slate.nav.hud"),
-                SlateButton.Style.PRIMARY,
+                SlateButton.Style.TAB_ACTIVE,
             ) {},
         )
         addRenderableWidget(
@@ -124,7 +132,7 @@ internal class SlateHudEditorScreen(
                 54,
                 Component.translatable("gui.done"),
                 SlateButton.Style.PRIMARY,
-                ::onClose,
+                action = ::onClose,
             ),
         )
     }
@@ -222,7 +230,7 @@ private fun drawHudPreviews(
         )
         graphics.drawString(
             font,
-            hudPreviewText(element.id),
+            SlateTypography.mono(Component.literal(hudPreviewText(element.id))),
             x + 6,
             y + 5,
             SlateUiTheme.text,
@@ -245,7 +253,7 @@ private fun drawHudElementPanel(
     )
     graphics.drawString(
         font,
-        Component.translatable("slate.hud.elements"),
+        SlateTypography.ui(Component.translatable("slate.hud.elements")),
         layout.leftX + 10,
         layout.contentY + 14,
         SlateUiTheme.text,
@@ -269,7 +277,7 @@ private fun drawHudInspector(
     )
     graphics.drawString(
         font,
-        selectedName,
+        SlateTypography.ui(selectedName),
         layout.rightX + 10,
         layout.contentY + 14,
         SlateUiTheme.text,
@@ -278,7 +286,9 @@ private fun drawHudInspector(
     if (selected != null) {
         graphics.drawString(
             font,
-            "X ${selected.x.toInt()}  Y ${selected.y.toInt()}",
+            SlateTypography.mono(
+                Component.literal("X ${selected.x.toInt()}  Y ${selected.y.toInt()}"),
+            ),
             layout.rightX + 10,
             layout.contentY + 38,
             SlateUiTheme.textMuted,
@@ -287,7 +297,7 @@ private fun drawHudInspector(
     }
     graphics.drawString(
         font,
-        Component.translatable("slate.hud.nudge"),
+        SlateTypography.ui(Component.translatable("slate.hud.nudge")),
         layout.rightX + 10,
         layout.contentY + 55,
         SlateUiTheme.textMuted,
@@ -307,7 +317,7 @@ private fun drawHudBottomTools(
     SlateScreenGraphics.drawPanel(graphics, toolsX, screenHeight - 28, toolsWidth, 22)
     graphics.drawCenteredString(
         font,
-        Component.translatable("slate.hud.grid", HUD_GRID_SIZE),
+        SlateTypography.mono(Component.translatable("slate.hud.grid", HUD_GRID_SIZE)),
         screenWidth / 2,
         screenHeight - 21,
         SlateUiTheme.textMuted,

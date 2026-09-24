@@ -10,6 +10,7 @@
   "slate.hud.undo": "Undo last move",
   "slate.menu.control_center": "Slate control center",
   "slate.menu.edit_hud": "Edit HUD",
+  "slate.menu.mods": "Mods",
   "slate.module.accessibility.name": "Accessibility",
   "slate.module.accessibility.description": "Controls readable, comfortable interface behavior.",
   "slate.module.disable": "Disable module",
@@ -33,6 +34,7 @@
   "slate.nav.profiles": "Profiles",
   "slate.nav.settings": "Settings",
   "slate.pause.heading": "Game paused",
+  "slate.pause.heading.short": "Paused",
   "slate.screen.control_center": "Control center",
   "slate.screen.hud_editor": "HUD editor",
   "slate.screen.title": "Slate Client",
@@ -40,7 +42,10 @@
   "slate.section.profiles.description": "Save groups of modules and HUD layouts for different ways you play.",
   "slate.section.settings.description": "Configure Slate Client behavior, appearance, and diagnostics.",
   "slate.title.control_hint": "Press Right Shift anywhere to configure your client.",
+  "slate.title.language": "Language",
+  "slate.title.accessibility": "Accessibility",
   "slate.title.edition": "for Minecraft: Java Edition",
+  "slate.title.disclaimer": "Not affiliated with Mojang or Microsoft.",
   "slate.title.version": "Slate Client %s",
   "slate.title.welcome": "Your Minecraft, set up your way."
 }

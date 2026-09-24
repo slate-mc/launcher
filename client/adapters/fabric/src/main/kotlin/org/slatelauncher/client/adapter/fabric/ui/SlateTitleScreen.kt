@@ -14,56 +14,127 @@ internal class SlateTitleScreen(private val screens: SlateScreenController) :
     Screen(Component.translatable("slate.screen.title")) {
     override fun init() {
         val layout = layout()
-        var buttonY = layout.panelY + if (layout.compact) 46 else 60
-        addButton(layout.contentX, buttonY, layout.contentWidth, "menu.singleplayer", true) {
+        installWorldActions(layout)
+        installSecondaryActions(layout)
+        if (!layout.compact) installUtilities(layout)
+    }
+
+    private fun installWorldActions(layout: TitleLayout) {
+        var buttonY = layout.panelY + 47
+        addMenuButton(
+            layout.contentX,
+            buttonY,
+            layout.contentWidth,
+            "menu.singleplayer",
+            SlateButton.Icon.WORLD,
+            primary = true,
+        ) {
             minecraft?.setScreen(SelectWorldScreen(this))
         }
         buttonY += SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP
-        addButton(layout.contentX, buttonY, layout.contentWidth, "menu.multiplayer") {
+        addMenuButton(
+            layout.contentX,
+            buttonY,
+            layout.contentWidth,
+            "menu.multiplayer",
+            SlateButton.Icon.GLOBE,
+        ) {
             minecraft?.setScreen(JoinMultiplayerScreen(this))
         }
         buttonY += SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP
-        addButton(layout.contentX, buttonY, layout.contentWidth, "menu.online") {
+        addMenuButton(
+            layout.contentX,
+            buttonY,
+            layout.contentWidth,
+            "menu.online",
+            SlateButton.Icon.CROWN,
+        ) {
             minecraft?.setScreen(RealmsMainScreen(this))
         }
-        buttonY += SlateUiTheme.BUTTON_HEIGHT + 10
+    }
+
+    private fun installSecondaryActions(layout: TitleLayout) {
+        var buttonY =
+            layout.panelY + 47 + (SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP) * 2
+        buttonY += SlateUiTheme.BUTTON_HEIGHT + 8
         val halfWidth = (layout.contentWidth - SlateUiTheme.GAP) / 2
-        addButton(layout.contentX, buttonY, halfWidth, "menu.options") {
+        addMenuButton(
+            layout.contentX,
+            buttonY,
+            halfWidth,
+            "menu.options",
+            SlateButton.Icon.SLIDERS,
+            showChevron = false,
+        ) {
             minecraft?.setScreen(SlateOptionsScreen(this))
         }
-        addButton(
+        addMenuButton(
             layout.contentX + halfWidth + SlateUiTheme.GAP,
             buttonY,
             halfWidth,
-            "slate.menu.control_center",
+            "slate.menu.mods",
+            SlateButton.Icon.SLATE,
+            showChevron = false,
         ) {
             screens.openControlCenter(this)
         }
         buttonY += SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP
-        addButton(layout.contentX, buttonY, layout.contentWidth, "menu.quit") {
+        addMenuButton(
+            layout.contentX,
+            buttonY,
+            layout.contentWidth,
+            "menu.quit",
+            SlateButton.Icon.EXIT,
+            showChevron = false,
+        ) {
             minecraft?.stop()
-        }
-        if (!layout.compact) {
-            buttonY += SlateUiTheme.BUTTON_HEIGHT + SlateUiTheme.GAP
-            addButton(layout.contentX, buttonY, halfWidth, "options.language") {
-                val client = minecraft ?: return@addButton
-                client.setScreen(LanguageSelectScreen(this, client.options, client.languageManager))
-            }
-            addButton(
-                layout.contentX + halfWidth + SlateUiTheme.GAP,
-                buttonY,
-                halfWidth,
-                "options.accessibility",
-            ) {
-                val client = minecraft ?: return@addButton
-                client.setScreen(AccessibilityOptionsScreen(this, client.options))
-            }
         }
     }
 
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    private fun installUtilities(layout: TitleLayout) {
+        val halfWidth = (layout.contentWidth - SlateUiTheme.GAP) / 2
+        val utilityY = layout.panelY + layout.panelHeight - 27
+        addRenderableWidget(
+            SlateButton(
+                layout.contentX,
+                utilityY,
+                halfWidth,
+                Component.translatable("slate.title.language"),
+                SlateButton.Style.SECONDARY,
+                icon = SlateButton.Icon.GLOBE,
+                buttonHeight = 19,
+            ) {
+                val client = minecraft ?: return@SlateButton
+                client.setScreen(
+                    LanguageSelectScreen(this, client.options, client.languageManager),
+                )
+            },
+        )
+        addRenderableWidget(
+            SlateButton(
+                layout.contentX + halfWidth + SlateUiTheme.GAP,
+                utilityY,
+                halfWidth,
+                Component.translatable("slate.title.accessibility"),
+                SlateButton.Style.SECONDARY,
+                icon = SlateButton.Icon.SLIDERS,
+                buttonHeight = 19,
+            ) {
+                val client = minecraft ?: return@SlateButton
+                client.setScreen(AccessibilityOptionsScreen(this, client.options))
+            },
+        )
+    }
+
+    override fun renderBackground(
+        graphics: GuiGraphics,
+        mouseX: Int,
+        mouseY: Int,
+        partialTick: Float,
+    ) {
         renderPanorama(graphics, partialTick)
-        graphics.fill(0, 0, width, height, 0x660A100D)
+        renderBlurredBackground(partialTick)
+        graphics.fill(0, 0, width, height, 0x4D07100C)
         val layout = layout()
         SlateScreenGraphics.drawPanel(
             graphics,
@@ -72,32 +143,42 @@ internal class SlateTitleScreen(private val screens: SlateScreenController) :
             layout.panelWidth,
             layout.panelHeight,
         )
-        SlateScreenGraphics.drawBrand(graphics, font, layout.contentX, layout.panelY + 14)
-        if (!layout.compact) {
-            graphics.drawString(
-                font,
-                Component.translatable("slate.title.edition"),
-                layout.contentX,
-                layout.panelY + 41,
-                SlateUiTheme.textMuted,
-                false,
-            )
-        }
+        SlateScreenGraphics.drawBrandLockup(graphics, font, layout.contentX, layout.panelY + 12)
         graphics.drawString(
             font,
-            Component.translatable("slate.title.version", screens.clientVersion),
+            SlateTypography.mono(Component.translatable("slate.title.edition")),
+            layout.contentX,
+            layout.panelY + 34,
+            SlateUiTheme.textMuted,
+            false,
+        )
+        val disclaimer =
+            SlateTypography.mono(Component.translatable("slate.title.disclaimer"))
+        graphics.drawString(
+            font,
+            SlateTypography.mono(
+                Component.translatable("slate.title.version", screens.clientVersion),
+            ),
             10,
             height - 14,
-            SlateUiTheme.text,
-            true,
+            SlateUiTheme.textSecondary,
+            false,
         )
-        super.render(graphics, mouseX, mouseY, partialTick)
+        graphics.drawString(
+            font,
+            disclaimer,
+            width - font.width(disclaimer) - 10,
+            height - 14,
+            SlateUiTheme.textMuted,
+            false,
+        )
     }
 
     private fun layout(): TitleLayout {
-        val panelWidth = minOf(330, width - 24)
         val compact = height < 300
-        val panelHeight = if (compact) 208 else 260
+        val widthPercent = if (compact) 40 else 52
+        val panelWidth = minOf(252, maxOf(176, width * widthPercent / 100), width - 24)
+        val panelHeight = minOf(if (compact) 182 else 218, height - 16)
         val panelX = (width - panelWidth) / 2
         val panelY = (height - panelHeight) / 2
         return TitleLayout(
@@ -105,18 +186,20 @@ internal class SlateTitleScreen(private val screens: SlateScreenController) :
             panelY = panelY,
             panelWidth = panelWidth,
             panelHeight = panelHeight,
-            contentX = panelX + 16,
-            contentWidth = panelWidth - 32,
+            contentX = panelX + 12,
+            contentWidth = panelWidth - 24,
             compact = compact,
         )
     }
 
-    private fun addButton(
+    private fun addMenuButton(
         x: Int,
         y: Int,
         width: Int,
         translationKey: String,
+        icon: SlateButton.Icon,
         primary: Boolean = false,
+        showChevron: Boolean = true,
         action: () -> Unit,
     ): SlateButton = addRenderableWidget(
         SlateButton(
@@ -125,7 +208,10 @@ internal class SlateTitleScreen(private val screens: SlateScreenController) :
             width,
             Component.translatable(translationKey),
             if (primary) SlateButton.Style.PRIMARY else SlateButton.Style.SECONDARY,
-            action,
+            icon = icon,
+            alignment = SlateButton.Alignment.LEFT,
+            showChevron = showChevron,
+            action = action,
         ),
     )
 

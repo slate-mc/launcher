@@ -1,5 +1,4 @@
 import java.security.MessageDigest
-import org.apache.tools.ant.filters.ReplaceTokens
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -122,13 +121,6 @@ dependencies {
     include(project(":client-modules-qol"))
     include(project(":client-modules-visual"))
     include(project(":client-modules-pvp"))
-}
-
-val modVersion = project.version.toString()
-
-tasks.processResources {
-    inputs.property("version", modVersion)
-    filter<ReplaceTokens>("tokens" to mapOf("version" to modVersion))
 }
 
 val stagedDesktopArtifacts =

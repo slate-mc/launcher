@@ -1,0 +1,12 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "slate-client:manrope_brand.ttf",
+      "shift": [0.0, 0.0],
+      "size": 14.0,
+      "oversample": 2.0,
+      "skip": "\r \u00a0\u2060"
+    }
+  ]
+}

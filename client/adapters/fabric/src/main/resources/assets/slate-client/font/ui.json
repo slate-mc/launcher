@@ -1,0 +1,20 @@
+{
+  "providers": [
+    {
+      "type": "reference",
+      "id": "minecraft:include/space"
+    },
+    {
+      "type": "ttf",
+      "file": "slate-client:manrope.ttf",
+      "shift": [0.0, 0.0],
+      "size": 11.0,
+      "oversample": 2.0,
+      "skip": "\r \u00a0\u2060"
+    },
+    {
+      "type": "reference",
+      "id": "minecraft:include/unifont"
+    }
+  ]
+}
