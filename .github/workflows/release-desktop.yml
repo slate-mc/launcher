@@ -82,6 +82,10 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Verify existing database upgrades
+        if: matrix.platform == 'windows-latest'
+        run: cargo test -p slate-storage database::tests
+
       - name: Prepare signed updater configuration
         run: node tools/write-tauri-release-config.mjs
 
