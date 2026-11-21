@@ -339,6 +339,7 @@ impl ProcessSupervisor {
 fn apply_process_priority(command: &mut std::process::Command, priority: ChildProcessPriority) {
     use std::os::windows::process::CommandExt;
 
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const IDLE_PRIORITY_CLASS: u32 = 0x0000_0040;
     const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
     const NORMAL_PRIORITY_CLASS: u32 = 0x0000_0020;
@@ -351,7 +352,7 @@ fn apply_process_priority(command: &mut std::process::Command, priority: ChildPr
         ChildProcessPriority::AboveNormal => ABOVE_NORMAL_PRIORITY_CLASS,
         ChildProcessPriority::High => HIGH_PRIORITY_CLASS,
     };
-    command.creation_flags(flags);
+    command.creation_flags(CREATE_NO_WINDOW | flags);
 }
 
 #[cfg(not(windows))]
@@ -446,6 +447,35 @@ mod tests {
     use slate_domain::{InstanceId, SessionId};
     use slate_minecraft::{LaunchArgument, LaunchPlan};
     use std::time::Duration;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn game_child_has_no_console_and_preserves_priority_and_output()
+    -> Result<(), Box<dyn std::error::Error>> {
+        for priority in [
+            ChildProcessPriority::Normal,
+            ChildProcessPriority::BelowNormal,
+        ] {
+            let mut command = std::process::Command::new("powershell.exe");
+            command.args([
+                "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+                r#"Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class SlateConsoleProbe { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'; if ([SlateConsoleProbe]::GetConsoleWindow() -ne [IntPtr]::Zero) { exit 12 }; [Console]::Out.WriteLine((Get-Process -Id $PID).PriorityClass); [Console]::Error.WriteLine('captured game log')"#,
+            ]);
+            super::apply_process_priority(&mut command, priority);
+            let output = tokio::process::Command::from(command).output().await?;
+            assert!(output.status.success(), "{output:?}");
+            let expected = match priority {
+                ChildProcessPriority::BelowNormal => "BelowNormal",
+                _ => "Normal",
+            };
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+            assert_eq!(
+                String::from_utf8_lossy(&output.stderr).trim(),
+                "captured game log"
+            );
+        }
+        Ok(())
+    }
 
     #[tokio::test]
     async fn log_tail_snapshots_appends_and_recovers_from_truncation()

@@ -754,6 +754,8 @@ async fn run_neoforge_installer(
         .open(&log_path)?;
     let stderr = log.try_clone()?;
     let mut command = tokio::process::Command::new(&runtime.executable);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW; installer output stays in its log.
     command
         .args(["-jar"])
         .arg(&installer_path)

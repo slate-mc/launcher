@@ -615,9 +615,9 @@ export const modpackInstallStartedSchema = z.object({
 export const modpackUpdateSummarySchema = z.object({
   updateAvailable: z.boolean(),
   currentVersionId: z.string().min(1),
-  currentVersionName: z.string().min(1).optional(),
-  latestVersionId: z.string().min(1).optional(),
-  latestVersionName: z.string().min(1).optional(),
+  currentVersionName: z.string().min(1).nullish(),
+  latestVersionId: z.string().min(1).nullish(),
+  latestVersionName: z.string().min(1).nullish(),
 });
 
 export const instanceModReferenceSchema = z.object({
