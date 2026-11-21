@@ -103,6 +103,10 @@ node --test tools/publish-launcher-r2.test.mjs
 gh workflow run release-desktop.yml -f channel=stable -f release_notes='Release notes here'
 ```
 
+If the files built successfully but publishing needs a retry, use the same workflow with
+`-f publish_only=true` to reuse the completed signed draft. This does not rebuild or replace
+the versioned binaries.
+
 Use the logged-in `cf` CLI for Cloudflare management. The checked-in `r2-release-policy.json`
 documents the bucket-scoped token permissions and `r2-cors.json` documents the download CORS policy.
 

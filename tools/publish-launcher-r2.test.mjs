@@ -3,7 +3,19 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { prepareRelease, publishRelease } from "./publish-launcher-r2.mjs";
+import { prepareRelease, publishRelease, verifyPublicObject } from "./publish-launcher-r2.mjs";
+
+test("verifies stored sizes even when Cloudflare would compress the response", async () => {
+  const object = { key: "channels/stable/latest.json", size: 152 };
+  await verifyPublicObject(object, "https://downloads.slatemc.app/test.json", async (_url, options) => {
+    const headers = options.headers["accept-encoding"] === "identity"
+      ? { "content-length": "152" }
+      : { "content-encoding": "br" };
+    return new Response(null, { status: 200, headers });
+  });
+  await assert.rejects(verifyPublicObject(object, "https://downloads.slatemc.app/test.json", async () =>
+    new Response(null, { status: 200, headers: { "content-length": "1" } })), /verification failed/);
+});
 
 async function fixture(t) {
   const source = await mkdtemp(join(tmpdir(), "slate-r2-test-"));

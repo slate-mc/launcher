@@ -15,6 +15,11 @@ on:
         options:
           - stable
           - beta
+      publish_only:
+        description: Publish an already completed signed draft without rebuilding
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -25,6 +30,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ !inputs.publish_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -103,6 +109,7 @@ jobs:
   publish-r2:
     name: Publish installers and signed updates to R2
     needs: build
+    if: ${{ always() && (inputs.publish_only || needs.build.result == 'success') }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

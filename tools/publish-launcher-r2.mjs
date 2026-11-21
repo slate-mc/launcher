@@ -101,6 +101,18 @@ export async function publishRelease(release, storage) {
   }
 }
 
+export async function verifyPublicObject(object, url, fetcher = fetch) {
+  const response = await fetcher(url, {
+    method: "HEAD",
+    // Edge compression can remove Content-Length; verify the stored bytes.
+    headers: { "accept-encoding": "identity" },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok || Number(response.headers.get("content-length")) !== object.size) {
+    throw new Error(`Public download verification failed: ${object.key}`);
+  }
+}
+
 async function main() {
   const { values } = parseArgs({ options: {
     source: { type: "string" }, channel: { type: "string", default: "stable" },
@@ -152,8 +164,7 @@ async function main() {
       async verify(object) {
         const stored = await head(object.key);
         if (stored?.sha256 !== object.sha256 || stored.size !== object.size) throw new Error(`Upload verification failed: ${object.key}`);
-        const response = await fetch(release.urlFor(object.key), { method: "HEAD", signal: AbortSignal.timeout(30_000) });
-        if (!response.ok || Number(response.headers.get("content-length")) !== object.size) throw new Error(`Public download verification failed: ${object.key}`);
+        await verifyPublicObject(object, release.urlFor(object.key));
       },
     });
     console.log(`Published ${release.version} to ${publicBase}/channels/${release.channel}/latest.json`);
