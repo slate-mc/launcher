@@ -51,6 +51,9 @@ struct ClientArtifactDeclaration {
 
 impl ClientArtifactCatalog {
     pub(super) fn discover(app: &tauri::AppHandle) -> Self {
+        if !cfg!(feature = "slate-client") {
+            return Self::default();
+        }
         let mut candidates = Vec::new();
         if let Ok(resource_dir) = app.path().resource_dir() {
             candidates.push(resource_dir.join("client"));
@@ -132,9 +135,11 @@ impl ClientArtifactCatalog {
     }
 
     pub(super) fn is_available(&self) -> bool {
-        self.artifacts
-            .iter()
-            .any(|artifact| artifact.destination == "mods/slate-client.jar")
+        cfg!(feature = "slate-client")
+            && self
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.destination == "mods/slate-client.jar")
     }
 
     pub(super) fn for_instance(
@@ -143,6 +148,12 @@ impl ClientArtifactCatalog {
     ) -> Result<Vec<ManagedContentArtifact>, AppError> {
         if instance.mode != InstanceMode::SlateClient {
             return Ok(Vec::new());
+        }
+        if !cfg!(feature = "slate-client") {
+            return Err(AppError::new(
+                "local.slate_client_disabled",
+                "The custom Slate Client is disabled. Create a Modded instance to play with Fabric or NeoForge.",
+            ));
         }
         let artifacts = self
             .artifacts
@@ -373,7 +384,7 @@ mod tests {
         )?;
 
         let catalog = ClientArtifactCatalog::load(directory.path())?;
-        assert!(catalog.is_available());
+        assert_eq!(catalog.is_available(), cfg!(feature = "slate-client"));
         std::fs::write(&artifact, b"changed")?;
         assert!(ClientArtifactCatalog::load(directory.path()).is_err());
         Ok(())

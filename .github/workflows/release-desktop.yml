@@ -19,6 +19,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: slate-desktop-release
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
@@ -57,12 +61,6 @@ jobs:
           toolchain: 1.95.0
           targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
-
       - name: Install Linux desktop dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -74,10 +72,6 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
-
-      - name: Build verified Slate Client artifacts
-        shell: bash
-        run: ./gradlew stageDesktopClientArtifacts --no-daemon
 
       - name: Prepare signed updater configuration
         run: node tools/write-tauri-release-config.mjs
@@ -100,3 +94,38 @@ jobs:
       - name: Upload native debug information
         if: ${{ env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != '' }}
         run: npx --yes @sentry/cli@3.8.0 debug-files upload target
+
+  publish-r2:
+    name: Publish installers and signed updates to R2
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.SLATE_R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SLATE_R2_SECRET_ACCESS_KEY }}
+      SLATE_R2_ENDPOINT: ${{ vars.SLATE_R2_ENDPOINT }}
+      SLATE_R2_BUCKET: slate-releases
+      SLATE_RELEASE_PUBLIC_URL: https://downloads.slatemc.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate publisher
+        run: node --test tools/publish-launcher-r2.test.mjs
+
+      - name: Read release version
+        id: version
+        run: node --input-type=module -e "import fs from 'node:fs'; fs.appendFileSync(process.env.GITHUB_OUTPUT, 'value=' + JSON.parse(fs.readFileSync('apps/desktop/package.json')).version + '\n')"
+
+      - name: Download completed signed release
+        run: gh release download "slate-v${{ steps.version.outputs.value }}" --dir tmp/launcher-release
+
+      - name: Publish verified artifacts and update channel
+        run: >-
+          node tools/publish-launcher-r2.mjs
+          --source tmp/launcher-release
+          --version '${{ steps.version.outputs.value }}'
+          --channel '${{ inputs.channel }}'

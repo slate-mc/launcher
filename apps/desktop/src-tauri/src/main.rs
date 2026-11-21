@@ -493,7 +493,7 @@ fn app_bootstrap(state: tauri::State<'_, DesktopState>) -> BootstrapResponse {
         } else {
             CapabilitySummary::unavailable(
                 "slate.client",
-                "Slate Client is not available in this build yet.",
+                "The custom Slate Client is disabled in this modpack launcher build.",
             )
         },
         feature_capability("minecraft.install", features.installs_enabled),

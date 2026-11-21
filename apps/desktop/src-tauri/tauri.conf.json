@@ -31,9 +31,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.ico", "icons/icon.png"],
-    "resources": {
-      "../../../desktop-resources/client/*": "client/"
-    }
+    "icon": ["icons/icon.ico", "icons/icon.png"]
   }
 }

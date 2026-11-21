@@ -1,10 +1,15 @@
 # slate
 
-slate is a Minecraft Java Edition launcher and full in-game client platform focused on recoverable
-installations, understandable failures, reproducible setups, and a polished customizable game
-experience. Like Lunar Client or Dawn Client, Slate Client spans performance, HUD, accessibility,
-visual, quality-of-life, profile, diagnostics, creator, and PvP features; PvP is not its sole
-identity.
+slate is currently a Minecraft Java Edition modpack launcher focused on recoverable installations,
+understandable failures, and reproducible setups. It launches vanilla Minecraft and user-managed
+Fabric or NeoForge instances, with community modpack discovery and installation.
+
+The experimental Kotlin Slate Client is paused and excluded from normal launcher releases.
+Its source remains available for future work; the launcher does not bundle or inject it, and
+custom client instances cannot be created or launched in normal builds.
+
+The public content API is `https://api.slatemc.app`. See [ops/README.md](ops/README.md) for Fly.io
+deployment and DNS configuration.
 
 The repository contains the Rust foundation, loader-aware Minecraft launch planning, and the
 first Tauri 2 desktop shell. The launcher renderer is React 19, strict TypeScript, Vite, and

@@ -8,7 +8,7 @@ if (!publicKey || publicKey.length < 32) {
 
 const endpoint =
   process.env.SLATE_UPDATER_ENDPOINT?.trim() ??
-  "https://api.slatelauncher.org/v1/launcher/updates/{{target}}/{{arch}}/{{current_version}}";
+  "https://api.slatemc.app/v1/launcher/updates/{{target}}/{{arch}}/{{current_version}}";
 const parsedEndpoint = new URL(endpoint.replaceAll(/\{\{[^}]+\}\}/g, "value"));
 if (parsedEndpoint.protocol !== "https:") {
   throw new Error("The production updater endpoint must use HTTPS.");

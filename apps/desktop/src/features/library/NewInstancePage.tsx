@@ -1,19 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Box,
-  Check,
-  Layers3,
-  Sparkles,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Box, Check, Layers3 } from "lucide-react";
 import { useState } from "react";
 import { ComboBox } from "../../components/ComboBox";
 import { InlineNotice, PageHeader } from "../../components/PageScaffold";
 import {
   createInstance,
-  getBootstrap,
   getLoaderVersionCatalog,
   getMinecraftVersionCatalog,
 } from "../../lib/bridge";
@@ -60,14 +52,6 @@ export function NewInstancePage() {
     queryFn: getMinecraftVersionCatalog,
     staleTime: 15 * 60_000,
   });
-  const bootstrapQuery = useQuery({
-    queryKey: ["bootstrap"],
-    queryFn: getBootstrap,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  const slateClientCapability = bootstrapQuery.data?.capabilities.find(
-    (capability) => capability.id === "slate.client",
-  );
   const loaderQuery = useQuery({
     queryKey: ["loader-version-catalog", minecraftVersion, loaderKind],
     queryFn: () => getLoaderVersionCatalog({ minecraftVersion, loaderKind }),
@@ -109,14 +93,18 @@ export function NewInstancePage() {
       memoryMb,
     });
     if (!partial.success) {
-      setValidationError(partial.error.issues[0]?.message ?? "Review the highlighted values.");
+      setValidationError(
+        partial.error.issues[0]?.message ?? "Review the highlighted values.",
+      );
       return;
     }
     if (
       loaderKind !== "vanilla" &&
       (loaderQuery.isPending || loaderQuery.isFetching)
     ) {
-      setValidationError("Wait for slate to resolve a compatible loader release.");
+      setValidationError(
+        "Wait for slate to resolve a compatible loader release.",
+      );
       return;
     }
     if (
@@ -143,7 +131,9 @@ export function NewInstancePage() {
       memoryMb,
     });
     if (!result.success) {
-      setValidationError(result.error.issues[0]?.message ?? "Review the setup.");
+      setValidationError(
+        result.error.issues[0]?.message ?? "Review the setup.",
+      );
       return;
     }
     setValidationError(undefined);
@@ -168,7 +158,10 @@ export function NewInstancePage() {
       />
 
       <div className="mx-auto grid max-w-[980px] grid-cols-[190px_minmax(0,1fr)] gap-8 px-8 py-8">
-        <ol className="m-0 list-none p-0" aria-label="Instance creation progress">
+        <ol
+          className="m-0 list-none p-0"
+          aria-label="Instance creation progress"
+        >
           {[
             [1, "Experience"],
             [2, "Game version"],
@@ -202,11 +195,7 @@ export function NewInstancePage() {
 
         <section className="min-w-0 rounded-dialog border border-app-separator/70 bg-app-surface p-6">
           {step === 1 ? (
-            <ExperienceStep
-              mode={mode}
-              slateClientAvailable={slateClientCapability?.available === true}
-              onSelect={selectMode}
-            />
+            <ExperienceStep mode={mode} onSelect={selectMode} />
           ) : step === 2 ? (
             <ConfigurationStep
               name={name}
@@ -214,7 +203,9 @@ export function NewInstancePage() {
               loaderKind={loaderKind}
               memoryMb={memoryMb}
               mode={mode}
-              versions={versionsQuery.data?.versions.map((version) => version.id) ?? []}
+              versions={
+                versionsQuery.data?.versions.map((version) => version.id) ?? []
+              }
               versionsPending={versionsQuery.isPending}
               versionsError={versionsQuery.isError}
               loaderPending={loaderQuery.isPending || loaderQuery.isFetching}
@@ -298,11 +289,9 @@ export function NewInstancePage() {
 
 function ExperienceStep({
   mode,
-  slateClientAvailable,
   onSelect,
 }: {
   mode: CreateInstanceInput["mode"];
-  slateClientAvailable: boolean;
   onSelect: (mode: CreateInstanceInput["mode"]) => void;
 }) {
   const experiences = [
@@ -320,13 +309,6 @@ function ExperienceStep({
       icon: Layers3,
       available: true,
     },
-    {
-      id: "slateClient" as const,
-      title: "Slate Client",
-      description: "Performance, HUD, accessibility, QoL, creator, and optional PvP tools.",
-      icon: Sparkles,
-      available: slateClientAvailable,
-    },
   ];
   return (
     <>
@@ -339,7 +321,7 @@ function ExperienceStep({
       <p className="mt-0 mb-5 text-xs text-app-secondary">
         This sets safe defaults. You can still edit memory and loader details.
       </p>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {experiences.map((experience) => {
           const Icon = experience.icon;
           return (
@@ -432,10 +414,14 @@ function ConfigurationStep(props: {
               description: index === 0 ? "Latest release" : "Release",
               recommended: index === 0,
             }))}
-            placeholder={props.versionsPending ? "Loading releases…" : "Choose a release"}
+            placeholder={
+              props.versionsPending ? "Loading releases…" : "Choose a release"
+            }
             emptyText="No matching Minecraft releases"
             disabled={
-              props.mode === "slateClient" || props.versionsPending || props.versionsError
+              props.mode === "slateClient" ||
+              props.versionsPending ||
+              props.versionsError
             }
             onValueChange={props.onMinecraftVersionChange}
           />
@@ -485,7 +471,9 @@ function ConfigurationStep(props: {
                     ? "Loading compatible versions…"
                     : "Choose a loader version"
             }
-            emptyText={props.loaderUnavailableReason ?? "No compatible loader versions"}
+            emptyText={
+              props.loaderUnavailableReason ?? "No compatible loader versions"
+            }
             disabled={
               !props.minecraftVersion ||
               props.loaderKind === "vanilla" ||
@@ -513,7 +501,9 @@ function ConfigurationStep(props: {
             max={16384}
             step={1024}
             value={props.memoryMb}
-            onChange={(event) => props.onMemoryChange(Number(event.target.value))}
+            onChange={(event) =>
+              props.onMemoryChange(Number(event.target.value))
+            }
           />
           <span className="mt-1 flex justify-between font-mono text-[10px] font-medium text-app-muted">
             <span>2 GB</span>
@@ -542,7 +532,8 @@ function ReviewStep(props: {
         Review the profile
       </h2>
       <p className="mt-0 mb-5 text-xs text-app-secondary">
-        slate creates the instance and its folders. Downloads begin only when you choose Install.
+        slate creates the instance and its folders. Downloads begin only when
+        you choose Install.
       </p>
       <dl className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-control border border-app-separator bg-app-bg p-5">
         <ReviewValue label="Name" value={props.name} />
@@ -557,7 +548,8 @@ function ReviewStep(props: {
       </dl>
       <div className="mt-5">
         <InlineNotice title="Ready to create">
-          Create the instance now, then install its game files from the overview.
+          Create the instance now, then install its game files from the
+          overview.
         </InlineNotice>
       </div>
     </>

@@ -21,13 +21,14 @@ async fn feature_config(
     State(state): State<AppState>,
     Extension(context): Extension<RequestContext>,
 ) -> Response {
-    let config = match state.telemetry.feature_config().await {
+    let mut config = match state.telemetry.feature_config().await {
         Ok(config) => config,
         Err(_) => {
             tracing::warn!("remote launcher controls are unavailable; safe defaults are active");
             slate_modpack_api_contracts::LauncherFeatureConfig::default()
         }
     };
+    config.support_reports_enabled &= state.support_reports.available();
     success(&context, config, CacheControl::PublicShort)
 }
 

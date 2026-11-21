@@ -13,6 +13,7 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub trust_fly_proxy: bool,
     pub providers: ProviderRegistry,
     pub content: ModrinthContentProvider,
     pub upstream: UpstreamClient,
@@ -33,6 +34,7 @@ impl AppState {
             Arc::new(FtbProvider::new(upstream.clone())),
         ]);
         Ok(Self {
+            trust_fly_proxy: config.trust_fly_proxy,
             providers,
             content: ModrinthContentProvider::new(upstream.clone()),
             upstream,

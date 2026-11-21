@@ -14,7 +14,7 @@ use url::Url;
 use uuid::Uuid;
 
 pub const DEVELOPMENT_API_URL: &str = "http://127.0.0.1:8080";
-pub const PRODUCTION_API_URL: &str = "https://api.slatelauncher.org";
+pub const PRODUCTION_API_URL: &str = "https://api.slatemc.app";
 const MAX_RESPONSE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_SUPPORT_REPORT_BYTES: usize = 20 * 1024 * 1024;
 
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn build_endpoints_are_explicit_and_secure() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(DEVELOPMENT_API_URL, "http://127.0.0.1:8080");
-        assert_eq!(PRODUCTION_API_URL, "https://api.slatelauncher.org");
+        assert_eq!(PRODUCTION_API_URL, "https://api.slatemc.app");
         assert!(ModpackApiClient::new(Url::parse(PRODUCTION_API_URL)?).is_ok());
         assert!(ModpackApiClient::new(Url::parse("http://example.test")?).is_err());
         Ok(())
