@@ -38,7 +38,13 @@ pub fn detect_java_runtime() -> JavaRuntimeProbe {
 
 #[must_use]
 pub fn probe_java_executable(executable: &Path) -> JavaRuntimeProbe {
-    match Command::new(executable)
+    let mut command = Command::new(executable);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW; preserve captured Java output.
+    }
+    match command
         .args(["-XshowSettings:properties", "-version"])
         .output()
     {
