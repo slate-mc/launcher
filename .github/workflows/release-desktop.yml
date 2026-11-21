@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      linux_only:
+        description: Rebuild Linux while reusing the completed Windows and Mac draft artifacts
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -31,18 +36,11 @@ concurrency:
 jobs:
   build:
     if: ${{ !inputs.publish_only }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: windows-latest
-            args: ""
-          - platform: ubuntu-22.04
-            args: ""
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
+        include: ${{ fromJSON(inputs.linux_only && '[{"platform":"ubuntu-22.04","args":"--bundles deb,appimage"}]' || '[{"platform":"windows-latest","args":""},{"platform":"ubuntu-22.04","args":"--bundles deb,appimage"},{"platform":"macos-latest","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","args":"--target x86_64-apple-darwin"}]') }}
     runs-on: ${{ matrix.platform }}
     env:
       SLATE_UPDATER_ENABLED: "1"
@@ -69,7 +67,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-${{ matrix.platform }}-${{ matrix.args }}
+          shared-key: release-${{ matrix.platform }}-${{ startsWith(matrix.platform, 'macos') && matrix.args || '' }}
           cache-on-failure: true
 
       - name: Install Linux desktop dependencies

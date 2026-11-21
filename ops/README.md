@@ -107,6 +107,11 @@ If the files built successfully but publishing needs a retry, use the same workf
 `-f publish_only=true` to reuse the completed signed draft. This does not rebuild or replace
 the versioned binaries.
 
+Linux releases include `.deb` and `.AppImage` packages. RPM packaging is excluded because the
+current bundler stalls on that target. `-f linux_only=true` rebuilds just Linux and reuses the
+completed Windows and Mac artifacts in the same draft; the publisher still requires all four
+platform manifests and matching signatures before advancing a channel.
+
 Use the logged-in `cf` CLI for Cloudflare management. The checked-in `r2-release-policy.json`
 documents the bucket-scoped token permissions and `r2-cors.json` documents the download CORS policy.
 
