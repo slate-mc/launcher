@@ -10,6 +10,7 @@ slate-domain = { path = "../domain" }
 slate-modpack-api-contracts = { path = "../modpack-api-contracts" }
 slate-platform = { path = "../platform" }
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true

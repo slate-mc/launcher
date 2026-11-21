@@ -1,0 +1,2 @@
+# SQLx embeds migration bytes in its checksums; keep checkouts identical across OSes.
+*.sql text eol=lf

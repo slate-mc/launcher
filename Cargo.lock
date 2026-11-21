@@ -5160,7 +5160,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slate-auth"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "keyring",
@@ -5177,7 +5177,7 @@ dependencies = [
 
 [[package]]
 name = "slate-client-protocol"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "semver",
  "serde",
@@ -5188,7 +5188,7 @@ dependencies = [
 
 [[package]]
 name = "slate-contracts"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "schemars 1.2.2",
  "serde",
@@ -5200,7 +5200,7 @@ dependencies = [
 
 [[package]]
 name = "slate-desktop"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -5242,7 +5242,7 @@ dependencies = [
 
 [[package]]
 name = "slate-domain"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "proptest",
  "serde",
@@ -5254,7 +5254,7 @@ dependencies = [
 
 [[package]]
 name = "slate-installer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -5278,7 +5278,7 @@ dependencies = [
 
 [[package]]
 name = "slate-loaders"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "reqwest",
  "serde",
@@ -5293,7 +5293,7 @@ dependencies = [
 
 [[package]]
 name = "slate-minecraft"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "regex",
  "reqwest",
@@ -5314,7 +5314,7 @@ dependencies = [
 
 [[package]]
 name = "slate-modpack-api"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5352,7 +5352,7 @@ dependencies = [
 
 [[package]]
 name = "slate-modpack-api-contracts"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "schemars 1.2.2",
  "serde",
@@ -5363,7 +5363,7 @@ dependencies = [
 
 [[package]]
 name = "slate-modpack-client"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "reqwest",
  "serde",
@@ -5376,7 +5376,7 @@ dependencies = [
 
 [[package]]
 name = "slate-platform"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "directories",
  "slate-domain",
@@ -5386,7 +5386,7 @@ dependencies = [
 
 [[package]]
 name = "slate-process"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "slate-client-protocol",
  "slate-domain",
@@ -5398,9 +5398,10 @@ dependencies = [
 
 [[package]]
 name = "slate-storage"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde_json",
+ "sha2 0.11.0",
  "slate-domain",
  "slate-modpack-api-contracts",
  "slate-platform",
@@ -7903,7 +7904,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde_json",
  "slate-contracts",
