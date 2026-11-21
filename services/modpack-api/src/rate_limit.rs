@@ -74,10 +74,11 @@ pub async fn enforce(State(state): State<AppState>, request: Request, next: Next
     let Some(context) = request.extensions().get::<RequestContext>().cloned() else {
         return next.run(request).await;
     };
-    let ip = request
+    let peer_ip = request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
         .map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |address| address.ip());
+    let ip = client_ip(&request, peer_ip, state.trust_fly_proxy);
     let limit = category.limit();
     let decision = state.rate_limiter.check(RateKey { ip, category }, limit);
     let mut response = if decision.allowed {
@@ -98,6 +99,19 @@ pub async fn enforce(State(state): State<AppState>, request: Request, next: Next
         insert_number_header(&mut response, RETRY_AFTER, decision.retry_after);
     }
     response
+}
+
+fn client_ip(request: &Request, peer_ip: IpAddr, trust_fly_proxy: bool) -> IpAddr {
+    if trust_fly_proxy {
+        request
+            .headers()
+            .get("fly-client-ip")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(peer_ip)
+    } else {
+        peer_ip
+    }
 }
 
 fn insert_number_header(response: &mut Response, name: HeaderName, value: impl ToString) {
@@ -162,8 +176,28 @@ struct RateDecision {
 
 #[cfg(test)]
 mod tests {
-    use super::{RateCategory, RateKey, RateLimiter};
+    use super::{RateCategory, RateKey, RateLimiter, client_ip};
+    use axum::extract::Request;
+    use axum::http::HeaderValue;
     use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn proxy_client_ip_is_only_trusted_when_explicitly_enabled() {
+        let peer = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let client = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 10));
+        let mut request = Request::default();
+        request
+            .headers_mut()
+            .insert("fly-client-ip", HeaderValue::from_static("203.0.113.10"));
+        assert_eq!(client_ip(&request, peer, false), peer);
+        assert_eq!(client_ip(&request, peer, true), client);
+        request
+            .headers_mut()
+            .insert("fly-client-ip", HeaderValue::from_static("invalid"));
+        assert_eq!(client_ip(&request, peer, true), peer);
+        request.headers_mut().remove("fly-client-ip");
+        assert_eq!(client_ip(&request, peer, true), peer);
+    }
 
     #[test]
     fn fixed_window_enforces_its_limit() {

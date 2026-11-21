@@ -1,0 +1,40 @@
+app = "slatemc-api"
+primary_region = "dfw"
+kill_signal = "SIGTERM"
+kill_timeout = "15s"
+
+[build]
+  dockerfile = "services/modpack-api/Dockerfile"
+
+[env]
+  SLATE_API_BIND = "0.0.0.0:8080"
+  SLATE_DEPLOYMENT_ENVIRONMENT = "production"
+  SLATE_UPSTREAM_USER_AGENT = "slate-api/0.1 (+https://slatemc.app)"
+  SLATE_TRUST_FLY_PROXY = "true"
+  SLATE_LAUNCHER_RELEASE_MANIFEST_URL = "https://downloads.slatemc.app/channels/stable/latest.json"
+  SLATE_LAUNCHER_BETA_RELEASE_MANIFEST_URL = "https://downloads.slatemc.app/channels/beta/latest.json"
+  RUST_LOG = "info"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"

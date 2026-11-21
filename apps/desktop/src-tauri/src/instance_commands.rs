@@ -30,6 +30,12 @@ pub(super) async fn instance_create(
     state: tauri::State<'_, DesktopState>,
     request: CreateInstanceRequest,
 ) -> Result<InstanceSummary, AppError> {
+    if request.mode == InstanceModeDto::SlateClient && !cfg!(feature = "slate-client") {
+        return Err(AppError::new(
+            "local.slate_client_disabled",
+            "The custom Slate Client is disabled. Choose Vanilla or Modded.",
+        ));
+    }
     let loader_version = validate_selected_loader_version(
         &request.minecraft_version,
         request.loader_kind,

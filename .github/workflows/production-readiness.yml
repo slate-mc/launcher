@@ -6,7 +6,7 @@ on:
       base_url:
         description: Deployed slate API origin
         required: true
-        default: https://api.slatelauncher.org
+        default: https://api.slatemc.app
         type: string
       upload_support_report:
         description: Exercise private support-report storage

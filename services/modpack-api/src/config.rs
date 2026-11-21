@@ -3,15 +3,16 @@ use url::Url;
 
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8080";
 const DEFAULT_UPSTREAM_URL: &str = "https://api.modpacks.ch";
-const DEFAULT_USER_AGENT: &str = "slate-api/0.1 (+https://slate.gg)";
+const DEFAULT_USER_AGENT: &str = "slate-api/0.1 (+https://slatemc.app)";
 const DEFAULT_RELEASE_MANIFEST_URL: &str =
-    "https://github.com/slate-mc/launcher/releases/latest/download/latest.json";
+    "https://downloads.slatemc.app/channels/stable/latest.json";
 const DEFAULT_POSTHOG_HOST: &str = "https://us.i.posthog.com";
 const DEFAULT_SUPPORT_REPORT_PREFIX: &str = "support-reports";
 
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind_address: SocketAddr,
+    pub trust_fly_proxy: bool,
     pub upstream_url: Url,
     pub upstream_user_agent: String,
     pub release_manifest_url: Url,
@@ -54,6 +55,11 @@ impl Config {
             .unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_owned())
             .parse()
             .map_err(ConfigError::InvalidBindAddress)?;
+        let trust_fly_proxy = match std::env::var("SLATE_TRUST_FLY_PROXY").as_deref() {
+            Ok("true") => true,
+            Ok("false") | Err(_) => false,
+            _ => return Err(ConfigError::InvalidTrustFlyProxy),
+        };
         let upstream_url = Url::parse(
             &std::env::var("SLATE_MODPACKS_CH_URL")
                 .unwrap_or_else(|_| DEFAULT_UPSTREAM_URL.to_owned()),
@@ -122,6 +128,7 @@ impl Config {
         let support_reports = SupportReportStorageConfig::from_env()?;
         let config = Self {
             bind_address,
+            trust_fly_proxy,
             upstream_url,
             upstream_user_agent,
             release_manifest_url,
@@ -134,7 +141,6 @@ impl Config {
             sentry_dsn,
             support_reports,
         };
-        config.validate_production_services()?;
         Ok(config)
     }
 
@@ -148,39 +154,6 @@ impl Config {
             support_report_storage_configured: self.support_reports.bucket.is_some(),
         }
     }
-
-    fn validate_production_services(&self) -> Result<(), ConfigError> {
-        validate_production_services(
-            &self.observability.environment,
-            self.sentry_dsn.is_some(),
-            self.posthog_project_token.is_some(),
-            self.observability.enabled,
-            self.support_reports.bucket.is_some(),
-        )
-    }
-}
-
-fn validate_production_services(
-    environment: &str,
-    sentry_configured: bool,
-    posthog_configured: bool,
-    otel_configured: bool,
-    support_reports_configured: bool,
-) -> Result<(), ConfigError> {
-    if environment != "production" {
-        return Ok(());
-    }
-    for (configured, variable) in [
-        (sentry_configured, "SLATE_SENTRY_DSN"),
-        (posthog_configured, "SLATE_POSTHOG_PROJECT_TOKEN"),
-        (otel_configured, "SLATE_OTEL_ENABLED=true"),
-        (support_reports_configured, "SLATE_SUPPORT_REPORTS_BUCKET"),
-    ] {
-        if !configured {
-            return Err(ConfigError::MissingProductionService(variable));
-        }
-    }
-    Ok(())
 }
 
 fn rollout_percentage(variable: &'static str) -> Result<u8, ConfigError> {
@@ -312,6 +285,8 @@ fn validate_otel_endpoint(value: &str) -> Result<(), ConfigError> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
+    #[error("SLATE_TRUST_FLY_PROXY must be true or false")]
+    InvalidTrustFlyProxy,
     #[error("SLATE_API_BIND is not a valid socket address")]
     InvalidBindAddress(std::net::AddrParseError),
     #[error("SLATE_MODPACKS_CH_URL is not a valid URL")]
@@ -363,16 +338,11 @@ pub enum ConfigError {
     InvalidSupportReportsEndpoint(url::ParseError),
     #[error("AWS_ENDPOINT_URL_S3 must use HTTPS, except for a local development endpoint")]
     UnsafeSupportReportsEndpoint,
-    #[error("production requires {0}")]
-    MissingProductionService(&'static str),
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        parse_enabled, validate_otel_endpoint, validate_production_services,
-        validate_support_endpoint,
-    };
+    use super::{parse_enabled, validate_otel_endpoint, validate_support_endpoint};
 
     #[test]
     fn otel_switch_accepts_explicit_boolean_values() {
@@ -395,14 +365,5 @@ mod tests {
         assert!(validate_support_endpoint("http://127.0.0.1:9000").is_ok());
         assert!(validate_support_endpoint("http://object-storage.example.com").is_err());
         assert!(validate_support_endpoint("https://user:secret@example.com").is_err());
-    }
-
-    #[test]
-    fn production_requires_every_operational_service() {
-        assert!(validate_production_services("development", false, false, false, false).is_ok());
-        assert!(validate_production_services("production", true, true, true, true).is_ok());
-        assert!(validate_production_services("production", true, false, true, true).is_err());
-        assert!(validate_production_services("production", true, true, false, true).is_err());
-        assert!(validate_production_services("production", true, true, true, false).is_err());
     }
 }

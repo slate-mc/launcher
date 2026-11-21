@@ -634,12 +634,12 @@ fn validate_download_url(value: &str, proxy: bool) -> Result<Url, ContentInstall
         return Err(ContentInstallError::UnsafeDownloadUrl);
     }
     let allowed = if proxy {
-        host == "api.slatelauncher.org"
+        host == "api.slatemc.app"
     } else {
         host == "cdn.modrinth.com"
             || host == "files.feed-the-beast.com"
             || host == "cdn.feed-the-beast.com"
-            || host == "api.slatelauncher.org"
+            || host == "api.slatemc.app"
             || host == "api.modpacks.ch"
             || host.ends_with(".forgecdn.net")
             || host.ends_with(".modpacks.ch")
@@ -1034,6 +1034,9 @@ mod tests {
 
     #[test]
     fn download_hosts_are_allowlisted() {
+        assert!(validate_download_url("https://api.slatemc.app/v1/download", true).is_ok());
+        assert!(validate_download_url("https://api.slatemc.app/v1/download", false).is_ok());
+        assert!(validate_download_url("https://api.slatelauncher.org/v1/download", true).is_err());
         assert!(validate_download_url("https://cdn.modrinth.com/data/a.jar", false).is_ok());
         assert!(
             validate_download_url("https://mediafilez.forgecdn.net/files/a.jar", false).is_ok()

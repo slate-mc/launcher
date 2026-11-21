@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+# Experimental custom client integration; excluded from normal launcher releases.
+slate-client = []
+
 [build-dependencies]
 tauri-build.workspace = true
 

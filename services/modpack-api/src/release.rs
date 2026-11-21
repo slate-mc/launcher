@@ -163,6 +163,10 @@ impl ReleaseCatalog {
             return Ok(None);
         };
         let response = self.client.get(manifest_url.clone()).send().await?;
+        // An empty release channel has no manifest until its first signed release.
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
         if !response.status().is_success()
             || response
                 .content_length()
@@ -274,6 +278,32 @@ mod tests {
         ReleaseChannel, ReleaseError, StaticReleaseManifest, parse_version, rollout_eligible,
         select_update,
     };
+
+    #[tokio::test]
+    async fn empty_release_channel_returns_no_update() -> Result<(), Box<dyn std::error::Error>> {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                axum::Router::new().fallback(|| async { axum::http::StatusCode::NOT_FOUND }),
+            )
+            .await
+        });
+        let catalog = super::ReleaseCatalog::new(
+            url::Url::parse(&format!("http://{address}/latest.json"))?,
+            None,
+            100,
+            100,
+            "slate-test",
+        )?;
+        let result = catalog
+            .update_for("windows", "x86_64", "0.1.0", ReleaseChannel::Stable, None)
+            .await;
+        server.abort();
+        assert!(result?.is_none());
+        Ok(())
+    }
 
     fn release_manifest() -> Result<StaticReleaseManifest, serde_json::Error> {
         serde_json::from_str(

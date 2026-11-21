@@ -167,9 +167,9 @@ const initialPreviewInstances: LauncherInstance[] = [
   },
   {
     id: "13fcbabf-cc0b-448c-bc47-a44da89c6a61",
-    name: "Slate Client",
-    storagePath: "C:\\slate-preview\\instances\\slate-client",
-    mode: "slateClient",
+    name: "Fabric Mods",
+    storagePath: "C:\\slate-preview\\instances\\fabric-mods",
+    mode: "modded",
     managementMode: "local",
     favorite: false,
     revision: 2,
@@ -220,7 +220,8 @@ export async function getBootstrap(): Promise<Bootstrap> {
       {
         id: "slate.client",
         available: false,
-        unavailableReason: "Slate Client is not available in this build yet.",
+        unavailableReason:
+          "The custom Slate Client is disabled in this modpack launcher build.",
       },
       { id: "content.modpacks", available: false },
       { id: "settings.local", available: true },
